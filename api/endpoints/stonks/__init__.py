@@ -1,0 +1,9 @@
+from fastapi import APIRouter
+from .chart import router as chart_router
+from .get_settings import router as get_settings_router
+from .update_settings import router as update_settings_router
+
+router = APIRouter(prefix="/stonks", tags=["stonks"])
+router.include_router(get_settings_router)
+router.include_router(update_settings_router)
+router.include_router(chart_router)
