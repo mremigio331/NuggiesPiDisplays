@@ -1,0 +1,28 @@
+{
+  "active_display": "stocks",
+
+  "stocks": {
+    "stock_abbrs": ["AAPL", "MSFT"],
+    "stock_cycles": [
+      { "key": "intraday", "period": "1d",  "interval": "5m", "label": "Today",        "enabled": true },
+      { "key": "6month",   "period": "6mo", "interval": "1d", "label": "6 Months",     "enabled": true },
+      { "key": "ytd",      "period": "ytd", "interval": "1d", "label": "Year to Date", "enabled": true },
+      { "key": "1year",    "period": "1y",  "interval": "1d", "label": "1 Year",       "enabled": true }
+    ],
+    "interval_seconds": 60,
+    "display_brightness": 80,
+    "market_hours_only": false,
+    "timezone": "America/Los_Angeles"
+  },
+
+  "mta": {
+    "station": "111 St - 194",
+    "cycle": true,
+    "cycle_time": "5",
+    "force_change_station": "",
+    "log_level": "INFO",
+    "create_log_file": false,
+    "log_file_name": "logs/mta.log",
+    "log_error_file_name": "logs/mta_errors.log"
+  }
+}
