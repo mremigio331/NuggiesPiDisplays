@@ -1,0 +1,282 @@
+/* ── Shell ─────────────────────────────────────────────────────── */
+.ml-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #0a1628;
+  color: #d4dfe8;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* ── Top bar ───────────────────────────────────────────────────── */
+.ml-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: rgba(10, 22, 40, 0.97);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid #1a2a40;
+  flex-shrink: 0;
+}
+
+.ml-brand {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.ml-status-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: #0f2035;
+  border: 1px solid #1a3050;
+  color: #8da8c0;
+}
+
+.ml-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ml-dot.on {
+  background: #29d66e;
+  box-shadow: 0 0 6px #29d66e88;
+}
+.ml-dot.off {
+  background: #666;
+}
+
+/* ── Scrollable content ────────────────────────────────────────── */
+.ml-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 16px 80px; /* room for bottom nav */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Shared mobile card ────────────────────────────────────────── */
+.m-card {
+  background: #0f1e30;
+  border: 1px solid #1a2a40;
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.m-card-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #5a7a9a;
+  margin-bottom: 14px;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────── */
+.m-btn-row {
+  display: flex;
+  gap: 10px;
+}
+
+.m-btn {
+  flex: 1;
+  height: 48px;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    opacity 0.15s,
+    transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.m-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.m-btn:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.m-btn-primary {
+  background: #1a5fa8;
+  color: #fff;
+}
+.m-btn-danger {
+  background: #7a1f1f;
+  color: #fff;
+}
+.m-btn-neutral {
+  background: #1a2a40;
+  color: #c0d0e0;
+}
+.m-btn-active {
+  background: #1a5fa8;
+  color: #fff;
+  border: 2px solid #4a9fe8;
+}
+
+/* ── Status row ────────────────────────────────────────────────── */
+.m-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+}
+
+.m-label {
+  font-size: 0.8rem;
+  color: #5a7a9a;
+}
+
+.m-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.m-badge-green {
+  background: #0a2a18;
+  color: #29d66e;
+  border: 1px solid #1a4a2a;
+}
+.m-badge-red {
+  background: #2a0a0a;
+  color: #e05050;
+  border: 1px solid #4a1a1a;
+}
+.m-badge-blue {
+  background: #0a1a3a;
+  color: #4a9fe8;
+  border: 1px solid #1a3a6a;
+}
+.m-badge-gray {
+  background: #1a2030;
+  color: #8a9ab0;
+  border: 1px solid #2a3040;
+}
+
+/* ── Train card ────────────────────────────────────────────────── */
+.m-train-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid #1a2a40;
+}
+
+.m-train-card:last-child {
+  border-bottom: none;
+}
+
+.m-train-logo {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.m-train-dest {
+  flex: 1;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #d4dfe8;
+}
+
+.m-train-dir {
+  font-size: 0.7rem;
+  color: #5a7a9a;
+  margin-top: 2px;
+}
+
+.m-train-time {
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.m-train-time.arriving {
+  background: #2a1a00;
+  color: #f0a800;
+  border: 1px solid #4a3000;
+}
+.m-train-time.waiting {
+  background: #0a2a18;
+  color: #29d66e;
+  border: 1px solid #1a4a2a;
+}
+
+/* ── Section title ─────────────────────────────────────────────── */
+.m-section-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.m-section-sub {
+  font-size: 0.75rem;
+  color: #5a7a9a;
+  margin-bottom: 16px;
+}
+
+/* ── Toggle row ────────────────────────────────────────────────── */
+.m-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #1a2a40;
+}
+
+.m-toggle-row:last-child {
+  border-bottom: none;
+}
+
+.m-toggle-label {
+  font-size: 0.9rem;
+  color: #c0d0e0;
+}
+.m-toggle-val {
+  font-size: 0.8rem;
+  color: #5a7a9a;
+  margin-top: 2px;
+}
+
+/* ── Map toggle ────────────────────────────────────────────────── */
+.m-map-toggle {
+  width: 100%;
+  height: 44px;
+  background: #1a2a40;
+  border: none;
+  border-radius: 10px;
+  color: #8da8c0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  -webkit-tap-highlight-color: transparent;
+}
