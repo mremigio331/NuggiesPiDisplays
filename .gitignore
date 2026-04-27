@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.venv/
+venv/
+
+# Logs
+logs/
+*.log
+
+# Runtime state
+display.pid
+api/settings.json
+
+# Fonts — copied from rgbmatrix repo by setup.sh
+display/fonts/
+
+# Node / Frontend
+website/node_modules/
+website/dist/
+
+# Environment
+.env
+.env.*
+
+# OS / Editor
+.DS_Store
+.vscode/
+.idea/
+
+# Vibe Coder
+CLAUDE.md

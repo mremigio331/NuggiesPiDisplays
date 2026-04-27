@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+yfinance
+filelock
+httpx
+pandas
+protobuf
+gtfs-realtime-bindings
+requests
