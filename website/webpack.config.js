@@ -36,6 +36,8 @@ module.exports = {
     port: 8080,
     allowedHosts: "all",
     historyApiFallback: true,
+    hot: true,
+    liveReload: true,
     proxy: [{ context: ["/api"], target: "http://localhost:8000", pathRewrite: { "^/api": "" } }],
   },
 };

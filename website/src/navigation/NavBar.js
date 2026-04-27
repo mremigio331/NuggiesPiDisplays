@@ -7,24 +7,43 @@ export default function NavBar() {
   const navigate = useNavigate();
   const { apiCheckState } = useApiCheck();
 
-  const go = (href) => (e) => {
-    e.preventDefault();
-    navigate(href);
-  };
-
   return (
     <TopNavigation
-      identity={{ href: "/", title: "Nuggies Display", onFollow: go("/") }}
+      identity={{
+        href: "/",
+        title: "Nuggies Display",
+        onFollow: (e) => {
+          e.preventDefault();
+          navigate("/");
+        },
+      }}
       utilities={[
-        { type: "button", text: "MTA", href: "/mta", onClick: go("/mta") },
-        { type: "button", text: "Stocks", href: "/stocks", onClick: go("/stocks") },
-        { type: "button", text: "System", href: "/system", onClick: go("/system") },
+        {
+          type: "menu-dropdown",
+          text: "Pages",
+          iconName: "menu",
+          items: [
+            { id: "mta", text: "MTA" },
+            { id: "stocks", text: "Stocks" },
+          ],
+          onItemClick: ({ detail }) => {
+            const routes = { mta: "/mta", stocks: "/stocks" };
+            if (routes[detail.id]) navigate(routes[detail.id]);
+          },
+        },
         {
           type: "menu-dropdown",
           iconName: "status-info",
           ariaLabel: "API status",
           title: "API",
-          items: [{ id: "status", text: <ApiStatus retries={apiCheckState.apiRetries} /> }],
+          items: [{ id: "api-status", text: <ApiStatus retries={apiCheckState.apiRetries} /> }],
+        },
+        {
+          type: "button",
+          iconName: "settings",
+          ariaLabel: "System",
+          title: "System",
+          onClick: () => navigate("/system"),
         },
       ]}
     />
