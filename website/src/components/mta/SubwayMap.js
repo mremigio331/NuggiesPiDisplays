@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { Button, Header, SpaceBetween } from "@cloudscape-design/components";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import selectedMarker from "../../assets/MapMarkers/MTA_Selected.png";
@@ -81,23 +80,38 @@ export default function SubwayMap({
 
       const marker = L.marker(station.coordinates, { icon }).addTo(map);
       const container = document.createElement("div");
-      container.style.cssText = "display:inline-block;width:280px";
+      container.style.cssText = "display:inline-block;width:260px";
       const root = createRoot(container);
 
       root.render(
-        <SpaceBetween direction="vertical" size="s">
-          <Header variant="h4">{station.stationName}</Header>
-          <SpaceBetween direction="horizontal" size="xs">
+        <div style={{ padding: "4px 0" }}>
+          <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#16191f", marginBottom: 6 }}>
+            {station.stationName}
+          </div>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>
             {station.trainLines.map((line) =>
               TrainLogos[line] ? (
                 <img key={line} width="20" height="20" src={TrainLogos[line]} alt={line} />
               ) : null
             )}
-          </SpaceBetween>
-          <Button onClick={() => handleStationClick(station.fullStationName)}>
+          </div>
+          <button
+            onClick={() => handleStationClick(station.fullStationName)}
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              background: "#1a5fa8",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              cursor: "pointer",
+              fontSize: "0.85rem",
+              fontWeight: 600,
+            }}
+          >
             Switch to this station
-          </Button>
-        </SpaceBetween>
+          </button>
+        </div>
       );
 
       marker.bindPopup(container, { autoClose: true, closeOnClick: true });
@@ -108,19 +122,16 @@ export default function SubwayMap({
     setMapInitialized(true);
   };
 
-  // Full init when mapInitialized flips to false (first load or explicit reset)
   useEffect(() => {
     if (!mapInitialized) initializeMap();
   }, [mapInitialized]);
 
-  // Smooth fly-to when center coords change and map is already up
   useEffect(() => {
     if (mapRef.current && mapInitialized) {
       mapRef.current.flyTo([centerCoords.lat, centerCoords.lon], 16, { duration: 1 });
     }
   }, [centerCoords]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       mapRef.current?.remove();
