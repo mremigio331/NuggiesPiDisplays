@@ -16,7 +16,8 @@ install_system_packages() {
     sudo apt install -y \
         python3-pip python3-pil python3-dev \
         python3-protobuf python3-pandas python3-requests \
-        avahi-daemon git curl screen iptables
+        avahi-daemon git curl screen iptables \
+        dnsmasq network-manager
     echo "System packages installed."
 }
 
@@ -135,6 +136,32 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# Frontend build — produce website/dist/ for the captive portal to serve
+# ---------------------------------------------------------------------------
+build_frontend() {
+    echo "--- Building frontend..."
+    cd "$SCRIPT_DIR/website"
+    npm run build
+    cd "$SCRIPT_DIR"
+    echo "Frontend built to website/dist/"
+}
+
+# ---------------------------------------------------------------------------
+# WiFi setup service — install + enable the captive-portal systemd unit
+# ---------------------------------------------------------------------------
+install_wifi_setup_service() {
+    echo "--- Installing WiFi setup service..."
+    SERVICE_SRC="$SCRIPT_DIR/wifi_setup/nuggies-wifi-setup.service"
+    SERVICE_DST="/etc/systemd/system/nuggies-wifi-setup.service"
+
+    sudo cp "$SERVICE_SRC" "$SERVICE_DST"
+    sudo chmod 644 "$SERVICE_DST"
+    sudo systemctl daemon-reload
+    sudo systemctl enable nuggies-wifi-setup.service
+    echo "WiFi setup service installed and enabled."
+}
+
+# ---------------------------------------------------------------------------
 # Settings — copy defaults if settings.json doesn't exist yet
 # ---------------------------------------------------------------------------
 init_settings() {
@@ -197,6 +224,8 @@ setup_port_forwarding
 setup_sudoers
 setup_logs
 install_frontend
+build_frontend
+install_wifi_setup_service
 init_settings
 verify_display
 

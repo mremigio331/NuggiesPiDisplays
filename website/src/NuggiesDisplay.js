@@ -10,6 +10,7 @@ import StocksSettings from "./pages/stocks/StocksSettings";
 import Clock from "./pages/clock/Clock";
 import ClockSettings from "./pages/clock/ClockSettings";
 import System from "./pages/system/System";
+import WifiSetup from "./pages/wifi-setup/WifiSetup";
 import PageNotFound from "./pages/PageNotFound";
 
 export default function NuggiesDisplay() {
@@ -25,6 +26,7 @@ export default function NuggiesDisplay() {
         <Route path="/clock" element={<Clock />} />
         <Route path="/clock/settings" element={<ClockSettings />} />
         <Route path="/system" element={<System />} />
+        <Route path="/wifi-setup" element={<WifiSetup />} />
         <Route path="*" element={<PageNotFound />} />
       </Routes>
     </MobileLayout>
