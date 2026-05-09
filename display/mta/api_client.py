@@ -37,7 +37,9 @@ def get_enabled_stations() -> list | None:
 
 def set_station(station: str) -> bool:
     try:
-        resp = requests.put(f"{_BASE}/mta/stations/current", json={"station": station}, timeout=10)
+        resp = requests.put(
+            f"{_BASE}/mta/stations/current", json={"station": station}, timeout=10
+        )
         resp.raise_for_status()
         return True
     except requests.RequestException as e:

@@ -23,14 +23,19 @@ async def update_settings(body: ClockSettings):
     if "timezone" in updates:
         try:
             from zoneinfo import ZoneInfo
+
             ZoneInfo(updates["timezone"])
         except Exception:
-            raise HTTPException(status_code=422, detail=f"Invalid timezone: {updates['timezone']}")
+            raise HTTPException(
+                status_code=422, detail=f"Invalid timezone: {updates['timezone']}"
+            )
 
     if "color" in updates:
         c = updates["color"]
         if len(c) != 3 or not all(isinstance(v, int) and 0 <= v <= 255 for v in c):
-            raise HTTPException(status_code=422, detail="color must be [r, g, b] with values 0-255")
+            raise HTTPException(
+                status_code=422, detail="color must be [r, g, b] with values 0-255"
+            )
 
     settings = read_settings()
     clock = settings.get("clock", {})

@@ -19,20 +19,24 @@ INDEX_HTML = DIST_DIR / "index.html"
 
 # Paths used by iOS/macOS/Android/Windows to detect captive portals.
 # Redirect all of them to the setup page.
-_CAPTIVE_PROBES = frozenset({
-    "/hotspot-detect.html",
-    "/library/test/success.html",
-    "/generate_204",
-    "/gen_204",
-    "/connecttest.txt",
-    "/ncsi.txt",
-    "/redirect",
-    "/fwlink/",
-    "/wpad.dat",
-})
+_CAPTIVE_PROBES = frozenset(
+    {
+        "/hotspot-detect.html",
+        "/library/test/success.html",
+        "/generate_204",
+        "/gen_204",
+        "/connecttest.txt",
+        "/ncsi.txt",
+        "/redirect",
+        "/fwlink/",
+        "/wpad.dat",
+    }
+)
 
 app = FastAPI(docs_url=None, redoc_url=None)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+)
 
 
 class ConnectRequest(BaseModel):
@@ -43,6 +47,7 @@ class ConnectRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # WiFi API
 # ---------------------------------------------------------------------------
+
 
 @app.get("/api/wifi/networks")
 async def get_networks():
@@ -80,8 +85,21 @@ async def _finalize_after_connect() -> None:
 
     # Restore the 80 → 8000 iptables NAT rule for normal operation.
     subprocess.run(
-        ["iptables", "-t", "nat", "-A", "PREROUTING",
-         "-p", "tcp", "--dport", "80", "-j", "REDIRECT", "--to-port", "8000"],
+        [
+            "iptables",
+            "-t",
+            "nat",
+            "-A",
+            "PREROUTING",
+            "-p",
+            "tcp",
+            "--dport",
+            "80",
+            "-j",
+            "REDIRECT",
+            "--to-port",
+            "8000",
+        ],
         capture_output=True,
     )
 
@@ -93,6 +111,7 @@ async def _finalize_after_connect() -> None:
 # ---------------------------------------------------------------------------
 # Static file / SPA catch-all
 # ---------------------------------------------------------------------------
+
 
 @app.get("/{full_path:path}")
 async def serve_spa(request: Request, full_path: str) -> Response:

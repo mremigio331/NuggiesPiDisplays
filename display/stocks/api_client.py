@@ -27,6 +27,10 @@ def get_settings() -> dict | None:
 
 def set_current(symbol: str, cycle_key: str) -> None:
     try:
-        requests.put(f"{_BASE}/stonks/now", json={"symbol": symbol, "cycle_key": cycle_key}, timeout=2)
+        requests.put(
+            f"{_BASE}/stonks/now",
+            json={"symbol": symbol, "cycle_key": cycle_key},
+            timeout=2,
+        )
     except requests.RequestException as e:
         logger.warning("Failed to report current display state: %s", e)

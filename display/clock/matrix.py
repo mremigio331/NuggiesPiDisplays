@@ -7,6 +7,7 @@ try:
     if HEADLESS:
         raise ImportError("headless mode")
     from rgbmatrix import RGBMatrix, RGBMatrixOptions
+
     USING_HARDWARE = True
 
     def build_matrix() -> RGBMatrix:

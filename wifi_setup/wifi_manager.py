@@ -15,7 +15,9 @@ def is_connected() -> bool:
     try:
         result = subprocess.run(
             ["nmcli", "-t", "-f", "CONNECTIVITY", "general"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         state = result.stdout.strip().lower()
         return state in ("full", "limited")
@@ -28,14 +30,28 @@ def scan_networks() -> list[dict]:
     try:
         subprocess.run(
             ["nmcli", "device", "wifi", "rescan"],
-            capture_output=True, timeout=15,
+            capture_output=True,
+            timeout=15,
         )
         time.sleep(2)
 
         result = subprocess.run(
-            ["nmcli", "--escape", "no", "-t", "-f", "SSID,SIGNAL,SECURITY",
-             "device", "wifi", "list", "--rescan", "no"],
-            capture_output=True, text=True, timeout=10,
+            [
+                "nmcli",
+                "--escape",
+                "no",
+                "-t",
+                "-f",
+                "SSID,SIGNAL,SECURITY",
+                "device",
+                "wifi",
+                "list",
+                "--rescan",
+                "no",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
     except Exception:
         return []
@@ -58,11 +74,13 @@ def scan_networks() -> list[dict]:
             signal = int(signal_str)
         except ValueError:
             signal = 0
-        networks.append({
-            "ssid": ssid,
-            "signal": signal,
-            "secured": security.strip() not in ("", "--"),
-        })
+        networks.append(
+            {
+                "ssid": ssid,
+                "signal": signal,
+                "secured": security.strip() not in ("", "--"),
+            }
+        )
 
     return sorted(networks, key=lambda n: -n["signal"])
 
@@ -76,7 +94,10 @@ def connect_to_network(ssid: str, password: str | None) -> dict:
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=45)
     except subprocess.TimeoutExpired:
-        return {"success": False, "message": "Connection timed out — check the password and try again."}
+        return {
+            "success": False,
+            "message": "Connection timed out — check the password and try again.",
+        }
     except Exception as exc:
         return {"success": False, "message": str(exc)}
 
@@ -93,12 +114,20 @@ def start_hotspot() -> bool:
     try:
         result = subprocess.run(
             [
-                "nmcli", "device", "wifi", "hotspot",
-                "ifname", "wlan0",
-                "ssid", AP_SSID,
-                "con-name", AP_CON_NAME,
+                "nmcli",
+                "device",
+                "wifi",
+                "hotspot",
+                "ifname",
+                "wlan0",
+                "ssid",
+                AP_SSID,
+                "con-name",
+                AP_CON_NAME,
             ],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         return result.returncode == 0
     except Exception:
@@ -108,5 +137,6 @@ def start_hotspot() -> bool:
 def stop_hotspot() -> None:
     subprocess.run(
         ["nmcli", "connection", "delete", AP_CON_NAME],
-        capture_output=True, timeout=10,
+        capture_output=True,
+        timeout=10,
     )

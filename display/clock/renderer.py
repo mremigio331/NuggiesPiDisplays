@@ -24,6 +24,7 @@ _hw_small = None
 if USING_HARDWARE:
     try:
         from rgbmatrix import graphics as _gfx
+
         if _BDF_LARGE.exists():
             _hw_large = _gfx.Font()
             _hw_large.LoadFont(str(_BDF_LARGE))
@@ -34,8 +35,12 @@ if USING_HARDWARE:
         _gfx = None
 
 try:
-    _pil_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 10)
-    _pil_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 8)
+    _pil_large = ImageFont.truetype(
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 10
+    )
+    _pil_small = ImageFont.truetype(
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 8
+    )
 except OSError:
     _pil_large = ImageFont.load_default()
     _pil_small = _pil_large
@@ -47,10 +52,12 @@ def _center_x(text: str, char_w: int) -> int:
 
 def render(canvas, dt: datetime, color: tuple, use_24h: bool = False) -> None:
     if use_24h:
-        time_str = dt.strftime("%H:%M:%S")      # e.g. "15:45:30"
+        time_str = dt.strftime("%H:%M:%S")  # e.g. "15:45:30"
     else:
-        time_str = dt.strftime("%-I:%M:%S%p")   # e.g. "3:45:30PM" (no space keeps it within 64px)
-    date_str = dt.strftime("%a %b %d")          # e.g. "Mon Jan 06"
+        time_str = dt.strftime(
+            "%-I:%M:%S%p"
+        )  # e.g. "3:45:30PM" (no space keeps it within 64px)
+    date_str = dt.strftime("%a %b %d")  # e.g. "Mon Jan 06"
 
     time_x = _center_x(time_str, _CHAR_W_LARGE)
     date_x = _center_x(date_str, _CHAR_W_SMALL)
