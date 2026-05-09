@@ -103,6 +103,7 @@ setup_sudoers() {
 # Allows the nuggies API (running as $USER) to start display scripts without a password prompt.
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/stocks/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/mta/main.py
+$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/clock/main.py
 EOF
     sudo install -m 0440 /tmp/nuggies-display-sudoers "$SUDOERS_FILE"
     rm /tmp/nuggies-display-sudoers
