@@ -13,6 +13,7 @@ router = APIRouter()
 class DisplayModeEnum(str, Enum):
     stocks = "stocks"
     mta = "mta"
+    clock = "clock"
 
 
 class DisplayMode(BaseModel):

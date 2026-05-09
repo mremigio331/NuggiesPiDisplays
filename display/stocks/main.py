@@ -53,6 +53,7 @@ def run():
             if data is None:
                 logger.warning("No data for %s/%s, skipping", symbol, cycle_key)
                 continue
+            api_client.set_current(symbol, cycle_key)
             logger.info("Showing %s/%s for %ss", symbol, cycle_key, interval)
             canvas = _display_item(matrix, canvas, data, interval)
 

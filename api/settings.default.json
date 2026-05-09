@@ -24,5 +24,11 @@
     "create_log_file": false,
     "log_file_name": "logs/mta.log",
     "log_error_file_name": "logs/mta_errors.log"
+  },
+
+  "clock": {
+    "timezone": "America/New_York",
+    "color": [255, 255, 255],
+    "use_24h": false
   }
 }
