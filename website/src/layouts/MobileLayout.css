@@ -280,3 +280,233 @@
   gap: 6px;
   -webkit-tap-highlight-color: transparent;
 }
+
+/* ── Modal ─────────────────────────────────────────────────────── */
+.m-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.m-modal {
+  background: #0f1e30;
+  border: 1px solid #1a2a40;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.m-modal-header {
+  padding: 18px 20px 14px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  border-bottom: 1px solid #1a2a40;
+  flex-shrink: 0;
+}
+
+.m-modal-body {
+  padding: 18px 20px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.m-modal-footer {
+  padding: 14px 20px;
+  border-top: 1px solid #1a2a40;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* ── Toggle switch ─────────────────────────────────────────────── */
+.m-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.m-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.m-switch-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: #1a2a40;
+  border-radius: 24px;
+  transition: background 0.2s;
+}
+
+.m-switch-slider::before {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  background: #8da8c0;
+  border-radius: 50%;
+  transition:
+    transform 0.2s,
+    background 0.2s;
+}
+
+.m-switch input:checked + .m-switch-slider {
+  background: #1a5fa8;
+}
+
+.m-switch input:checked + .m-switch-slider::before {
+  transform: translateX(20px);
+  background: #fff;
+}
+
+/* ── Notifications ─────────────────────────────────────────────── */
+.m-notifications {
+  padding: 8px 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.m-notif {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.m-notif-info {
+  background: #0a1a3a;
+  color: #4a9fe8;
+  border: 1px solid #1a3a6a;
+}
+.m-notif-success {
+  background: #0a2a18;
+  color: #29d66e;
+  border: 1px solid #1a4a2a;
+}
+.m-notif-error {
+  background: #2a0a0a;
+  color: #e05050;
+  border: 1px solid #4a1a1a;
+}
+.m-notif-warning {
+  background: #2a1a00;
+  color: #f0a800;
+  border: 1px solid #4a3000;
+}
+
+.m-notif-msg {
+  flex: 1;
+}
+
+.m-notif-dismiss {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 1rem;
+  padding: 0;
+  line-height: 1;
+}
+.m-notif-dismiss:hover {
+  opacity: 1;
+}
+
+/* ── Spinner ───────────────────────────────────────────────────── */
+.m-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #1a2a40;
+  border-top-color: #4a9fe8;
+  border-radius: 50%;
+  animation: m-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.m-spinner-lg {
+  width: 40px;
+  height: 40px;
+  border-width: 4px;
+}
+
+@keyframes m-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Form inputs ───────────────────────────────────────────────── */
+.m-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: #0a1628;
+  border: 1px solid #1a2a40;
+  border-radius: 8px;
+  color: #d4dfe8;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+.m-input:focus {
+  outline: none;
+  border-color: #1a5fa8;
+}
+
+.m-select {
+  width: 100%;
+  padding: 10px 12px;
+  background: #0a1628;
+  border: 1px solid #1a2a40;
+  border-radius: 8px;
+  color: #d4dfe8;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238da8c0' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+.m-select:focus {
+  outline: none;
+  border-color: #1a5fa8;
+}
+
+.m-form-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #5a7a9a;
+  margin-bottom: 6px;
+}
+
+.m-form-desc {
+  font-size: 0.75rem;
+  color: #5a7a9a;
+  margin-bottom: 8px;
+}

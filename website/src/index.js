@@ -2,7 +2,6 @@ import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import "@cloudscape-design/global-styles/index.css";
 import { NotificationsProvider } from "./services/Notifications";
 import { APICheckProvider } from "./providers/APICheckProvider";
 import NuggiesDisplay from "./NuggiesDisplay";
