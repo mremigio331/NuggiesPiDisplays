@@ -25,9 +25,10 @@ export default function NavBar() {
           items: [
             { id: "mta", text: "MTA" },
             { id: "stocks", text: "Stocks" },
+            { id: "clock", text: "Clock" },
           ],
           onItemClick: ({ detail }) => {
-            const routes = { mta: "/mta", stocks: "/stocks" };
+            const routes = { mta: "/mta", stocks: "/stocks", clock: "/clock" };
             if (routes[detail.id]) navigate(routes[detail.id]);
           },
         },
