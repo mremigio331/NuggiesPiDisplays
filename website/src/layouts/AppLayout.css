@@ -30,6 +30,28 @@
   font-weight: 700;
   color: #fff;
   letter-spacing: -0.01em;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.ml-brand:hover {
+  color: #7eb8e8;
+}
+
+.ml-settings-btn {
+  background: none;
+  border: none;
+  color: #8da8c0;
+  font-size: 2rem;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 6px;
+  line-height: 1;
+}
+.ml-settings-btn:hover {
+  background: #1a2a40;
+  color: #fff;
 }
 
 .ml-status-chip {

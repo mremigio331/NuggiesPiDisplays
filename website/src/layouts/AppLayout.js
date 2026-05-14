@@ -1,22 +1,41 @@
 import React from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import BottomNav from "../navigation/BottomNav";
 import { getNotificationsContext } from "../services/Notifications";
 import { useSystemStatus } from "../hooks/useSystemStatus";
-import "./MobileLayout.css";
+import "./AppLayout.css";
 
-export default function MobileLayout({ children }) {
+export default function AppLayout({ children }) {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { notifications } = getNotificationsContext();
   const { data: status } = useSystemStatus({ refetchInterval: 8000 });
   const running = status?.running ?? false;
-  const mode = status?.active_display ?? "—";
+  const mode = status?.active_display ?? null;
+
+  const goHome = () => navigate(mode ? `/${mode}` : "/");
 
   return (
     <div className="ml-shell">
       <header className="ml-topbar">
-        <span className="ml-brand">Nuggies Display</span>
-        <div className="ml-status-chip">
-          <span className={`ml-dot ${running ? "on" : "off"}`} />
-          <span>{running ? mode.toUpperCase() : "OFF"}</span>
+        <button className="ml-brand" onClick={goHome}>
+          Nuggies Display
+        </button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {pathname !== "/system" && (
+            <button
+              className="ml-settings-btn"
+              aria-label="System settings"
+              onClick={() => navigate("/system")}
+            >
+              ⚙
+            </button>
+          )}
+          <div className="ml-status-chip">
+            <span className={`ml-dot ${running ? "on" : "off"}`} />
+            <span>{running ? mode.toUpperCase() : "OFF"}</span>
+          </div>
         </div>
       </header>
 

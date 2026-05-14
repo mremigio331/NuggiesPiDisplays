@@ -3,11 +3,10 @@ import { useNavigate, useLocation } from "react-router-dom";
 import "./BottomNav.css";
 
 const TABS = [
-  { label: "Home", icon: "🏠", path: "/" },
+  { label: "Clock", icon: "🕐", path: "/clock" },
   { label: "MTA", icon: "🚇", path: "/mta" },
   { label: "Stocks", icon: "📈", path: "/stocks" },
-  { label: "Clock", icon: "🕐", path: "/clock" },
-  { label: "System", icon: "⚙️", path: "/system" },
+  { label: "Weather", icon: "🌤️", path: "/weather" },
 ];
 
 export default function BottomNav() {

@@ -286,7 +286,7 @@ export default function Stocks() {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: 14,
+          marginBottom: 4,
         }}
       >
         <div className="m-section-title" style={{ margin: 0 }}>
@@ -309,6 +309,7 @@ export default function Stocks() {
           </button>
         </div>
       </div>
+      <div className="m-section-sub">Watchlist & charts</div>
 
       <CycleSelector
         cycles={stock_cycles}

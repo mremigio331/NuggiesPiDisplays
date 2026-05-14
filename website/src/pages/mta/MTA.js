@@ -6,8 +6,19 @@ import { useMTATrains } from "../../hooks/useMTATrains";
 import { TrainLogos, getRandomTrainLogos } from "../../utility/SubwayLogos";
 import { AllStations } from "../../constants/SubwayStations";
 import SubwayMap from "../../components/mta/SubwayMap";
+import CurrentStop from "../../components/mta/CurrentStop";
 
 const DEFAULT_CENTER = { lat: 40.7831, lon: -73.9712 };
+
+const ICON_BTN = {
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  fontSize: "1.2rem",
+  color: "#5a7a9a",
+  padding: "4px 2px",
+  lineHeight: 1,
+};
 
 function lookupStation(key) {
   return AllStations.find((s) => s.fullStationName === key) ?? null;
@@ -38,7 +49,7 @@ export default function MTA() {
   const { trains, stopName, stationKey, stationInfo, isLoading, isError, refetch, isFetching } =
     useMTAData();
   const [loadingLogos, setLoadingLogos] = React.useState(getRandomTrainLogos());
-  const [showMap, setShowMap] = React.useState(false);
+  const [showMap, setShowMap] = React.useState(true);
   const [mapInit, setMapInit] = React.useState(false);
   const [center, setCenter] = React.useState(DEFAULT_CENTER);
 
@@ -62,55 +73,35 @@ export default function MTA() {
 
   return (
     <div>
-      <div className="m-card" style={{ marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              className="m-section-title"
-              style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-            >
-              {stopName || "Loading…"}
-            </div>
-            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-              {trainLines.map((line) =>
-                TrainLogos[line] ? (
-                  <img key={line} width="22" height="22" src={TrainLogos[line]} alt={line} />
-                ) : null
-              )}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-            <SwitchDisplayButton mode="mta" />
-            <button
-              onClick={() => navigate("/mta/settings")}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                fontSize: "1.2rem",
-                color: "#5a7a9a",
-              }}
-              aria-label="Settings"
-            >
-              ⚙️
-            </button>
-            <button
-              onClick={() => refetch()}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                fontSize: "1.2rem",
-                color: "#5a7a9a",
-              }}
-              aria-label="Refresh"
-            >
-              {isFetching ? "⏳" : "🔄"}
-            </button>
-          </div>
+      {/* ── Page header ─────────────────────────────────────────── */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 4,
+        }}
+      >
+        <div className="m-section-title" style={{ margin: 0 }}>
+          MTA
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <SwitchDisplayButton mode="mta" />
+          <button style={ICON_BTN} aria-label="Refresh" onClick={() => refetch()}>
+            {isFetching ? "⏳" : "🔄"}
+          </button>
+          <button style={ICON_BTN} aria-label="Settings" onClick={() => navigate("/mta/settings")}>
+            ⚙️
+          </button>
         </div>
       </div>
 
+      <div className="m-section-sub">New York City Subway</div>
+
+      {/* ── Current stop ─────────────────────────────────────────── */}
+      <CurrentStop stopName={stopName} trainLines={trainLines} isLoading={isLoading} />
+
+      {/* ── Next trains ──────────────────────────────────────────── */}
       <div className="m-card">
         <div className="m-card-title">Next Trains</div>
         {isLoading ? (
@@ -168,6 +159,7 @@ export default function MTA() {
         )}
       </div>
 
+      {/* ── Map ──────────────────────────────────────────────────── */}
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         <button className="m-map-toggle" style={{ flex: 1 }} onClick={() => setShowMap((v) => !v)}>
           {showMap ? "▲ Hide Map" : "▼ Show Map"}

@@ -14,6 +14,10 @@ export const startDisplay = () => handle(api.post("/system/display/start"));
 export const stopDisplay = () => handle(api.post("/system/display/stop"));
 export const switchDisplay = (mode) => handle(api.post("/system/display", { mode }));
 export const restartPi = () => handle(api.post("/system/restart"));
+export const factoryReset = () => handle(api.post("/system/factory-reset"));
+export const factoryResetWifi = () => handle(api.post("/system/factory-reset-wifi"));
+export const getDevMode = () => handle(api.get("/system/dev-mode"));
+export const forgetWifi = () => handle(api.post("/system/forget-wifi"));
 
 // MTA — trains
 export const getNextFourTrains = () => handle(api.get("/mta/trains/next_four"));
@@ -43,3 +47,9 @@ export const getClockSettings = () => handle(api.get("/clock/settings"));
 export const updateClockSettings = (body) => handle(api.put("/clock/settings", body));
 export const getClockTimezones = (page = 1, search = "") =>
   handle(api.get("/clock/timezones", { params: { page, search } }));
+
+// Weather
+export const getWeatherData = () => handle(api.get("/weather/data"));
+export const getWeatherSettings = () => handle(api.get("/weather/settings"));
+export const updateWeatherSettings = (body) => handle(api.put("/weather/settings", body));
+export const geocodeLocation = (q) => handle(api.get("/weather/geocode", { params: { q } }));

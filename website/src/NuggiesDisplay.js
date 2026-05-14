@@ -1,6 +1,6 @@
 import React from "react";
 import { Routes, Route } from "react-router-dom";
-import MobileLayout from "./layouts/MobileLayout";
+import AppLayout from "./layouts/AppLayout";
 
 import Home from "./pages/home/Home";
 import MTA from "./pages/mta/MTA";
@@ -10,13 +10,15 @@ import StocksSettings from "./pages/stocks/StocksSettings";
 import Clock from "./pages/clock/Clock";
 import ClockSettings from "./pages/clock/ClockSettings";
 import System from "./pages/system/System";
+import Weather from "./pages/weather/Weather";
+import WeatherSettings from "./pages/weather/WeatherSettings";
 import WifiSetup from "./pages/wifi-setup/WifiSetup";
 import PageNotFound from "./pages/PageNotFound";
 
 export default function NuggiesDisplay() {
   document.title = "Nuggies Display";
   return (
-    <MobileLayout>
+    <AppLayout>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/mta" element={<MTA />} />
@@ -26,9 +28,11 @@ export default function NuggiesDisplay() {
         <Route path="/clock" element={<Clock />} />
         <Route path="/clock/settings" element={<ClockSettings />} />
         <Route path="/system" element={<System />} />
+        <Route path="/weather" element={<Weather />} />
+        <Route path="/weather/settings" element={<WeatherSettings />} />
         <Route path="/wifi-setup" element={<WifiSetup />} />
         <Route path="*" element={<PageNotFound />} />
       </Routes>
-    </MobileLayout>
+    </AppLayout>
   );
 }

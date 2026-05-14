@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "start": "webpack serve --mode development",
+    "watch": "webpack --mode development --watch",
     "build": "webpack --mode production",
     "format": "prettier --write \"src/**/*.{js,jsx,css}\""
   },

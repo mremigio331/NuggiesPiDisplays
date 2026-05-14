@@ -25,10 +25,11 @@ export default function NavBar() {
           items: [
             { id: "mta", text: "MTA" },
             { id: "stocks", text: "Stocks" },
+            { id: "weather", text: "Weather" },
             { id: "clock", text: "Clock" },
           ],
           onItemClick: ({ detail }) => {
-            const routes = { mta: "/mta", stocks: "/stocks", clock: "/clock" };
+            const routes = { mta: "/mta", stocks: "/stocks", weather: "/weather", clock: "/clock" };
             if (routes[detail.id]) navigate(routes[detail.id]);
           },
         },

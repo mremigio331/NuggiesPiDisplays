@@ -26,7 +26,9 @@ function useNetworks() {
     }
   }, []);
 
-  useEffect(() => { fetch_(); }, [fetch_]);
+  useEffect(() => {
+    fetch_();
+  }, [fetch_]);
   return { networks, loading, error, refresh: fetch_ };
 }
 
@@ -85,15 +87,26 @@ export default function WifiSetup() {
             The Pi joined <strong style={{ color: "#fff" }}>{selectedSsid}</strong>.
           </div>
           <div className="m-card" style={{ background: "#1a2a1a", textAlign: "left" }}>
-            <div className="m-card-title" style={{ color: "#5cb85c" }}>Next steps</div>
-            <ol style={{ margin: 0, paddingLeft: "1.2rem", color: "#ccc", lineHeight: "1.8", fontSize: "0.9rem" }}>
-              <li>Disconnect from <strong>NuggiesSetup</strong></li>
+            <div className="m-card-title" style={{ color: "#5cb85c" }}>
+              Next steps
+            </div>
+            <ol
+              style={{
+                margin: 0,
+                paddingLeft: "1.2rem",
+                color: "#ccc",
+                lineHeight: "1.8",
+                fontSize: "0.9rem",
+              }}
+            >
+              <li>
+                Disconnect from <strong>NuggiesSetup</strong>
+              </li>
               <li>
                 Reconnect to <strong style={{ color: "#fff" }}>{selectedSsid}</strong>
               </li>
               <li>
-                Visit{" "}
-                <strong style={{ color: "#5b9bd5" }}>nuggies.local</strong> in your browser
+                Visit <strong style={{ color: "#5b9bd5" }}>nuggies.local</strong> in your browser
               </li>
             </ol>
           </div>
@@ -110,19 +123,28 @@ export default function WifiSetup() {
         <div className="m-card" style={{ textAlign: "center" }}>
           <div style={{ fontSize: "1.5rem", marginBottom: "0.75rem" }}>⏳</div>
           <div className="m-card-title">Connecting to {selectedSsid}…</div>
-          <div style={{ color: "#aaa", fontSize: "0.85rem", lineHeight: "1.6", marginTop: "0.75rem" }}>
+          <div
+            style={{ color: "#aaa", fontSize: "0.85rem", lineHeight: "1.6", marginTop: "0.75rem" }}
+          >
             This takes up to 30 seconds.
             <br />
             <strong style={{ color: "#f0a800" }}>
               You&apos;ll lose connection to NuggiesSetup — that&apos;s normal.
             </strong>
           </div>
-          <div className="m-card" style={{ background: "#1a1a2a", textAlign: "left", marginTop: "1rem" }}>
+          <div
+            className="m-card"
+            style={{ background: "#1a1a2a", textAlign: "left", marginTop: "1rem" }}
+          >
             <div style={{ color: "#aaa", fontSize: "0.85rem", lineHeight: "1.7" }}>
               If this page stops responding:
               <ol style={{ margin: "0.4rem 0 0", paddingLeft: "1.2rem" }}>
-                <li>Connect your device to <strong style={{ color: "#fff" }}>{selectedSsid}</strong></li>
-                <li>Visit <strong style={{ color: "#5b9bd5" }}>nuggies.local</strong></li>
+                <li>
+                  Connect your device to <strong style={{ color: "#fff" }}>{selectedSsid}</strong>
+                </li>
+                <li>
+                  Visit <strong style={{ color: "#5b9bd5" }}>nuggies.local</strong>
+                </li>
               </ol>
             </div>
           </div>
@@ -162,7 +184,9 @@ export default function WifiSetup() {
         {error && <div style={{ color: "#d9534f", fontSize: "0.85rem" }}>{error}</div>}
 
         {!loading && !error && networks.length === 0 && (
-          <div style={{ color: "#aaa", fontSize: "0.85rem" }}>No networks found. Try refreshing.</div>
+          <div style={{ color: "#aaa", fontSize: "0.85rem" }}>
+            No networks found. Try refreshing.
+          </div>
         )}
 
         {networks.map((net) => (
@@ -177,7 +201,11 @@ export default function WifiSetup() {
               marginBottom: "0.4rem",
               padding: "0.6rem 0.8rem",
             }}
-            onClick={() => { setSelectedSsid(net.ssid); setPassword(""); setPhase("select"); }}
+            onClick={() => {
+              setSelectedSsid(net.ssid);
+              setPassword("");
+              setPhase("select");
+            }}
           >
             <span>
               {net.secured ? "🔒 " : ""}
@@ -196,7 +224,14 @@ export default function WifiSetup() {
 
           {selectedNetwork?.secured ? (
             <div style={{ marginBottom: "1rem" }}>
-              <label style={{ display: "block", color: "#aaa", fontSize: "0.85rem", marginBottom: "0.3rem" }}>
+              <label
+                style={{
+                  display: "block",
+                  color: "#aaa",
+                  fontSize: "0.85rem",
+                  marginBottom: "0.3rem",
+                }}
+              >
                 Password
               </label>
               <input
