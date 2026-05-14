@@ -27,6 +27,12 @@ def write_settings(data: dict) -> None:
             json.dump(data, f, indent=2)
 
 
+def reset_settings() -> None:
+    """Overwrite settings.json with the factory defaults."""
+    with FileLock(_LOCK_PATH):
+        shutil.copy(_DEFAULTS_PATH, _SETTINGS_PATH)
+
+
 def read_section(key: str) -> dict:
     return read_settings().get(key, {})
 

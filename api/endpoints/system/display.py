@@ -14,6 +14,7 @@ class DisplayModeEnum(str, Enum):
     stocks = "stocks"
     mta = "mta"
     clock = "clock"
+    weather = "weather"
 
 
 class DisplayMode(BaseModel):
