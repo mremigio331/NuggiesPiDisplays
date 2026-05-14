@@ -30,5 +30,14 @@
     "timezone": "America/New_York",
     "color": [255, 255, 255],
     "use_24h": false
+  },
+
+  "weather": {
+    "latitude": null,
+    "longitude": null,
+    "city_label": "",
+    "use_ip_location": true,
+    "units": "fahrenheit",
+    "cycle_duration": 60
   }
 }
