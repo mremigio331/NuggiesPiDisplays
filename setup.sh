@@ -17,7 +17,7 @@ install_system_packages() {
         python3-pip python3-pil python3-dev \
         python3-protobuf python3-pandas python3-requests \
         avahi-daemon git curl screen iptables \
-        dnsmasq network-manager
+        dnsmasq-base network-manager
     echo "System packages installed."
 }
 
@@ -105,6 +105,7 @@ setup_sudoers() {
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/stocks/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/mta/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/clock/main.py
+$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/weather/main.py
 EOF
     sudo install -m 0440 /tmp/nuggies-display-sudoers "$SUDOERS_FILE"
     rm /tmp/nuggies-display-sudoers
@@ -154,6 +155,7 @@ install_wifi_setup_service() {
     SERVICE_SRC="$SCRIPT_DIR/wifi_setup/nuggies-wifi-setup.service"
     SERVICE_DST="/etc/systemd/system/nuggies-wifi-setup.service"
 
+    chmod +x "$SCRIPT_DIR/scripts/wifi_setup_service.sh"
     sudo cp "$SERVICE_SRC" "$SERVICE_DST"
     sudo chmod 644 "$SERVICE_DST"
     sudo systemctl daemon-reload
@@ -233,4 +235,5 @@ echo ""
 echo "========================================="
 echo " Nuggies Pi Displays — setup complete!"
 echo " Run: cd api && bash run_api.sh"
+echo " Switch to weather display: POST /system/display {\"mode\":\"weather\"}"
 echo "========================================="

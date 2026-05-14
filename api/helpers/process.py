@@ -13,6 +13,7 @@ _DISPLAY_SCRIPTS = {
     "stocks": _PROJECT_ROOT / "display" / "stocks" / "main.py",
     "mta": _PROJECT_ROOT / "display" / "mta" / "main.py",
     "clock": _PROJECT_ROOT / "display" / "clock" / "main.py",
+    "weather": _PROJECT_ROOT / "display" / "weather" / "main.py",
 }
 
 

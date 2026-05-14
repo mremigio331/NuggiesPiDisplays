@@ -11,6 +11,7 @@ from endpoints.system import router as system_router
 from endpoints.stonks import router as stonks_router
 from endpoints.mta import router as mta_router
 from endpoints.clock import router as clock_router
+from endpoints.weather import router as weather_router
 
 app = FastAPI(title="Nuggies Pi Displays", version="1.0.0")
 
@@ -24,3 +25,4 @@ app.include_router(system_router)
 app.include_router(stonks_router)
 app.include_router(mta_router)
 app.include_router(clock_router)
+app.include_router(weather_router)
