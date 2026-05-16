@@ -5,9 +5,7 @@ import time
 from pathlib import Path
 
 WIFI_FLAG = Path(__file__).parent.parent / ".wifi_configured"
-AP_SSID = "NuggiesSetup"
-AP_CON_NAME = "NuggiesHotspot"
-AP_IP = "10.42.0.1"
+from wifi_setup.ap_config import AP_SSID, AP_CON_NAME, AP_IP
 
 
 def is_connected() -> bool:

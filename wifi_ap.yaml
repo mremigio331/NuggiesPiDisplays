@@ -1,0 +1,8 @@
+# WiFi access point credentials used during the captive portal setup flow.
+# Edit this file to change the hotspot name or password.
+# Changes take effect on the next boot (or when nuggies-wifi-setup.service restarts).
+
+ssid: NuggiesDisplay
+password: SetUpNuggies
+connection_name: NuggiesHotspot
+ap_ip: 10.42.0.1
