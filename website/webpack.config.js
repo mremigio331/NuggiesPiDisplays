@@ -38,6 +38,6 @@ module.exports = {
     historyApiFallback: true,
     hot: true,
     liveReload: true,
-    proxy: [{ context: ["/api"], target: "http://localhost:8000", pathRewrite: { "^/api": "" } }],
+    proxy: [{ context: ["/api"], target: "http://localhost:8000" }],
   },
 };

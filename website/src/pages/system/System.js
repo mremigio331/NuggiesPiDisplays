@@ -10,6 +10,9 @@ import {
   factoryResetWifi,
   getDevMode,
   forgetWifi,
+  updateApp,
+  getLogLevel,
+  setLogLevel,
 } from "../../services/API";
 import Modal from "../../components/shared/Modal";
 
@@ -24,8 +27,18 @@ function useSystem() {
   const factoryResetMut = useMutation({ mutationFn: factoryReset, onSuccess: invalidate });
   const factoryResetWifiMut = useMutation({ mutationFn: factoryResetWifi });
   const forgetWifiMut = useMutation({ mutationFn: forgetWifi });
+  const updateAppMut = useMutation({ mutationFn: () => updateApp(true) });
   const { data: devConfig } = useQuery({ queryKey: ["devMode"], queryFn: getDevMode });
   const devMode = devConfig?.dev_mode ?? false;
+  const { data: logLevelData, refetch: refetchLogLevel } = useQuery({
+    queryKey: ["logLevel"],
+    queryFn: getLogLevel,
+  });
+  const currentLogLevel = logLevelData?.log_level ?? "INFO";
+  const setLogLevelMut = useMutation({
+    mutationFn: (level) => setLogLevel(level),
+    onSuccess: refetchLogLevel,
+  });
   const busy = startMut.isPending || stopMut.isPending || switchMut.isPending;
   const running = status?.running ?? false;
   const mode = status?.active_display ?? "—";
@@ -41,7 +54,10 @@ function useSystem() {
     factoryResetMut,
     factoryResetWifiMut,
     forgetWifiMut,
+    updateAppMut,
     devMode,
+    currentLogLevel,
+    setLogLevelMut,
   };
 }
 
@@ -58,12 +74,16 @@ export default function System() {
     factoryResetMut,
     factoryResetWifiMut,
     forgetWifiMut,
+    updateAppMut,
     devMode,
+    currentLogLevel,
+    setLogLevelMut,
   } = useSystem();
   const [confirmRestart, setConfirmRestart] = React.useState(false);
   const [confirmReset, setConfirmReset] = React.useState(false);
   const [confirmResetWifi, setConfirmResetWifi] = React.useState(false);
   const [confirmForgetWifi, setConfirmForgetWifi] = React.useState(false);
+  const [confirmUpdate, setConfirmUpdate] = React.useState(false);
 
   return (
     <div>
@@ -133,11 +153,46 @@ export default function System() {
         <div className="m-card-title">Pi Actions</div>
         <button
           className="m-btn m-btn-neutral"
+          style={{ width: "100%", marginBottom: "0.5rem" }}
+          onClick={() => setConfirmUpdate(true)}
+          disabled={updateAppMut.isPending || updateAppMut.isSuccess}
+        >
+          {updateAppMut.isSuccess ? "Rebooting…" : "⬆️ Update & Reboot"}
+        </button>
+        {updateAppMut.isSuccess && (
+          <div style={{ color: "#5cb85c", fontSize: "0.8rem", marginBottom: "0.5rem" }}>
+            Update started — Pi will reboot shortly.
+          </div>
+        )}
+        <div className="m-form-desc" style={{ marginBottom: "0.75rem" }}>
+          Pulls latest code from git, re-runs setup, then reboots.
+        </div>
+        <button
+          className="m-btn m-btn-neutral"
           style={{ width: "100%" }}
           onClick={() => setConfirmRestart(true)}
         >
           🔄 Restart Pi
         </button>
+      </div>
+
+      <div className="m-card">
+        <div className="m-card-title">Log Level</div>
+        <div className="m-form-desc" style={{ marginBottom: "0.75rem" }}>
+          Controls verbosity for API and display logs. DEBUG logs every request and API call.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
+          {["DEBUG", "INFO", "WARNING", "ERROR"].map((level) => (
+            <button
+              key={level}
+              className={`m-btn ${currentLogLevel === level ? "m-btn-active" : "m-btn-neutral"}`}
+              disabled={setLogLevelMut.isPending}
+              onClick={() => setLogLevelMut.mutate(level)}
+            >
+              {level}
+            </button>
+          ))}
+        </div>
       </div>
 
       {devMode && (
@@ -197,6 +252,34 @@ export default function System() {
           </div>
         </div>
       </div>
+
+      <Modal
+        visible={confirmUpdate}
+        onDismiss={() => setConfirmUpdate(false)}
+        header="Update & Reboot?"
+        footer={
+          <div className="m-btn-row">
+            <button className="m-btn m-btn-neutral" onClick={() => setConfirmUpdate(false)}>
+              Cancel
+            </button>
+            <button
+              className="m-btn m-btn-primary"
+              onClick={() => {
+                updateAppMut.mutate();
+                setConfirmUpdate(false);
+              }}
+            >
+              Update & Reboot
+            </button>
+          </div>
+        }
+      >
+        <div>
+          Pulls the latest code from git, re-runs <strong>setup.sh</strong> in{" "}
+          <strong>{devMode ? "--dev" : "--prod"}</strong> mode, then reboots. The Pi will be offline
+          for ~60 seconds.
+        </div>
+      </Modal>
 
       <Modal
         visible={confirmRestart}

@@ -12,6 +12,7 @@ export default function Home() {
     if (mode === "mta") navigate("/mta", { replace: true });
     else if (mode === "stocks") navigate("/stocks", { replace: true });
     else if (mode === "clock") navigate("/clock", { replace: true });
+    else if (mode === "weather") navigate("/weather", { replace: true });
   }, [isLoading, status?.active_display]);
 
   return (

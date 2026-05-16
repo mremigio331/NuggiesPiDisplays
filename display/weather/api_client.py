@@ -2,6 +2,7 @@ import logging
 import requests
 
 from config import API_BASE as _BASE
+
 logger = logging.getLogger(__name__)
 
 

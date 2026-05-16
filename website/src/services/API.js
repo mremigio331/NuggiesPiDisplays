@@ -1,7 +1,7 @@
 import axios from "axios";
 import { apiEndpoint } from "../configs/apiConfig";
 
-const api = axios.create({ baseURL: apiEndpoint });
+const api = axios.create({ baseURL: `${apiEndpoint}/api` });
 
 const handle = async (promise) => {
   const res = await promise;
@@ -18,6 +18,10 @@ export const factoryReset = () => handle(api.post("/system/factory-reset"));
 export const factoryResetWifi = () => handle(api.post("/system/factory-reset-wifi"));
 export const getDevMode = () => handle(api.get("/system/dev-mode"));
 export const forgetWifi = () => handle(api.post("/system/forget-wifi"));
+export const updateApp = (runSetup = true) =>
+  handle(api.post("/system/update-app", { run_setup: runSetup }));
+export const getLogLevel = () => handle(api.get("/system/log-level"));
+export const setLogLevel = (log_level) => handle(api.put("/system/log-level", { log_level }));
 
 // MTA — trains
 export const getNextFourTrains = () => handle(api.get("/mta/trains/next_four"));

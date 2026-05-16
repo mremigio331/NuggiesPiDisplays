@@ -18,4 +18,6 @@ async def spa_fallback(full_path: str):
     index = _DIST / "index.html"
     if index.exists():
         return FileResponse(str(index))
-    return Response("Frontend not built. Run npm run build in website/.", status_code=503)
+    return Response(
+        "Frontend not built. Run npm run build in website/.", status_code=503
+    )

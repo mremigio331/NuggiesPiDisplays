@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 
 const SIGNAL_BARS = (signal) => {
   if (signal >= 75) return "████";
@@ -38,8 +38,21 @@ export default function WifiSetup() {
   const [password, setPassword] = useState("");
   const [phase, setPhase] = useState("select"); // "select" | "connecting" | "success" | "error"
   const [errorMsg, setErrorMsg] = useState("");
+  const passwordRef = useRef(null);
 
   const selectedNetwork = networks.find((n) => n.ssid === selectedSsid);
+
+  function selectNetwork(net) {
+    if (selectedSsid === net.ssid) {
+      setSelectedSsid(null);
+      setPassword("");
+    } else {
+      setSelectedSsid(net.ssid);
+      setPassword("");
+      setPhase("select");
+      setTimeout(() => passwordRef.current?.focus(), 50);
+    }
+  }
 
   async function handleConnect() {
     if (!selectedSsid) return;
@@ -55,7 +68,6 @@ export default function WifiSetup() {
       });
       result = await res.json();
     } catch {
-      // A network error likely means the AP dropped — treat as success.
       result = { success: true, message: "Connected (connection to setup AP dropped)." };
     }
 
@@ -100,7 +112,7 @@ export default function WifiSetup() {
               }}
             >
               <li>
-                Disconnect from <strong>NuggiesSetup</strong>
+                Disconnect from <strong>NuggiesDisplay</strong>
               </li>
               <li>
                 Reconnect to <strong style={{ color: "#fff" }}>{selectedSsid}</strong>
@@ -129,7 +141,7 @@ export default function WifiSetup() {
             This takes up to 30 seconds.
             <br />
             <strong style={{ color: "#f0a800" }}>
-              You&apos;ll lose connection to NuggiesSetup — that&apos;s normal.
+              You&apos;ll lose connection to NuggiesDisplay — that&apos;s normal.
             </strong>
           </div>
           <div
@@ -153,7 +165,7 @@ export default function WifiSetup() {
     );
   }
 
-  // ── Select / error screen ───────────────────────────────────────────────
+  // ── Network list ────────────────────────────────────────────────────────
   return (
     <div>
       <div className="m-section-title">WiFi Setup</div>
@@ -189,89 +201,82 @@ export default function WifiSetup() {
           </div>
         )}
 
-        {networks.map((net) => (
-          <button
-            key={net.ssid}
-            className={`m-btn ${selectedSsid === net.ssid ? "m-btn-active" : "m-btn-neutral"}`}
-            style={{
-              width: "100%",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "0.4rem",
-              padding: "0.6rem 0.8rem",
-            }}
-            onClick={() => {
-              setSelectedSsid(net.ssid);
-              setPassword("");
-              setPhase("select");
-            }}
-          >
-            <span>
-              {net.secured ? "🔒 " : ""}
-              {net.ssid}
-            </span>
-            <span style={{ fontFamily: "monospace", fontSize: "0.75rem", color: "#aaa" }}>
-              {SIGNAL_BARS(net.signal)}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {selectedSsid && (
-        <div className="m-card">
-          <div className="m-card-title">Connect to {selectedSsid}</div>
-
-          {selectedNetwork?.secured ? (
-            <div style={{ marginBottom: "1rem" }}>
-              <label
-                style={{
-                  display: "block",
-                  color: "#aaa",
-                  fontSize: "0.85rem",
-                  marginBottom: "0.3rem",
-                }}
-              >
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleConnect()}
-                placeholder="Enter WiFi password"
+        {networks.map((net) => {
+          const isSelected = selectedSsid === net.ssid;
+          return (
+            <div key={net.ssid}>
+              <button
+                className={`m-btn ${isSelected ? "m-btn-active" : "m-btn-neutral"}`}
                 style={{
                   width: "100%",
-                  padding: "0.5rem 0.6rem",
-                  background: "#1e1e1e",
-                  border: "1px solid #444",
-                  borderRadius: "6px",
-                  color: "#fff",
-                  fontSize: "1rem",
-                  boxSizing: "border-box",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: isSelected ? "0" : "0.4rem",
+                  padding: "0.6rem 0.8rem",
+                  borderRadius: isSelected ? "8px 8px 0 0" : "8px",
                 }}
-              />
-            </div>
-          ) : (
-            <div style={{ color: "#aaa", fontSize: "0.85rem", marginBottom: "1rem" }}>
-              Open network — no password needed.
-            </div>
-          )}
+                onClick={() => selectNetwork(net)}
+              >
+                <span>
+                  {net.secured ? "🔒 " : ""}
+                  {net.ssid}
+                </span>
+                <span style={{ fontFamily: "monospace", fontSize: "0.75rem", color: "#aaa" }}>
+                  {SIGNAL_BARS(net.signal)}
+                </span>
+              </button>
 
-          <div className="m-btn-row">
-            <button className="m-btn m-btn-neutral" onClick={reset}>
-              Back
-            </button>
-            <button
-              className="m-btn m-btn-primary"
-              disabled={selectedNetwork?.secured && !password}
-              onClick={handleConnect}
-            >
-              Connect
-            </button>
-          </div>
-        </div>
-      )}
+              {isSelected && (
+                <div
+                  style={{
+                    background: "#1e1e1e",
+                    border: "1px solid #444",
+                    borderTop: "none",
+                    borderRadius: "0 0 8px 8px",
+                    padding: "0.75rem 0.8rem",
+                    marginBottom: "0.4rem",
+                  }}
+                >
+                  {net.secured ? (
+                    <input
+                      ref={passwordRef}
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+                      placeholder="Password"
+                      style={{
+                        width: "100%",
+                        padding: "0.5rem 0.6rem",
+                        background: "#111",
+                        border: "1px solid #555",
+                        borderRadius: "6px",
+                        color: "#fff",
+                        fontSize: "1rem",
+                        boxSizing: "border-box",
+                        marginBottom: "0.6rem",
+                      }}
+                    />
+                  ) : (
+                    <div style={{ color: "#aaa", fontSize: "0.85rem", marginBottom: "0.6rem" }}>
+                      Open network — no password needed.
+                    </div>
+                  )}
+                  <button
+                    className="m-btn m-btn-primary"
+                    style={{ width: "100%" }}
+                    disabled={net.secured && !password}
+                    onClick={handleConnect}
+                  >
+                    Join
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
