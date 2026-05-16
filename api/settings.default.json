@@ -1,5 +1,7 @@
 {
   "active_display": "stocks",
+  "auto_start_display": true,
+  "log_level": "INFO",
 
   "stocks": {
     "stock_abbrs": ["AAPL", "MSFT"],
