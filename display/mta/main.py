@@ -12,6 +12,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _apply_log_level() -> None:
+    level = api_client.get_log_level()
+    logging.getLogger().setLevel(getattr(logging, level, logging.INFO))
+    logger.debug(f"Log level applied: {level}")
+
+
 FETCH_INTERVAL = 30  # seconds between successful fetches
 RETRY_INTERVAL = 5  # seconds between retries when API is down
 SETTINGS_INTERVAL = 60  # seconds between re-reading cycle settings
@@ -104,6 +111,7 @@ def run():
     matrix = build_matrix()
     canvas = matrix.CreateFrameCanvas()
     logger.info("MTA display starting")
+    _apply_log_level()
 
     trains = []
     station_name = ""

@@ -18,6 +18,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _apply_log_level() -> None:
+    level = api_client.get_log_level()
+    logging.getLogger().setLevel(getattr(logging, level, logging.INFO))
+    logger.debug(f"Log level applied: {level}")
+
+
 DEFAULT_CYCLE_DURATION = 60
 REFRESH_INTERVAL = 30 * 60  # re-fetch weather every 30 minutes
 
@@ -26,6 +33,7 @@ def run() -> None:
     matrix = build_matrix()
     canvas = matrix.CreateFrameCanvas()
     logger.info("Weather display starting")
+    _apply_log_level()
 
     data: dict | None = None
     last_fetch = 0.0

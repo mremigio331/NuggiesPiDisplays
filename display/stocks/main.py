@@ -10,6 +10,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _apply_log_level() -> None:
+    level = api_client.get_log_level()
+    logging.getLogger().setLevel(getattr(logging, level, logging.INFO))
+    logger.debug(f"Log level applied: {level}")
+
+
 DEFAULT_INTERVAL = 60
 CYCLE_SECONDS = 5
 
@@ -35,6 +42,7 @@ def run():
     matrix = build_matrix()
     canvas = matrix.CreateFrameCanvas()
     logger.info("Stocks display starting")
+    _apply_log_level()
 
     while True:
         settings = api_client.get_settings() or {}

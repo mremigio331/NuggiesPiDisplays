@@ -50,6 +50,11 @@ def start_display(mode: str) -> int:
     _DISPLAY_LOG.parent.mkdir(parents=True, exist_ok=True)
     log_file = open(_DISPLAY_LOG, "a")
 
+    env = os.environ.copy()
+    display_dir = str(_PROJECT_ROOT / "display")
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{display_dir}:{existing}" if existing else display_dir
+
     log.debug(f"Spawning: sudo python3 {script}")
     proc = subprocess.Popen(
         ["sudo", "python3", str(script)],
@@ -57,6 +62,7 @@ def start_display(mode: str) -> int:
         stdout=log_file,
         stderr=log_file,
         start_new_session=True,
+        env=env,
     )
     _PID_FILE.write_text(str(proc.pid))
     log.info(f"Started {mode} display (pid {proc.pid})")
