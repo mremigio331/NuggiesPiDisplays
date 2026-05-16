@@ -1,8 +1,20 @@
 import logging
+import math
 import yfinance
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from helpers.config import read_settings
+
+
+def _f(v):
+    """Return None for NaN/None, otherwise the float value."""
+    if v is None:
+        return None
+    try:
+        return None if math.isnan(v) else v
+    except TypeError:
+        return None
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -61,21 +73,34 @@ async def get_stock_chart(symbol: str, cycle_key: str):
         )
 
     if current_price is None:
-        current_price = float(hist["Close"].iloc[-1])
+        current_price = _f(float(hist["Close"].iloc[-1]))
 
-    closes = [round(float(c), 4) for c in hist["Close"].tolist()]
-    open_price = closes[0]
-    change = round(current_price - open_price, 4)
-    change_pct = round((change / open_price) * 100, 2) if open_price else None
+    current_price = _f(current_price)
+    closes = [_f(round(float(c), 4)) for c in hist["Close"].tolist()]
+    open_price = next((c for c in closes if c is not None), None)
+    change = (
+        round(current_price - open_price, 4)
+        if current_price is not None and open_price
+        else None
+    )
+    change_pct = (
+        round((change / open_price) * 100, 2)
+        if change is not None and open_price
+        else None
+    )
 
     return JSONResponse(
         {
             "symbol": symbol,
             "label": label,
-            "current_price": round(current_price, 4),
+            "current_price": (
+                round(current_price, 4) if current_price is not None else None
+            ),
             "change": change,
             "change_pct": change_pct,
-            "direction": "up" if change >= 0 else "down",
+            "direction": (
+                ("up" if change >= 0 else "down") if change is not None else None
+            ),
             "closes": closes,
             "timestamps": hist.index.strftime("%Y-%m-%dT%H:%M:%S").tolist(),
         }
