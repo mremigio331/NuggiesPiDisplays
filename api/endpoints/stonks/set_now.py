@@ -2,14 +2,9 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from endpoints.stonks._now_state import _current
+
 router = APIRouter()
-
-_current: dict = {"symbol": None, "cycle_key": None}
-
-
-@router.get("/now")
-async def get_now():
-    return JSONResponse(_current)
 
 
 class NowBody(BaseModel):
