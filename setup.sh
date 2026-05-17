@@ -64,10 +64,10 @@ install_python_packages() {
     pip install -r requirements-api.txt --break-system-packages
 
     echo "--- Installing Python packages (captive portal — root, for systemd service)..."
-    sudo pip install -r requirements-api.txt --break-system-packages
+    sudo pip install -r requirements-api.txt --break-system-packages --ignore-installed
 
     echo "--- Installing Python packages (display — root, for sudo python3)..."
-    sudo pip install -r requirements-display.txt --break-system-packages
+    sudo pip install -r requirements-display.txt --break-system-packages --ignore-installed
 }
 
 # ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ setup_rgbmatrix() {
     else
         echo "rgbmatrix repo already cloned."
     fi
-    sudo pip install "$RGBMATRIX_REPO" --break-system-packages
+    sudo pip install "$RGBMATRIX_REPO" --break-system-packages --ignore-installed
     echo "rgbmatrix installed."
 }
 
@@ -178,12 +178,30 @@ build_frontend() {
 # ---------------------------------------------------------------------------
 install_wifi_setup_service() {
     echo "--- Installing WiFi setup service..."
-    SERVICE_SRC="$SCRIPT_DIR/wifi_setup/nuggies-wifi-setup.service"
     SERVICE_DST="/etc/systemd/system/nuggies-wifi-setup.service"
 
-    chmod +x "$SCRIPT_DIR/scripts/wifi_setup_service.sh"
-    sudo cp "$SERVICE_SRC" "$SERVICE_DST"
+    sudo tee "$SERVICE_DST" > /dev/null <<SERVICE
+[Unit]
+Description=Nuggies WiFi Setup / Captive Portal
+Documentation=https://github.com/nuggies/nuggies_pi_displays
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/bin/bash $SCRIPT_DIR/scripts/wifi_setup_service.sh
+WorkingDirectory=$SCRIPT_DIR
+User=root
+StandardOutput=journal
+StandardError=journal
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
     sudo chmod 644 "$SERVICE_DST"
+    sudo chmod +x "$SCRIPT_DIR/scripts/wifi_setup_service.sh"
     sudo systemctl daemon-reload
     sudo systemctl enable nuggies-wifi-setup.service
     echo "WiFi setup service installed and enabled."
@@ -340,3 +358,7 @@ else
     echo "   Status: sudo systemctl status nuggies-api.service"
 fi
 echo "========================================="
+echo ""
+echo "Rebooting in 30 seconds... (Ctrl+C to cancel)"
+sleep 30
+sudo reboot

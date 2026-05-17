@@ -6,8 +6,8 @@ Wants=NetworkManager.service
 
 [Service]
 Type=simple
-ExecStart=/home/pi/nuggies_pi_displays/scripts/wifi_setup_service.sh
-WorkingDirectory=/home/pi/nuggies_pi_displays
+ExecStart=/bin/bash __PROJECT_DIR__/scripts/wifi_setup_service.sh
+WorkingDirectory=__PROJECT_DIR__
 User=root
 StandardOutput=journal
 StandardError=journal

@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-PROJECT_DIR="/home/pi/nuggies_pi_displays"
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LOG="$PROJECT_DIR/logs/wifi_setup.log"
 NM_DNSMASQ_DIR="/etc/NetworkManager/dnsmasq-shared.d"
 

@@ -6,7 +6,7 @@
 # Boot-time WiFi checking is handled by nuggies-wifi-setup.service (systemd).
 # Do NOT add this script to cron — that would double-fire the same check.
 
-PROJECT_DIR="/home/pi/nuggies_pi_displays"
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LOG="$PROJECT_DIR/logs/check_wifi.log"
 
 _AP_CFG="$PROJECT_DIR/wifi_ap.yaml"
