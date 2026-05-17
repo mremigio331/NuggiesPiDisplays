@@ -5,6 +5,11 @@ Weather display — cycles through three screens:
   3. 5-day forecast    (high / low)
 """
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import logging
 import time
 

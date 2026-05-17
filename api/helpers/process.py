@@ -81,6 +81,13 @@ def is_running() -> bool:
     try:
         pid = int(_PID_FILE.read_text().strip())
         os.kill(pid, 0)
+        status_path = Path(f"/proc/{pid}/status")
+        if status_path.exists():
+            for line in status_path.read_text().splitlines():
+                if line.startswith("State:") and "Z" in line:
+                    log.debug(f"is_running: pid {pid} is zombie, treating as dead")
+                    _PID_FILE.unlink(missing_ok=True)
+                    return False
         log.debug(f"is_running: pid {pid} alive")
         return True
     except (ProcessLookupError, ValueError, PermissionError):
