@@ -1,50 +1,24 @@
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useStocksSettings } from "../../hooks/useStocksSettings";
 import { useDebounce } from "../../hooks/useDebounce";
+import { useNotify } from "../../hooks/useNotify";
 import { updateStocksSettings, searchStocks } from "../../services/API";
-import { getNotificationsContext, N } from "../../services/Notifications";
-import { v4 as uuidv4 } from "uuid";
+import SettingsHeader from "../../components/shared/SettingsHeader";
+import LoadingSpinner from "../../components/shared/LoadingSpinner";
 
 function useUpdateStocks() {
   const qc = useQueryClient();
-  const { pushNotification, dismissNotification, modifyNotificationContent } =
-    getNotificationsContext();
+  const { start, ok, fail } = useNotify();
 
   return useMutation({
     mutationFn: updateStocksSettings,
-    onMutate: () => {
-      const id = uuidv4();
-      pushNotification({
-        id,
-        type: N.INFO,
-        content: "Saving…",
-        loading: true,
-        dismissible: false,
-        onDismiss: () => dismissNotification(id),
-      });
-      return { id };
-    },
+    onMutate: () => ({ id: start() }),
     onSuccess: (_, __, ctx) => {
-      modifyNotificationContent(ctx.id, {
-        content: "Saved.",
-        type: N.SUCCESS,
-        loading: false,
-        dismissible: true,
-        onDismiss: () => dismissNotification(ctx.id),
-      });
+      ok(ctx.id);
       qc.invalidateQueries({ queryKey: ["stocksSettings"] });
     },
-    onError: (err, _, ctx) => {
-      modifyNotificationContent(ctx.id, {
-        content: `Failed: ${err.message}`,
-        type: N.ERROR,
-        loading: false,
-        dismissible: true,
-        onDismiss: () => dismissNotification(ctx.id),
-      });
-    },
+    onError: (err, _, ctx) => fail(ctx.id, err),
   });
 }
 
@@ -328,40 +302,18 @@ function DisplaySection({ settings, onSave, saving }) {
 
 /* ── Page ──────────────────────────────────────────────────────── */
 export default function StocksSettings() {
-  const navigate = useNavigate();
   const { data: settings, isLoading } = useStocksSettings();
   const updateMut = useUpdateStocks();
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <button
-          onClick={() => navigate("/stocks")}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: "#5a7a9a",
-            fontSize: "1.2rem",
-            padding: 0,
-            lineHeight: 1,
-          }}
-          aria-label="Back"
-        >
-          ←
-        </button>
-        <div className="m-section-title" style={{ margin: 0 }}>
-          Stocks Settings
-        </div>
-      </div>
+      <SettingsHeader title="Stocks Settings" backTo="/stocks" />
       <div className="m-section-sub" style={{ marginBottom: 16 }}>
         Watchlist and display configuration
       </div>
 
       {isLoading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
-          <div className="m-spinner m-spinner-lg" />
-        </div>
+        <LoadingSpinner />
       ) : (
         <>
           <WatchlistSection

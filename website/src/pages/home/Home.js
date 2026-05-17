@@ -1,6 +1,8 @@
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { useSystemStatus } from "../../hooks/useSystemStatus";
+import { DISPLAY_MODES } from "../../constants/display";
+import LoadingSpinner from "../../components/shared/LoadingSpinner";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -9,15 +11,9 @@ export default function Home() {
   React.useEffect(() => {
     if (isLoading) return;
     const mode = status?.active_display;
-    if (mode === "mta") navigate("/mta", { replace: true });
-    else if (mode === "stocks") navigate("/stocks", { replace: true });
-    else if (mode === "clock") navigate("/clock", { replace: true });
-    else if (mode === "weather") navigate("/weather", { replace: true });
+    const match = DISPLAY_MODES.find((m) => m.key === mode);
+    if (match) navigate(`/${match.key}`, { replace: true });
   }, [isLoading, status?.active_display]);
 
-  return (
-    <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
-      <div className="m-spinner m-spinner-lg" />
-    </div>
-  );
+  return <LoadingSpinner />;
 }

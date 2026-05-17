@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSystemStatus } from "../../hooks/useSystemStatus";
+import { DISPLAY_MODES, LOG_LEVELS } from "../../constants/display";
 import {
   startDisplay,
   stopDisplay,
@@ -131,12 +132,7 @@ export default function System() {
       <div className="m-card">
         <div className="m-card-title">Switch Mode</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {[
-            { key: "clock", label: "Clock" },
-            { key: "mta", label: "MTA" },
-            { key: "stocks", label: "Stocks" },
-            { key: "weather", label: "Weather" },
-          ].map(({ key, label }) => (
+          {DISPLAY_MODES.map(({ key, label }) => (
             <button
               key={key}
               className={`m-btn ${mode === key ? "m-btn-active" : "m-btn-neutral"}`}
@@ -182,7 +178,7 @@ export default function System() {
           Controls verbosity for API and display logs. DEBUG logs every request and API call.
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
-          {["DEBUG", "INFO", "WARNING", "ERROR"].map((level) => (
+          {LOG_LEVELS.map((level) => (
             <button
               key={level}
               className={`m-btn ${currentLogLevel === level ? "m-btn-active" : "m-btn-neutral"}`}

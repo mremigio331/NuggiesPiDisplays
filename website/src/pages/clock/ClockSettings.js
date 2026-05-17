@@ -1,12 +1,12 @@
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useClockSettings } from "../../hooks/useClockSettings";
 import { useClockTimezones } from "../../hooks/useClockTimezones";
 import { useDebounce } from "../../hooks/useDebounce";
+import { useNotify } from "../../hooks/useNotify";
 import { updateClockSettings } from "../../services/API";
-import { getNotificationsContext, N } from "../../services/Notifications";
-import { v4 as uuidv4 } from "uuid";
+import SettingsHeader from "../../components/shared/SettingsHeader";
+import LoadingSpinner from "../../components/shared/LoadingSpinner";
 
 const COLOR_PRESETS = [
   { label: "White", value: "255,255,255", rgb: [255, 255, 255] },
@@ -142,9 +142,8 @@ function TimezoneSelect({ value, onChange }) {
 }
 
 export default function ClockSettings() {
-  const navigate = useNavigate();
   const qc = useQueryClient();
-  const { pushNotification, dismissNotification } = getNotificationsContext();
+  const { error: notifyError } = useNotify();
   const { data: settings, isLoading } = useClockSettings();
 
   const [timezone, setTimezone] = React.useState("");
@@ -185,15 +184,7 @@ export default function ClockSettings() {
     },
     onError: (err) => {
       setSaveStatus(null);
-      const id = uuidv4();
-      pushNotification({
-        id,
-        type: N.ERROR,
-        content: `Failed to save: ${err.message}`,
-        loading: false,
-        dismissible: true,
-        onDismiss: () => dismissNotification(id),
-      });
+      notifyError(err);
     },
   });
 
@@ -229,46 +220,18 @@ export default function ClockSettings() {
   const liveTime = useLiveClock(timezone || "UTC", use24h);
   const previewHex = "#" + colorPreset.rgb.map((v) => v.toString(16).padStart(2, "0")).join("");
 
-  if (isLoading)
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
-        <div className="m-spinner m-spinner-lg" />
-      </div>
-    );
+  if (isLoading) return <LoadingSpinner />;
+
+  const saveIndicator = (
+    <span style={{ fontSize: "0.75rem", color: saveStatus === "saved" ? "#29d66e" : "#5a7a9a", transition: "color 0.3s" }}>
+      {saveStatus === "saving" && "Saving…"}
+      {saveStatus === "saved" && "✓ Saved"}
+    </span>
+  );
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <button
-          onClick={() => navigate("/clock")}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: "#5a7a9a",
-            fontSize: "1.2rem",
-            padding: 0,
-            lineHeight: 1,
-          }}
-          aria-label="Back"
-        >
-          ←
-        </button>
-        <div className="m-section-title" style={{ margin: 0 }}>
-          Clock Settings
-        </div>
-        <div
-          style={{
-            marginLeft: "auto",
-            fontSize: "0.75rem",
-            color: saveStatus === "saved" ? "#29d66e" : "#5a7a9a",
-            transition: "color 0.3s",
-          }}
-        >
-          {saveStatus === "saving" && "Saving…"}
-          {saveStatus === "saved" && "✓ Saved"}
-        </div>
-      </div>
+      <SettingsHeader title="Clock Settings" backTo="/clock" right={saveIndicator} />
       <div className="m-section-sub" style={{ marginBottom: 16 }}>
         Changes apply automatically
       </div>

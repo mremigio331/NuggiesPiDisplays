@@ -1,16 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { useDebounce } from "../../hooks/useDebounce";
 import { getWeatherSettings, updateWeatherSettings, geocodeLocation } from "../../services/API";
-
-function useDebounce(value, ms) {
-  const [dv, setDv] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDv(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return dv;
-}
 
 export default function WeatherSettings() {
   const navigate = useNavigate();

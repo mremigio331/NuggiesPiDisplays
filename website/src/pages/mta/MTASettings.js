@@ -1,53 +1,14 @@
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 import { useMTAConfigs } from "../../hooks/useMTAConfigs";
 import { useAllStations } from "../../hooks/useAllStations";
 import { useEnabledStations } from "../../hooks/useEnabledStations";
 import { useDebounce } from "../../hooks/useDebounce";
+import { useNotify } from "../../hooks/useNotify";
 import { updateMTAConfig, setCurrentStation, setStationEnabled } from "../../services/API";
-import { getNotificationsContext, N } from "../../services/Notifications";
-import { v4 as uuidv4 } from "uuid";
-
-const LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"];
-
-function useNotify() {
-  const { pushNotification, dismissNotification, modifyNotificationContent } =
-    getNotificationsContext();
-
-  const notify = (run) => {
-    const id = uuidv4();
-    pushNotification({
-      id,
-      type: N.INFO,
-      content: "Saving…",
-      loading: true,
-      dismissible: false,
-      onDismiss: () => dismissNotification(id),
-    });
-    return run(id);
-  };
-
-  const ok = (id, msg = "Saved.") =>
-    modifyNotificationContent(id, {
-      content: msg,
-      type: N.SUCCESS,
-      loading: false,
-      dismissible: true,
-      onDismiss: () => dismissNotification(id),
-    });
-
-  const fail = (id, err) =>
-    modifyNotificationContent(id, {
-      content: `Failed: ${err.message}`,
-      type: N.ERROR,
-      loading: false,
-      dismissible: true,
-      onDismiss: () => dismissNotification(id),
-    });
-
-  return { notify, ok, fail };
-}
+import { LOG_LEVELS } from "../../constants/display";
+import SettingsHeader from "../../components/shared/SettingsHeader";
+import LoadingSpinner from "../../components/shared/LoadingSpinner";
 
 /* ── Current Station ───────────────────────────────────────────── */
 function StationPicker({ currentStation, allStations }) {
@@ -244,8 +205,7 @@ function DisplayOptions({ configs }) {
 /* ── Station Cycling List ──────────────────────────────────────── */
 function StationCycleList({ allStations, enabledStations }) {
   const qc = useQueryClient();
-  const { pushNotification, dismissNotification, modifyNotificationContent } =
-    getNotificationsContext();
+  const { start, ok, fail } = useNotify();
   const [search, setSearch] = React.useState("");
   const debouncedSearch = useDebounce(search, 200);
   const [pending, setPending] = React.useState(new Set());
@@ -262,33 +222,13 @@ function StationCycleList({ allStations, enabledStations }) {
   const handleToggle = async (station, enabled) => {
     if (pending.has(station)) return;
     setPending((p) => new Set([...p, station]));
-    const id = uuidv4();
-    pushNotification({
-      id,
-      type: N.INFO,
-      content: `${enabled ? "Enabling" : "Disabling"} ${station}…`,
-      loading: true,
-      dismissible: false,
-      onDismiss: () => dismissNotification(id),
-    });
+    const id = start(`${enabled ? "Enabling" : "Disabling"} ${station}…`);
     try {
       await setStationEnabled(station, enabled);
       qc.invalidateQueries({ queryKey: ["enabledStations"] });
-      modifyNotificationContent(id, {
-        content: `${station} ${enabled ? "enabled" : "disabled"}`,
-        type: N.SUCCESS,
-        loading: false,
-        dismissible: true,
-        onDismiss: () => dismissNotification(id),
-      });
+      ok(id, `${station} ${enabled ? "enabled" : "disabled"}`);
     } catch (err) {
-      modifyNotificationContent(id, {
-        content: `Failed: ${err.message}`,
-        type: N.ERROR,
-        loading: false,
-        dismissible: true,
-        onDismiss: () => dismissNotification(id),
-      });
+      fail(id, err);
     } finally {
       setPending((p) => {
         const n = new Set(p);
@@ -360,7 +300,6 @@ function StationCycleList({ allStations, enabledStations }) {
 
 /* ── Page ──────────────────────────────────────────────────────── */
 export default function MTASettings() {
-  const navigate = useNavigate();
   const { data: configs, isLoading: configsLoading } = useMTAConfigs();
   const { data: allStations, isLoading: stationsLoading } = useAllStations();
   const { data: enabledStations } = useEnabledStations();
@@ -369,34 +308,13 @@ export default function MTASettings() {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-        <button
-          onClick={() => navigate("/mta")}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: "#5a7a9a",
-            fontSize: "1.2rem",
-            padding: 0,
-            lineHeight: 1,
-          }}
-          aria-label="Back"
-        >
-          ←
-        </button>
-        <div className="m-section-title" style={{ margin: 0 }}>
-          MTA Settings
-        </div>
-      </div>
+      <SettingsHeader title="MTA Settings" backTo="/mta" />
       <div className="m-section-sub" style={{ marginBottom: 16 }}>
         Configure station and display options
       </div>
 
       {isLoading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: 40 }}>
-          <div className="m-spinner m-spinner-lg" />
-        </div>
+        <LoadingSpinner />
       ) : (
         <>
           <StationPicker currentStation={configs?.station} allStations={allStations} />
