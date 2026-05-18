@@ -270,7 +270,7 @@ export default function System() {
           </div>
         }
       >
-        <div>
+        <div style={{ color: "#f0a800", fontSize: "0.9rem" }}>
           Pulls the latest code from git, re-runs <strong>setup.sh</strong> in{" "}
           <strong>{devMode ? "--dev" : "--prod"}</strong> mode, then reboots. The Pi will be offline
           for ~60 seconds.

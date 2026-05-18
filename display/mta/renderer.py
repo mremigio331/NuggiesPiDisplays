@@ -174,26 +174,27 @@ def render(
         _draw_logo_row(canvas, loading_lines or [])
         return
 
-    if show_loading:
-        _draw_logo_row(canvas, loading_lines or [])
-        return
-
     green = _hw_color(_COLOR_GREEN)
     name_w = len(station_name) * CHAR_W
     if name_w > MATRIX_W:
         scroll_range = name_w - MATRIX_W
-        PAUSE = 20  # hold at each end for 20 * SCROLL_STEP_S ≈ 3 s
-        period = PAUSE + scroll_range + PAUSE
+        PAUSE_START = 67  # hold at start: 67 * 0.15 s ≈ 10 s
+        PAUSE_END = 20    # hold at end:   20 * 0.15 s ≈  3 s
+        period = PAUSE_START + scroll_range + PAUSE_END
         pos = station_scroll_x % period
-        if pos < PAUSE:
+        if pos < PAUSE_START:
             sx = 0
-        elif pos < PAUSE + scroll_range:
-            sx = -(pos - PAUSE)
+        elif pos < PAUSE_START + scroll_range:
+            sx = -(pos - PAUSE_START)
         else:
             sx = -scroll_range
     else:
         sx = 0
     _gfx.DrawText(canvas, _hw_font, sx, STATION_Y, green, station_name)
+
+    if show_loading:
+        _draw_logo_row(canvas, loading_lines or [])
+        return
 
     for i, train in enumerate(trains[:2]):
         _draw_train_row(canvas, i, train, offsets[i])
