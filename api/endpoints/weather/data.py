@@ -55,7 +55,7 @@ def _get_ip_location() -> dict | None:
             label = ", ".join(p for p in [city, region] if p)
             return {"latitude": d["lat"], "longitude": d["lon"], "city_label": label}
     except Exception as e:
-        logger.warning("IP geolocation failed: %s", e)
+        logger.warning(f"IP geolocation failed: {e}")
     return None
 
 
@@ -198,7 +198,7 @@ async def get_weather_data(force: bool = False):
         _cache["fetched_at"] = now
         return JSONResponse(data)
     except Exception as e:
-        logger.error("Weather fetch failed: %s", e)
+        logger.error(f"Weather fetch failed: {e}")
         if _cache["data"]:
             return JSONResponse(_cache["data"])
         return JSONResponse({"error": str(e)}, status_code=503)

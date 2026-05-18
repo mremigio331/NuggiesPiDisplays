@@ -19,5 +19,5 @@ async def set_station_enabled(station_id: str, body: EnabledBody):
         raise HTTPException(status_code=404, detail=f"Station not found: {station_id}")
     stations[station_id]["enabled"] = body.enabled
     save(stations)
-    logger.info("Station %s enabled=%s", station_id, body.enabled)
+    logger.info(f"Station {station_id} enabled={body.enabled}")
     return JSONResponse({"station": station_id, "enabled": body.enabled})

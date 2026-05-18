@@ -26,13 +26,13 @@ async def _do_update(run_setup: bool) -> None:
         capture_output=True,
         text=True,
     )
-    logger.info("git pull stdout: %s", pull.stdout.strip())
+    logger.info(f"git pull stdout: {pull.stdout.strip()}")
     if pull.returncode != 0:
-        logger.warning("git pull stderr: %s", pull.stderr.strip())
+        logger.warning(f"git pull stderr: {pull.stderr.strip()}")
 
     if run_setup:
         mode = "--dev" if is_dev_mode() else "--prod"
-        logger.info("Running setup.sh %s...", mode)
+        logger.info(f"Running setup.sh {mode}...")
         subprocess.run(
             ["sudo", "bash", str(_PROJECT_ROOT / "setup.sh"), mode],
             cwd=str(_PROJECT_ROOT),
@@ -46,7 +46,7 @@ async def _do_update(run_setup: bool) -> None:
 async def update_app(req: UpdateRequest, background_tasks: BackgroundTasks):
     """Pull latest code, optionally re-run setup, then reboot."""
     mode = "--dev" if is_dev_mode() else "--prod"
-    logger.info("App update requested (run_setup=%s, mode=%s)", req.run_setup, mode)
+    logger.info(f"App update requested (run_setup={req.run_setup}, mode={mode})")
     background_tasks.add_task(_do_update, req.run_setup)
     return JSONResponse(
         {

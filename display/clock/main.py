@@ -38,7 +38,7 @@ _lock = threading.Lock()
 def _update_settings(data: dict):
     with _lock:
         _settings.update(data)
-    logger.info("Settings updated: %s", list(data.keys()))
+    logger.info(f"Settings updated: {list(data.keys())}")
 
 
 def _ws_thread():
@@ -50,7 +50,7 @@ def _ws_thread():
                     async for message in ws:
                         _update_settings(json.loads(message))
             except Exception as e:
-                logger.warning("WebSocket error: %s — reconnecting in 5s", e)
+                logger.warning(f"WebSocket error: {e} — reconnecting in 5s")
                 await asyncio.sleep(5)
 
     asyncio.run(listen())

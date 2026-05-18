@@ -19,7 +19,7 @@ async def get_stock_info(symbol: str):
         name = quote.get("shortname") or quote.get("longname") or symbol
         exchange = quote.get("exchange", "")
     except Exception as e:
-        logger.warning("Could not fetch info for %s: %s", symbol, e)
+        logger.warning(f"Could not fetch info for {symbol}: {e}")
         name = symbol
         exchange = ""
     return JSONResponse({"symbol": symbol, "name": name, "exchange": exchange})

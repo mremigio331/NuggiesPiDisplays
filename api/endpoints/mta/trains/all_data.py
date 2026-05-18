@@ -22,7 +22,7 @@ async def get_all_data():
             status_code=404, detail=f"Station not found: {station_name}"
         )
 
-    logger.info("Fetching all trains for %s", station_name)
+    logger.info(f"Fetching all trains for {station_name}")
     trains = next_trains_for_station(station_info, limit=None)
 
     return JSONResponse(

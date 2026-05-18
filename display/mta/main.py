@@ -85,11 +85,11 @@ def _load_cycle_settings() -> tuple[bool, int]:
     mta = settings.get("mta", settings)
     enabled = str(mta.get("cycle", "false")).lower() in ("true", "1", "yes")
     try:
-        minutes = int(mta.get("cycle_time", 5))
+        seconds = int(mta.get("cycle_time", 300))
     except (ValueError, TypeError):
-        minutes = 5
-    logger.info("Cycle settings loaded: enabled=%s every %d min", enabled, minutes)
-    return enabled, minutes * 60
+        seconds = 300
+    logger.info(f"Cycle settings loaded: enabled={enabled} every {seconds} sec")
+    return enabled, seconds
 
 
 def _cycle_station(current_station: str) -> str:
@@ -164,11 +164,11 @@ def run():
                 trains = data.get("trains", [])
                 new_name = data.get("stop_name") or data.get("station", "")
                 if new_name != station_name:
-                    logger.info("Station set to '%s'", new_name)
+                    logger.info(f"Station set to '{new_name}'")
                     station_name = new_name
                     station_scroll_x = 0
                     dest_char_offsets = [0, 0]
-                logger.info("Fetched %d trains for '%s'", len(trains), station_name)
+                logger.info(f"Fetched {len(trains)} trains for '{station_name}'")
             else:
                 if not api_error:
                     logger.warning("API unreachable, showing error state")

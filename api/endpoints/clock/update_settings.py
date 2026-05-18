@@ -42,6 +42,6 @@ async def update_settings(body: ClockSettings):
     clock.update(updates)
     settings["clock"] = clock
     write_settings(settings)
-    logger.info("Clock settings updated: %s", list(updates.keys()))
+    logger.info(f"Clock settings updated: {list(updates.keys())}")
     await manager.broadcast(clock)
     return JSONResponse(clock)

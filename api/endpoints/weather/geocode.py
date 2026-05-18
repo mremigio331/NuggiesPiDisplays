@@ -31,5 +31,5 @@ async def geocode(q: str):
             ]
         )
     except Exception as e:
-        logger.error("Geocode failed: %s", e)
+        logger.error(f"Geocode failed: {e}")
         raise HTTPException(status_code=503, detail=str(e))

@@ -28,8 +28,8 @@ async def switch_display(body: DisplayMode):
         settings = read_settings()
         settings["active_display"] = body.mode.value
         write_settings(settings)
-        logger.info("Switched display to %s (pid %s)", body.mode.value, pid)
+        logger.info(f"Switched display to {body.mode.value} (pid {pid})")
         return JSONResponse({"active_display": body.mode.value, "pid": pid})
     except Exception as e:
-        logger.exception("Failed to switch display to %s", body.mode.value)
+        logger.exception(f"Failed to switch display to {body.mode.value}")
         raise HTTPException(status_code=500, detail=str(e))

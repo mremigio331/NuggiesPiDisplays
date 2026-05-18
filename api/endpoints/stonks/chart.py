@@ -42,11 +42,7 @@ async def get_stock_chart(symbol: str, cycle_key: str):
 
     params = CYCLE_PARAMS[cycle_key]
     logger.info(
-        "Fetching %s/%s period=%s interval=%s",
-        symbol,
-        cycle_key,
-        params["period"],
-        params["interval"],
+        f"Fetching {symbol}/{cycle_key} period={params['period']} interval={params['interval']}"
     )
 
     try:
@@ -54,11 +50,11 @@ async def get_stock_chart(symbol: str, cycle_key: str):
         hist = ticker.history(period=params["period"], interval=params["interval"])
         current_price = ticker.fast_info.get("last_price")
     except Exception as e:
-        logger.exception("Yahoo Finance error for %s/%s", symbol, cycle_key)
+        logger.exception(f"Yahoo Finance error for {symbol}/{cycle_key}")
         raise HTTPException(status_code=502, detail=f"Yahoo Finance error: {e}")
 
     if hist.empty:
-        logger.warning("%s/%s history is empty", symbol, cycle_key)
+        logger.warning(f"{symbol}/{cycle_key} history is empty")
         return JSONResponse(
             {
                 "symbol": symbol,

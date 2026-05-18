@@ -22,6 +22,6 @@ async def search_stocks(q: str = Query(..., min_length=1, max_length=50)):
             if r.get("symbol")
         ]
     except Exception as e:
-        logger.error("Stock search failed for %r: %s", q, e)
+        logger.error(f"Stock search failed for {q!r}: {e}")
         quotes = []
     return JSONResponse(quotes)

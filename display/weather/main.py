@@ -63,21 +63,21 @@ def run() -> None:
         t = settings.get("cycle_duration", DEFAULT_CYCLE_DURATION)
 
         # ── Screen 1: current conditions ──────────────────────────────────
-        logger.info("Showing current conditions (%ss)", t)
+        logger.info(f"Showing current conditions ({t}s)")
         renderer.render_current(canvas, data)
         canvas = matrix.SwapOnVSync(canvas)
         time.sleep(t)
 
         # ── Screen 2: hourly forecast ─────────────────────────────────────
         if data.get("hourly"):
-            logger.info("Showing hourly forecast (%ss)", t)
+            logger.info(f"Showing hourly forecast ({t}s)")
             renderer.render_hourly(canvas, data)
             canvas = matrix.SwapOnVSync(canvas)
             time.sleep(t)
 
         # ── Screen 3: 5-day forecast ──────────────────────────────────────
         if data.get("daily"):
-            logger.info("Showing 5-day forecast (%ss)", t)
+            logger.info(f"Showing 5-day forecast ({t}s)")
             renderer.render_forecast(canvas, data)
             canvas = matrix.SwapOnVSync(canvas)
             time.sleep(t)

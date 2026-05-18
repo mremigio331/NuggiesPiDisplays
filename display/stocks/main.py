@@ -61,13 +61,13 @@ def run():
 
         for item in queue:
             symbol, cycle_key = item["symbol"], item["cycle_key"]
-            logger.info("Fetching %s/%s", symbol, cycle_key)
+            logger.info(f"Fetching {symbol}/{cycle_key}")
             data = api_client.get_stock_chart(symbol, cycle_key)
             if data is None:
-                logger.warning("No data for %s/%s, skipping", symbol, cycle_key)
+                logger.warning(f"No data for {symbol}/{cycle_key}, skipping")
                 continue
             api_client.set_current(symbol, cycle_key)
-            logger.info("Showing %s/%s for %ss", symbol, cycle_key, interval)
+            logger.info(f"Showing {symbol}/{cycle_key} for {interval}s")
             canvas = _display_item(matrix, canvas, data, interval)
 
 

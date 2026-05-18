@@ -47,5 +47,5 @@ async def update_settings(body: WeatherSettings):
     # Force a fresh weather fetch on the next /weather/data call
     invalidate_cache()
 
-    logger.info("Weather settings updated: %s", list(updates.keys()))
+    logger.info(f"Weather settings updated: {list(updates.keys())}")
     return JSONResponse(weather)

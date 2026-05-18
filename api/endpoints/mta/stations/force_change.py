@@ -24,5 +24,5 @@ async def force_change_station(body: ForceChangeBody):
     settings = read_settings()
     settings["mta"]["force_change_station"] = body.station
     write_settings(settings)
-    logger.info("Force change station set to '%s'", body.station)
+    logger.info(f"Force change station set to '{body.station}'")
     return JSONResponse({"force_change_station": body.station})

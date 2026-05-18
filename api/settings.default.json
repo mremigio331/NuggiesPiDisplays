@@ -20,7 +20,7 @@
   "mta": {
     "station": "111 St - 194",
     "cycle": true,
-    "cycle_time": "5",
+    "cycle_time": "300",
     "force_change_station": "",
     "log_level": "INFO",
     "create_log_file": false,

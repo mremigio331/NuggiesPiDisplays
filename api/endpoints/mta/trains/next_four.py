@@ -22,7 +22,7 @@ async def get_next_four():
             status_code=404, detail=f"Station not found: {station_name}"
         )
 
-    logger.info("Fetching next 4 trains for %s", station_name)
+    logger.info(f"Fetching next 4 trains for {station_name}")
     trains = next_trains_for_station(station_info, limit=4)
 
     return JSONResponse(

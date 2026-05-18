@@ -41,5 +41,5 @@ async def update_config(body: ConfigUpdate):
     mta[key] = value
     settings["mta"] = mta
     write_settings(settings)
-    logger.info("Subway config updated: %s = %r", key, value)
+    logger.info(f"Subway config updated: {key} = {value!r}")
     return JSONResponse({"key": key, "value": value})

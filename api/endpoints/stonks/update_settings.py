@@ -64,5 +64,5 @@ async def update_settings(body: StocksSettings):
     stocks.update(updates)
     settings["stocks"] = stocks
     write_settings(settings)
-    logger.info("Stocks settings updated: %s", list(updates.keys()))
+    logger.info(f"Stocks settings updated: {list(updates.keys())}")
     return JSONResponse(stocks)

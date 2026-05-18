@@ -62,7 +62,7 @@ def _fetch_feed(feed_id: str, stop_names: dict) -> list:
         feed.ParseFromString(resp.content)
         data = MessageToDict(feed)
     except Exception as e:
-        logger.error("Failed to fetch MTA feed %s: %s", feed_id, e)
+        logger.error(f"Failed to fetch MTA feed {feed_id}: {e}")
         return []
 
     entities = []
@@ -91,14 +91,14 @@ def next_trains_for_station(station_info: dict, limit: int | None = 4) -> list:
         _LINE_TO_FEED[line] for line in train_lines if line in _LINE_TO_FEED
     }
     if not feeds_needed:
-        logger.warning("No MTA feeds mapped for lines: %s", train_lines)
+        logger.warning(f"No MTA feeds mapped for lines: {train_lines}")
         return []
 
     stop_names = _load_stop_names()
 
     all_entities = []
     for feed_id in feeds_needed:
-        logger.debug("Fetching MTA feed: %s", feed_id)
+        logger.debug(f"Fetching MTA feed: {feed_id}")
         all_entities.extend(_fetch_feed(feed_id, stop_names))
 
     now = datetime.now()

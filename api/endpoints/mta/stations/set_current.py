@@ -23,5 +23,5 @@ async def set_current_station(body: SetStationBody):
     settings = read_settings()
     settings["mta"]["station"] = body.station
     write_settings(settings)
-    logger.info("Current station set to %s", body.station)
+    logger.info(f"Current station set to {body.station}")
     return JSONResponse({"station": body.station})
