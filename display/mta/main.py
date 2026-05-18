@@ -27,6 +27,7 @@ def _apply_log_level() -> None:
 FETCH_INTERVAL = 30  # seconds between successful fetches
 RETRY_INTERVAL = 5  # seconds between retries when API is down
 SETTINGS_INTERVAL = 60  # seconds between re-reading cycle settings
+STATION_LOAD_S = 15  # seconds to show the loading graphic after a station change
 PAIR_SECONDS = 35  # seconds per train pair (matches original 35-frame loop)
 DEST_SCROLL_S = 2.0  # seconds per character scroll step
 SCROLL_STEP_S = 0.15  # seconds per station-name scroll pixel
@@ -102,12 +103,12 @@ def _cycle_station(current_station: str) -> str:
     new_station = random.choice(candidates if candidates else stations)
     if api_client.set_station(new_station):
         logger.info(
-            "Cycle: changed station from '%s' to '%s'", current_station, new_station
+            f"Cycle: changed station from '{current_station}' to '{new_station}'"
         )
         return new_station
     else:
         logger.warning(
-            "Failed to set station to '%s'; keeping '%s'", new_station, current_station
+            f"Failed to set station to '{new_station}'; keeping '{current_station}'"
         )
         return current_station
 
@@ -133,6 +134,7 @@ def run():
     last_station_scroll = time.time()
     last_dest_scroll = time.time()
     last_logo_refresh = time.time()
+    station_changed_at = time.time()  # show loading graphic on startup
 
     cycle_enabled, cycle_seconds = _load_cycle_settings()
     last_settings_read = time.time()
@@ -150,6 +152,7 @@ def run():
             new_name = _cycle_station(station_name)
             if new_name != station_name:
                 station_name = new_name
+                station_changed_at = now
                 last_fetch = 0.0  # force immediate re-fetch
             last_cycle = now
 
@@ -168,6 +171,7 @@ def run():
                     station_name = new_name
                     station_scroll_x = 0
                     dest_char_offsets = [0, 0]
+                    station_changed_at = now
                 logger.info(f"Fetched {len(trains)} trains for '{station_name}'")
             else:
                 if not api_error:
@@ -175,8 +179,10 @@ def run():
                 api_error = True
             last_fetch = now
 
-        # Refresh random logo lines while in error state
-        if api_error and now - last_logo_refresh >= LOGO_REFRESH_S:
+        show_loading = not api_error and (now - station_changed_at < STATION_LOAD_S)
+
+        # Refresh random logo lines during error or station-change loading
+        if (api_error or show_loading) and now - last_logo_refresh >= LOGO_REFRESH_S:
             loading_lines = _random_lines()
             last_logo_refresh = now
 
@@ -204,6 +210,7 @@ def run():
             station_scroll_x=station_scroll_x,
             dest_char_offsets=dest_char_offsets,
             api_error=api_error,
+            show_loading=show_loading,
             loading_lines=loading_lines,
         )
         canvas = matrix.SwapOnVSync(canvas)

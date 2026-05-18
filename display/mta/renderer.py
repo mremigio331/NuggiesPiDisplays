@@ -158,6 +158,7 @@ def render(
     station_scroll_x: int = 0,
     dest_char_offsets: list | None = None,
     api_error: bool = False,
+    show_loading: bool = False,
     loading_lines: list | None = None,
 ) -> None:
     if not USING_HARDWARE or not _gfx or not _hw_font:
@@ -173,9 +174,25 @@ def render(
         _draw_logo_row(canvas, loading_lines or [])
         return
 
+    if show_loading:
+        _draw_logo_row(canvas, loading_lines or [])
+        return
+
     green = _hw_color(_COLOR_GREEN)
     name_w = len(station_name) * CHAR_W
-    sx = max(0, MATRIX_W - station_scroll_x) if name_w > MATRIX_W else 0
+    if name_w > MATRIX_W:
+        scroll_range = name_w - MATRIX_W
+        PAUSE = 20  # hold at each end for 20 * SCROLL_STEP_S ≈ 3 s
+        period = PAUSE + scroll_range + PAUSE
+        pos = station_scroll_x % period
+        if pos < PAUSE:
+            sx = 0
+        elif pos < PAUSE + scroll_range:
+            sx = -(pos - PAUSE)
+        else:
+            sx = -scroll_range
+    else:
+        sx = 0
     _gfx.DrawText(canvas, _hw_font, sx, STATION_Y, green, station_name)
 
     for i, train in enumerate(trains[:2]):
