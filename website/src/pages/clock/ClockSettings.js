@@ -223,7 +223,13 @@ export default function ClockSettings() {
   if (isLoading) return <LoadingSpinner />;
 
   const saveIndicator = (
-    <span style={{ fontSize: "0.75rem", color: saveStatus === "saved" ? "#29d66e" : "#5a7a9a", transition: "color 0.3s" }}>
+    <span
+      style={{
+        fontSize: "0.75rem",
+        color: saveStatus === "saved" ? "#29d66e" : "#5a7a9a",
+        transition: "color 0.3s",
+      }}
+    >
       {saveStatus === "saving" && "Saving…"}
       {saveStatus === "saved" && "✓ Saved"}
     </span>
