@@ -21,6 +21,8 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG"; }
 
 log "=== Nuggies WiFi boot check starting ==="
 
+SKIP_WIFI_CHECK=false
+
 # If a factory WiFi reset was requested, wipe all saved WiFi connections now
 # (running as root, so nmcli has the permissions the API user lacks).
 if [[ -f "$PROJECT_DIR/.factory_wifi_reset" ]]; then
@@ -30,8 +32,10 @@ if [[ -f "$PROJECT_DIR/.factory_wifi_reset" ]]; then
         nmcli connection delete "$uuid" 2>/dev/null \
             && log "  Deleted connection: $uuid" || true
     done < <(nmcli -t -f UUID,TYPE connection show 2>/dev/null || true)
+    nmcli device disconnect wlan0 2>/dev/null || true
     rm -f "$PROJECT_DIR/.factory_wifi_reset"
-    log "WiFi connections wiped."
+    log "WiFi connections wiped — skipping connectivity check."
+    SKIP_WIFI_CHECK=true
 fi
 
 # If a force-portal flag was written (e.g. by factory-reset-wifi endpoint), skip the
@@ -39,6 +43,8 @@ fi
 if [[ -f "$PROJECT_DIR/.force_portal" ]]; then
     rm -f "$PROJECT_DIR/.force_portal"
     log "Force-portal flag found — skipping WiFi check, starting captive portal directly."
+elif [[ "$SKIP_WIFI_CHECK" == "true" ]]; then
+    log "Starting captive portal after WiFi wipe."
 else
     # Give NetworkManager time to attempt saved connections before we judge.
     sleep 8
