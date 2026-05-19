@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import signal
 import subprocess
 from pathlib import Path
 
@@ -68,44 +66,9 @@ async def get_status():
 
 
 async def _finalize_after_connect() -> None:
-    """Start the normal API, restore iptables, then shut down this portal."""
-    await asyncio.sleep(2)
-
-    run_api = PROJECT_DIR / "api" / "run_api.sh"
-    log_path = PROJECT_DIR / "logs" / "api.log"
-    log_path.parent.mkdir(exist_ok=True)
-
-    subprocess.Popen(
-        ["bash", str(run_api)],
-        cwd=str(PROJECT_DIR),
-        start_new_session=True,
-        stdout=log_path.open("a"),
-        stderr=subprocess.STDOUT,
-    )
-
-    # Restore the 80 → 8000 iptables NAT rule for normal operation.
-    subprocess.run(
-        [
-            "iptables",
-            "-t",
-            "nat",
-            "-A",
-            "PREROUTING",
-            "-p",
-            "tcp",
-            "--dport",
-            "80",
-            "-j",
-            "REDIRECT",
-            "--to-port",
-            "8000",
-        ],
-        capture_output=True,
-    )
-
-    # Give the client a moment to receive the connect response, then exit.
-    await asyncio.sleep(30)
-    os.kill(os.getpid(), signal.SIGTERM)
+    """Wait for WiFi to stabilize, then reboot so the display starts cleanly with internet."""
+    await asyncio.sleep(5)
+    subprocess.run(["systemctl", "reboot"])
 
 
 # ---------------------------------------------------------------------------

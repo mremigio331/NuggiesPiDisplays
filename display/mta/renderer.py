@@ -178,8 +178,8 @@ def render(
     name_w = len(station_name) * CHAR_W
     if name_w > MATRIX_W:
         scroll_range = name_w - MATRIX_W
-        PAUSE_START = 67  # hold at start: 67 * 0.15 s ≈ 10 s
-        PAUSE_END = 20    # hold at end:   20 * 0.15 s ≈  3 s
+        PAUSE_START = 20  # hold at start: 20 * 0.5 s = 10 s
+        PAUSE_END = 6  # hold at end:    6 * 0.5 s =  3 s
         period = PAUSE_START + scroll_range + PAUSE_END
         pos = station_scroll_x % period
         if pos < PAUSE_START:

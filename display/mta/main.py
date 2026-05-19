@@ -30,7 +30,9 @@ SETTINGS_INTERVAL = 60  # seconds between re-reading cycle settings
 STATION_LOAD_S = 15  # seconds to show the loading graphic after a station change
 PAIR_SECONDS = 35  # seconds per train pair (matches original 35-frame loop)
 DEST_SCROLL_S = 2.0  # seconds per character scroll step
-SCROLL_STEP_S = 0.15  # seconds per station-name scroll pixel
+SCROLL_STEP_S = (
+    0.5  # seconds per station-name scroll pixel (matches 4px/2s dest scroll)
+)
 LOGO_REFRESH_S = 2.0  # seconds between random line picks on error screen
 FRAME_S = 0.05  # ~20 fps
 

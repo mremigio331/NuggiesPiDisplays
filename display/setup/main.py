@@ -5,6 +5,7 @@ Scrolls the AP credentials on the matrix so the user knows how to connect.
 """
 
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -34,7 +35,8 @@ def run():
         options.parallel = 1
         options.hardware_mapping = "adafruit-hat"
         matrix = RGBMatrix(options=options)
-    except ImportError:
+    except Exception as e:
+        print(f"Setup display init failed: {e}", file=sys.stderr, flush=True)
         while True:
             time.sleep(60)
 
