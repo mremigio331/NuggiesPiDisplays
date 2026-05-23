@@ -64,10 +64,10 @@ install_python_packages() {
     pip install -r requirements-api.txt --break-system-packages
 
     echo "--- Installing Python packages (captive portal — root, for systemd service)..."
-    sudo pip install -r requirements-api.txt --break-system-packages --ignore-installed
+    sudo pip install -r requirements-api.txt --break-system-packages --upgrade
 
     echo "--- Installing Python packages (display — root, for sudo python3)..."
-    sudo pip install -r requirements-display.txt --break-system-packages --ignore-installed
+    sudo pip install -r requirements-display.txt --break-system-packages --upgrade
 }
 
 # ---------------------------------------------------------------------------
@@ -218,6 +218,12 @@ init_settings() {
         echo "Created api/settings.json from defaults."
     else
         echo "api/settings.json already exists, skipping."
+    fi
+    if [ ! -f dev_config.json ]; then
+        cp dev_config.default.json dev_config.json
+        echo "Created dev_config.json from defaults."
+    else
+        echo "dev_config.json already exists, skipping."
     fi
 }
 

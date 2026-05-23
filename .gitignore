@@ -13,8 +13,10 @@ logs/
 # Runtime state
 display.pid
 api/settings.json
+dev_config.json
 .wifi_configured
 .force_portal
+.factory_wifi_reset
 
 # Fonts — copied from rgbmatrix repo by setup.sh
 display/fonts/
