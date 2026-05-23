@@ -42,10 +42,14 @@ def run():
 
     font_sm = graphics.Font()
     font_lg = graphics.Font()
-    if _FONT_SM.exists():
+    try:
         font_sm.LoadFont(str(_FONT_SM))
-    if _FONT_LG.exists():
+    except Exception as e:
+        print(f"Could not load font {_FONT_SM}: {e}", file=sys.stderr, flush=True)
+    try:
         font_lg.LoadFont(str(_FONT_LG))
+    except Exception as e:
+        print(f"Could not load font {_FONT_LG}: {e}", file=sys.stderr, flush=True)
 
     cyan = graphics.Color(0, 200, 255)
     white = graphics.Color(255, 255, 255)

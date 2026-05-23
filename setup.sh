@@ -98,6 +98,7 @@ copy_fonts() {
             echo "  Warning: $font not found in repo."
         fi
     done
+    chmod 644 display/fonts/*.bdf 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------

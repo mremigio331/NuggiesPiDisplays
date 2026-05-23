@@ -123,7 +123,7 @@ log "Installed captive-portal dnsmasq config."
 pkill -HUP -f "dnsmasq" 2>/dev/null && log "Reloaded dnsmasq." || log "dnsmasq not running yet (OK)."
 
 log "Starting setup display on matrix..."
-python3 "$PROJECT_DIR/display/setup/main.py" &
+python3 "$PROJECT_DIR/display/setup/main.py" >> "$LOG" 2>&1 &
 DISPLAY_PID=$!
 log "Setup display started (pid $DISPLAY_PID)."
 
