@@ -2,6 +2,7 @@ from helpers.logger import setup_logging, set_log_level
 
 setup_logging()
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -9,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from helpers.config import read_settings
 from helpers.process import start_display
+from helpers.buttons import poll_buttons
 from middleware.service_log import ServiceLogMiddleware
 from endpoints.docs import router as docs_router
 from endpoints.home import router as home_router
@@ -41,6 +43,8 @@ async def lifespan(app: FastAPI):
                 logger.warning(f"Auto-start display failed: {e}")
     else:
         logger.debug("Auto-start disabled")
+
+    asyncio.create_task(poll_buttons())
     yield
 
 

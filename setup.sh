@@ -2,7 +2,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-USER=$(whoami)
+USER="${SUDO_USER:-$(whoami)}"
 RGBMATRIX_REPO="/tmp/rpi-rgb-led-matrix"
 
 MODE=""

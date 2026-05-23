@@ -3,18 +3,14 @@ from enum import Enum
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from constants import DISPLAY_MODES
 from helpers.config import read_settings, write_settings
 from helpers.process import start_display
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
-class DisplayModeEnum(str, Enum):
-    stocks = "stocks"
-    mta = "mta"
-    clock = "clock"
-    weather = "weather"
+DisplayModeEnum = Enum("DisplayModeEnum", {m: m for m in DISPLAY_MODES}, type=str)
 
 
 class DisplayMode(BaseModel):
