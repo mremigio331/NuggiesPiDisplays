@@ -22,6 +22,8 @@ export const updateApp = (runSetup = true) =>
   handle(api.post("/system/update-app", { run_setup: runSetup }));
 export const getLogLevel = () => handle(api.get("/system/log-level"));
 export const setLogLevel = (log_level) => handle(api.put("/system/log-level", { log_level }));
+export const getUpdateStatus = () => handle(api.get("/system/update-status"));
+export const checkUpdate = () => handle(api.post("/system/check-update"));
 
 // MTA — trains
 export const getNextFourTrains = () => handle(api.get("/mta/trains/next_four"));

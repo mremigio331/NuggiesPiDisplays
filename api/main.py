@@ -12,6 +12,7 @@ from helpers.config import read_settings
 from helpers.process import start_display
 from helpers.buttons import poll_buttons
 from helpers.wifi_state import WIFI_FLAG
+from helpers.update_check import run_background_checker
 from middleware.service_log import ServiceLogMiddleware
 from endpoints.docs import router as docs_router
 from endpoints.home import router as home_router
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI):
         logger.debug("Auto-start disabled")
 
     asyncio.create_task(poll_buttons())
+    asyncio.create_task(run_background_checker())
     yield
 
 

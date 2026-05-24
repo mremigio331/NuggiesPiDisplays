@@ -14,6 +14,8 @@ import {
   updateApp,
   getLogLevel,
   setLogLevel,
+  getUpdateStatus,
+  checkUpdate,
 } from "../../services/API";
 import Modal from "../../components/shared/Modal";
 
@@ -29,6 +31,16 @@ function useSystem() {
   const factoryResetWifiMut = useMutation({ mutationFn: factoryResetWifi });
   const forgetWifiMut = useMutation({ mutationFn: forgetWifi });
   const updateAppMut = useMutation({ mutationFn: () => updateApp(true) });
+  const { data: updateStatus, isFetching: updateChecking } = useQuery({
+    queryKey: ["updateStatus"],
+    queryFn: getUpdateStatus,
+    staleTime: 3600000,
+    retry: false,
+  });
+  const checkUpdateMut = useMutation({
+    mutationFn: checkUpdate,
+    onSuccess: (data) => qc.setQueryData(["updateStatus"], data),
+  });
   const { data: devConfig } = useQuery({ queryKey: ["devMode"], queryFn: getDevMode });
   const devMode = devConfig?.dev_mode ?? false;
   const { data: logLevelData, refetch: refetchLogLevel } = useQuery({
@@ -56,10 +68,93 @@ function useSystem() {
     factoryResetWifiMut,
     forgetWifiMut,
     updateAppMut,
+    updateStatus,
+    updateChecking,
+    checkUpdateMut,
     devMode,
     currentLogLevel,
     setLogLevelMut,
   };
+}
+
+function formatChecked(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function UpdateSection({
+  updateStatus,
+  updateChecking,
+  checkUpdateMut,
+  updateAppMut,
+  onConfirmUpdate,
+}) {
+  const updateAvailable = updateStatus?.update_available ?? false;
+  const commitsBehind = updateStatus?.commits_behind ?? 0;
+  const lastChecked = formatChecked(updateStatus?.last_checked);
+  const checking = updateChecking || checkUpdateMut.isPending;
+
+  return (
+    <div>
+      {updateAvailable ? (
+        <>
+          <button
+            className="m-btn m-btn-primary"
+            style={{
+              width: "100%",
+              marginBottom: "0.5rem",
+              background: "#c47d00",
+              borderColor: "#c47d00",
+            }}
+            onClick={onConfirmUpdate}
+            disabled={updateAppMut.isPending || updateAppMut.isSuccess}
+          >
+            {updateAppMut.isSuccess ? "Rebooting…" : `⬆️ Update Available — Install & Reboot`}
+          </button>
+          <div style={{ color: "#f0a800", fontSize: "0.8rem", marginBottom: "0.5rem" }}>
+            {commitsBehind} commit{commitsBehind !== 1 ? "s" : ""} behind •{" "}
+            {updateStatus?.current_sha} → {updateStatus?.latest_sha}
+          </div>
+        </>
+      ) : (
+        <button
+          className="m-btn m-btn-neutral"
+          style={{ width: "100%", marginBottom: "0.5rem", opacity: updateStatus ? 0.6 : 1 }}
+          onClick={onConfirmUpdate}
+          disabled={updateAppMut.isPending || updateAppMut.isSuccess}
+        >
+          {updateAppMut.isSuccess ? "Rebooting…" : "⬆️ Update & Reboot"}
+        </button>
+      )}
+      {updateAppMut.isSuccess && (
+        <div style={{ color: "#5cb85c", fontSize: "0.8rem", marginBottom: "0.5rem" }}>
+          Update started — Pi will reboot shortly.
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: "0.25rem" }}>
+        <button
+          className="m-btn m-btn-neutral"
+          style={{ padding: "4px 10px", fontSize: "0.8rem" }}
+          disabled={checking}
+          onClick={() => checkUpdateMut.mutate()}
+        >
+          {checking ? "Checking…" : "Check for Update"}
+        </button>
+        {lastChecked && !checking && (
+          <span style={{ color: "#888", fontSize: "0.75rem" }}>
+            {updateStatus?.error
+              ? "Check failed"
+              : updateAvailable
+                ? "Update available"
+                : "Up to date"}{" "}
+            · checked {lastChecked}
+          </span>
+        )}
+      </div>
+      <div className="m-form-desc">Pulls latest code from git, re-runs setup, then reboots.</div>
+    </div>
+  );
 }
 
 export default function System() {
@@ -76,6 +171,9 @@ export default function System() {
     factoryResetWifiMut,
     forgetWifiMut,
     updateAppMut,
+    updateStatus,
+    updateChecking,
+    checkUpdateMut,
     devMode,
     currentLogLevel,
     setLogLevelMut,
@@ -147,25 +245,18 @@ export default function System() {
 
       <div className="m-card">
         <div className="m-card-title">Pi Actions</div>
+
+        <UpdateSection
+          updateStatus={updateStatus}
+          updateChecking={updateChecking}
+          checkUpdateMut={checkUpdateMut}
+          updateAppMut={updateAppMut}
+          onConfirmUpdate={() => setConfirmUpdate(true)}
+        />
+
         <button
           className="m-btn m-btn-neutral"
-          style={{ width: "100%", marginBottom: "0.5rem" }}
-          onClick={() => setConfirmUpdate(true)}
-          disabled={updateAppMut.isPending || updateAppMut.isSuccess}
-        >
-          {updateAppMut.isSuccess ? "Rebooting…" : "⬆️ Update & Reboot"}
-        </button>
-        {updateAppMut.isSuccess && (
-          <div style={{ color: "#5cb85c", fontSize: "0.8rem", marginBottom: "0.5rem" }}>
-            Update started — Pi will reboot shortly.
-          </div>
-        )}
-        <div className="m-form-desc" style={{ marginBottom: "0.75rem" }}>
-          Pulls latest code from git, re-runs setup, then reboots.
-        </div>
-        <button
-          className="m-btn m-btn-neutral"
-          style={{ width: "100%" }}
+          style={{ width: "100%", marginTop: "0.75rem" }}
           onClick={() => setConfirmRestart(true)}
         >
           🔄 Restart Pi

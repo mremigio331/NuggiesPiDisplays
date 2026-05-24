@@ -12,6 +12,8 @@ from .dev_mode import router as dev_mode_router
 from .forget_wifi import router as forget_wifi_router
 from .get_log_level import router as get_log_level_router
 from .update_log_level import router as update_log_level_router
+from .check_update import router as check_update_router
+from .update_status import router as update_status_router
 
 router = APIRouter(prefix="/system", tags=["system"])
 router.include_router(status_router)
@@ -21,6 +23,8 @@ router.include_router(stop_router)
 router.include_router(restart_router)
 router.include_router(update_router)
 router.include_router(update_app_router)
+router.include_router(check_update_router)
+router.include_router(update_status_router)
 router.include_router(factory_reset_router)
 router.include_router(factory_reset_wifi_router)
 router.include_router(dev_mode_router)

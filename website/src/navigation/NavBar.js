@@ -1,11 +1,20 @@
 import * as React from "react";
 import { StatusIndicator, TopNavigation } from "@cloudscape-design/components";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useApiCheck } from "../providers/APICheckProvider";
+import { getUpdateStatus } from "../services/API";
 
 export default function NavBar() {
   const navigate = useNavigate();
   const { apiCheckState } = useApiCheck();
+  const { data: updateStatus } = useQuery({
+    queryKey: ["updateStatus"],
+    queryFn: getUpdateStatus,
+    staleTime: 3600000,
+    retry: false,
+  });
+  const updateAvailable = updateStatus?.update_available ?? false;
 
   return (
     <TopNavigation
@@ -45,6 +54,7 @@ export default function NavBar() {
           iconName: "settings",
           ariaLabel: "System",
           title: "System",
+          badge: updateAvailable,
           onClick: () => navigate("/system"),
         },
       ]}
