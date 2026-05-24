@@ -1,4 +1,9 @@
-import sys
+import os, sys
+
+try:
+    os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(90))
+except Exception:
+    pass  # not root or unsupported
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))

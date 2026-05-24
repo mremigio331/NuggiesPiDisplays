@@ -331,6 +331,52 @@ SERVICE
 }
 
 # ---------------------------------------------------------------------------
+# WiFi power-save — disable so the WiFi chip doesn't cause periodic interrupts
+# that bleed into the RGB matrix timing.
+# ---------------------------------------------------------------------------
+disable_wifi_power_save() {
+    echo "--- Disabling WiFi power management..."
+    sudo tee /etc/systemd/system/nuggies-wifi-powersave.service > /dev/null <<SERVICE
+[Unit]
+Description=Disable WiFi power save (prevents RGB matrix bleed)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/iw wlan0 set power_save off
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+    sudo systemctl daemon-reload
+    sudo systemctl enable nuggies-wifi-powersave.service
+    sudo systemctl start  nuggies-wifi-powersave.service
+    echo "WiFi power save disabled."
+}
+
+# ---------------------------------------------------------------------------
+# isolcpus — dedicate CPU core 3 to the RGB matrix for glitch-free refresh.
+# ---------------------------------------------------------------------------
+setup_isolcpus() {
+    local CMDLINE=""
+    if [[ -f /boot/firmware/cmdline.txt ]]; then
+        CMDLINE="/boot/firmware/cmdline.txt"
+    else
+        CMDLINE="/boot/cmdline.txt"
+    fi
+
+    if grep -q "isolcpus" "$CMDLINE"; then
+        echo "isolcpus already set in $CMDLINE, skipping."
+        return
+    fi
+
+    echo "--- Adding isolcpus=3 to $CMDLINE..."
+    sudo sed -i 's/$/ isolcpus=3/' "$CMDLINE"
+    echo "isolcpus=3 added. Takes effect after reboot."
+}
+
+# ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
 install_system_packages
@@ -344,6 +390,8 @@ setup_logs
 install_frontend
 build_frontend
 install_wifi_setup_service
+disable_wifi_power_save
+setup_isolcpus
 init_settings
 verify_display
 

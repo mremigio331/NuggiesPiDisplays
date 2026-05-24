@@ -80,7 +80,11 @@ async def _finalize_after_connect() -> None:
 async def serve_spa(request: Request, full_path: str) -> Response:
     path = "/" + full_path
 
-    # Redirect captive-portal OS probes and bare root to the setup page.
+    # Android connectivity checks expect a real 204 — anything else confuses the detector.
+    if path in {"/generate_204", "/gen_204"}:
+        return Response(status_code=204)
+
+    # All other OS probes and bare root: redirect to setup page.
     if path in _CAPTIVE_PROBES or path == "/":
         return RedirectResponse("/wifi-setup", status_code=302)
 

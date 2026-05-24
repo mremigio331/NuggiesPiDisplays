@@ -71,13 +71,18 @@ log "No WiFi connection detected. Starting captive portal setup..."
 iptables -t nat -D PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8000 2>/dev/null || true
 log "Removed port-80 forward rule (if present)."
 
-# --- Remove any stale captive-portal dnsmasq config before hotspot starts ---
-# (Installing it before NM starts the shared connection can cause dnsmasq to fail)
-rm -f "$NM_DNSMASQ_DIR/captive-portal.conf"
-log "Cleared stale captive-portal dnsmasq config (if any)."
-
 # --- Stop system dnsmasq so NM's hotspot dnsmasq can bind to port 53 ---
 systemctl stop dnsmasq 2>/dev/null && log "Stopped system dnsmasq." || log "System dnsmasq not running (OK)."
+
+# --- Pre-install the catch-all dnsmasq config BEFORE the hotspot starts ---
+# iOS probes for a captive portal the instant it connects. If the DNS catch-all
+# isn't in place at that moment, iOS gets a DNS failure and decides there's no
+# portal — and won't show the popup. Installing before NM starts its dnsmasq
+# instance means the catch-all is active from the very first connection.
+mkdir -p "$NM_DNSMASQ_DIR"
+cp "$PROJECT_DIR/wifi_setup/ap_config/captive-portal.conf" \
+   "$NM_DNSMASQ_DIR/captive-portal.conf"
+log "Pre-installed captive-portal dnsmasq config."
 
 # --- Clean up any stale hotspot connection and release the interface ---
 nmcli connection delete "$AP_CON_NAME" 2>/dev/null && log "Removed stale $AP_CON_NAME connection." || true
@@ -113,13 +118,7 @@ if [[ -z "$AP_ADDR" ]]; then
     AP_ADDR="$AP_IP"
 fi
 
-# --- Install dnsmasq config NOW that the hotspot is up ---
-mkdir -p "$NM_DNSMASQ_DIR"
-cp "$PROJECT_DIR/wifi_setup/ap_config/captive-portal.conf" \
-   "$NM_DNSMASQ_DIR/captive-portal.conf"
-log "Installed captive-portal dnsmasq config."
-
-# Signal NM's dnsmasq to reload the new config
+# Signal NM's dnsmasq to reload in case it started before the config was written.
 pkill -HUP -f "dnsmasq" 2>/dev/null && log "Reloaded dnsmasq." || log "dnsmasq not running yet (OK)."
 
 log "Starting setup display on matrix..."
@@ -131,8 +130,8 @@ log "Starting captive portal on port 80..."
 # exec replaces this script with uvicorn — systemd then tracks uvicorn directly.
 # The setup display process will be orphaned when uvicorn takes over; systemd
 # will clean it up when the service stops.
+log "HTTP access logs available via: journalctl -u nuggies-wifi-setup.service -f"
 exec python3 -m uvicorn wifi_setup.captive_portal:app \
     --host 0.0.0.0 \
     --port 80 \
-    --log-level warning \
-    --no-access-log
+    --log-level info

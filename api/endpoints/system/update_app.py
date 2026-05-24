@@ -1,13 +1,9 @@
-import asyncio
 import logging
-import subprocess
-
 from fastapi import APIRouter, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-
 from helpers.dev_config import is_dev_mode
-from helpers.process import _PROJECT_ROOT
+from helpers.system import SystemManager
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -17,37 +13,12 @@ class UpdateRequest(BaseModel):
     run_setup: bool = True
 
 
-async def _do_update(run_setup: bool) -> None:
-    await asyncio.sleep(1)  # let the HTTP response go out first
-
-    logger.info("Running git pull...")
-    pull = subprocess.run(
-        ["git", "-C", str(_PROJECT_ROOT), "pull"],
-        capture_output=True,
-        text=True,
-    )
-    logger.info(f"git pull stdout: {pull.stdout.strip()}")
-    if pull.returncode != 0:
-        logger.warning(f"git pull stderr: {pull.stderr.strip()}")
-
-    if run_setup:
-        mode = "--dev" if is_dev_mode() else "--prod"
-        logger.info(f"Running setup.sh {mode}...")
-        subprocess.run(
-            ["sudo", "bash", str(_PROJECT_ROOT / "setup.sh"), mode],
-            cwd=str(_PROJECT_ROOT),
-        )
-
-    logger.info("Rebooting Pi after update...")
-    subprocess.run(["sudo", "reboot"])
-
-
 @router.post("/update-app")
 async def update_app(req: UpdateRequest, background_tasks: BackgroundTasks):
     """Pull latest code, optionally re-run setup, then reboot."""
     mode = "--dev" if is_dev_mode() else "--prod"
     logger.info(f"App update requested (run_setup={req.run_setup}, mode={mode})")
-    background_tasks.add_task(_do_update, req.run_setup)
+    background_tasks.add_task(SystemManager().update_app, req.run_setup)
     return JSONResponse(
         {
             "message": "Update started. Pi will reboot shortly.",

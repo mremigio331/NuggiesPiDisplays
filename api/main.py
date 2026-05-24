@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from helpers.config import read_settings
 from helpers.process import start_display
 from helpers.buttons import poll_buttons
+from helpers.wifi_state import WIFI_FLAG
 from middleware.service_log import ServiceLogMiddleware
 from endpoints.docs import router as docs_router
 from endpoints.home import router as home_router
@@ -32,7 +33,11 @@ async def lifespan(app: FastAPI):
     set_log_level(log_level)
     logger.info(f"Log level: {log_level}")
 
-    if settings.get("auto_start_display", True):
+    if not WIFI_FLAG.exists():
+        logger.info(
+            "WiFi not configured — skipping auto-start display (setup display is running)"
+        )
+    elif settings.get("auto_start_display", True):
         mode = settings.get("active_display")
         logger.debug(f"Auto-start enabled, active_display={mode}")
         if mode:
