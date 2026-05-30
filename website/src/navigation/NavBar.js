@@ -33,12 +33,19 @@ export default function NavBar() {
           iconName: "menu",
           items: [
             { id: "mta", text: "MTA" },
+            { id: "sports", text: "Sports" },
             { id: "stocks", text: "Stocks" },
             { id: "weather", text: "Weather" },
             { id: "clock", text: "Clock" },
           ],
           onItemClick: ({ detail }) => {
-            const routes = { mta: "/mta", stocks: "/stocks", weather: "/weather", clock: "/clock" };
+            const routes = {
+              mta: "/mta",
+              sports: "/sports",
+              stocks: "/stocks",
+              weather: "/weather",
+              clock: "/clock",
+            };
             if (routes[detail.id]) navigate(routes[detail.id]);
           },
         },

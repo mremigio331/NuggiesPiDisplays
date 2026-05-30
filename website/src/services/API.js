@@ -48,6 +48,14 @@ export const getStockInfo = (symbol) => handle(api.get(`/stonks/${symbol}/info`)
 export const getStockChart = (symbol, cycleKey) => handle(api.get(`/stonks/${symbol}/${cycleKey}`));
 export const getStockNow = () => handle(api.get("/stonks/now"));
 
+// Sports
+export const getNBAScoreboard = () => handle(api.get("/sports/nba/scoreboard"));
+export const getMLBScoreboard = () => handle(api.get("/sports/mlb/scoreboard"));
+export const getNHLScoreboard = () => handle(api.get("/sports/nhl/scoreboard"));
+export const getSportsSettings = () => handle(api.get("/sports/settings"));
+export const updateSportsSettings = (body) => handle(api.put("/sports/settings", body));
+export const getSportsNow = () => handle(api.get("/sports/now"));
+
 // Clock
 export const getClockSettings = () => handle(api.get("/clock/settings"));
 export const updateClockSettings = (body) => handle(api.put("/clock/settings", body));
