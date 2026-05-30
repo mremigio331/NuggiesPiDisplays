@@ -16,6 +16,6 @@ async def factory_reset_wifi():
         raise HTTPException(status_code=500, detail=str(e))
     return JSONResponse(
         {
-            "message": "Factory reset complete. Pi is rebooting — connect to NuggiesSetup WiFi to reconfigure."
+            "message": "Factory reset complete. Pi is rebooting — connect to NuggiesDisplay WiFi to reconfigure."
         }
     )

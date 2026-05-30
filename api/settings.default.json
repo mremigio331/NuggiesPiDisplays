@@ -41,5 +41,12 @@
     "use_ip_location": true,
     "units": "fahrenheit",
     "cycle_duration": 60
+  },
+
+  "sports": {
+    "sport": "nba",
+    "favorite_teams": [],
+    "cycle_interval_seconds": 10,
+    "display_mode": "focus"
   }
 }

@@ -1,6 +1,13 @@
 import React from "react";
 
-export default function GameSection({ title, showTopMargin = false, games, GameCard, favoriteTeams, activeEventIds }) {
+export default function GameSection({
+  title,
+  showTopMargin = false,
+  games,
+  GameCard,
+  favoriteTeams,
+  activeEventIds,
+}) {
   if (!games.length) return null;
 
   return (

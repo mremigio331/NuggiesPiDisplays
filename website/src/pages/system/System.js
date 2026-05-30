@@ -19,6 +19,10 @@ import {
 } from "../../services/API";
 import Modal from "../../components/shared/Modal";
 
+const SETUP_AP_SSID = "NuggiesDisplay";
+const SETUP_AP_PASSWORD = "SetUpNuggies";
+const LOCAL_HOSTNAME = "nuggies.local";
+
 function useSystem() {
   const qc = useQueryClient();
   const { data: status, isLoading } = useSystemStatus();
@@ -183,6 +187,7 @@ export default function System() {
   const [confirmResetWifi, setConfirmResetWifi] = React.useState(false);
   const [confirmForgetWifi, setConfirmForgetWifi] = React.useState(false);
   const [confirmUpdate, setConfirmUpdate] = React.useState(false);
+  const [showResetWifiInstructions, setShowResetWifiInstructions] = React.useState(false);
 
   return (
     <div>
@@ -334,11 +339,26 @@ export default function System() {
             </button>
             <div className="m-form-desc" style={{ marginTop: 6 }}>
               Resets all settings, removes all saved WiFi networks, and reboots. You'll need to
-              reconnect via the NuggiesSetup network.
+              reconnect via the {SETUP_AP_SSID} network.
             </div>
           </div>
         </div>
       </div>
+
+      {factoryResetWifiMut.isSuccess && (
+        <div
+          className="m-card"
+          style={{ borderColor: "#4a3000", background: "#1f1a10", marginTop: "0.75rem" }}
+        >
+          <div className="m-card-title" style={{ color: "#f0a800" }}>
+            Reboot in progress
+          </div>
+          <div style={{ color: "#ddd", fontSize: "0.88rem", lineHeight: 1.7 }}>
+            This page will disconnect shortly. Reconnect to <strong>{SETUP_AP_SSID}</strong>
+            {" "}and open <strong>{LOCAL_HOSTNAME}</strong> to continue setup.
+          </div>
+        </div>
+      )}
 
       <Modal
         visible={confirmUpdate}
@@ -465,8 +485,15 @@ export default function System() {
               style={{ background: "#5a0a0a" }}
               disabled={factoryResetWifiMut.isPending}
               onClick={() => {
-                factoryResetWifiMut.mutate();
-                setConfirmResetWifi(false);
+                factoryResetWifiMut.mutate(undefined, {
+                  onSuccess: () => {
+                    setConfirmResetWifi(false);
+                    setShowResetWifiInstructions(true);
+                  },
+                  onError: () => {
+                    setConfirmResetWifi(false);
+                  },
+                });
               }}
             >
               {factoryResetWifiMut.isPending ? "Wiping…" : "Factory Reset"}
@@ -489,9 +516,46 @@ export default function System() {
           <li>Reboot the Pi</li>
         </ul>
         <div style={{ color: "#aaa", fontSize: "0.8rem", marginTop: 10 }}>
-          After reboot, connect to the <strong style={{ color: "#fff" }}>NuggiesSetup</strong> WiFi
-          network to reconfigure.
+          After reboot, connect to the <strong style={{ color: "#fff" }}>{SETUP_AP_SSID}</strong>
+          {" "}WiFi network to reconfigure.
         </div>
+      </Modal>
+
+      <Modal
+        visible={showResetWifiInstructions}
+        onDismiss={() => setShowResetWifiInstructions(false)}
+        header="Factory Reset Started"
+        footer={
+          <div className="m-btn-row">
+            <button className="m-btn m-btn-primary" onClick={() => setShowResetWifiInstructions(false)}>
+              Got It
+            </button>
+          </div>
+        }
+      >
+        <div style={{ color: "#e05050", fontSize: "0.9rem", marginBottom: 8 }}>
+          The Pi is rebooting now. This page will lose connection.
+        </div>
+        <ol
+          style={{
+            color: "#f0a800",
+            fontSize: "0.85rem",
+            paddingLeft: 18,
+            margin: 0,
+            lineHeight: 1.8,
+          }}
+        >
+          <li>Open your phone/laptop WiFi list</li>
+          <li>
+            Join <strong style={{ color: "#fff" }}>{SETUP_AP_SSID}</strong>
+          </li>
+          <li>
+            Password: <strong style={{ color: "#fff" }}>{SETUP_AP_PASSWORD}</strong>
+          </li>
+          <li>
+            Open <strong style={{ color: "#fff" }}>{LOCAL_HOSTNAME}</strong>
+          </li>
+        </ol>
       </Modal>
     </div>
   );

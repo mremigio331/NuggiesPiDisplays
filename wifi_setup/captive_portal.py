@@ -21,11 +21,13 @@ _CAPTIVE_PROBES = frozenset(
     {
         "/hotspot-detect.html",
         "/library/test/success.html",
+        "/success.txt",
         "/generate_204",
         "/gen_204",
         "/connecttest.txt",
         "/ncsi.txt",
         "/redirect",
+        "/fwlink",
         "/fwlink/",
         "/wpad.dat",
     }
@@ -78,7 +80,7 @@ async def _finalize_after_connect() -> None:
 
 @app.get("/{full_path:path}")
 async def serve_spa(request: Request, full_path: str) -> Response:
-    path = "/" + full_path
+    path = "/" + full_path.strip("/") if full_path else "/"
 
     # Android connectivity checks expect a real 204 — anything else confuses the detector.
     if path in {"/generate_204", "/gen_204"}:
@@ -94,9 +96,13 @@ async def serve_spa(request: Request, full_path: str) -> Response:
         if candidate.is_file():
             return FileResponse(str(candidate))
 
-    # SPA fallback — let React Router handle the path.
+    # Keep the setup route as an SPA page.
     if INDEX_HTML.exists():
-        return FileResponse(str(INDEX_HTML))
+        if path == "/wifi-setup":
+            return FileResponse(str(INDEX_HTML))
+        # Unknown paths are almost always probe URLs from clients/OSes.
+        # Force them onto the setup page instead of React's 404 route.
+        return RedirectResponse("/wifi-setup", status_code=302)
 
     return Response(
         "WiFi Setup Portal — React build not found. Run 'npm run build' in website/.",
