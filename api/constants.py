@@ -1,4 +1,4 @@
-DISPLAY_MODES = ["clock", "mta", "stocks", "weather"]
+DISPLAY_MODES = ["clock", "mta", "sports", "stocks", "weather"]
 
 # Button wiring (Adafruit STEMMA tactile button, 3-wire: red/black/white)
 #

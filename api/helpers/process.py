@@ -12,9 +12,10 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _PID_FILE = _PROJECT_ROOT / "display.pid"
 
 _DISPLAY_SCRIPTS = {
-    "stocks": _PROJECT_ROOT / "display" / "stocks" / "main.py",
-    "mta": _PROJECT_ROOT / "display" / "mta" / "main.py",
     "clock": _PROJECT_ROOT / "display" / "clock" / "main.py",
+    "mta": _PROJECT_ROOT / "display" / "mta" / "main.py",
+    "sports": _PROJECT_ROOT / "display" / "sports" / "main.py",
+    "stocks": _PROJECT_ROOT / "display" / "stocks" / "main.py",
     "weather": _PROJECT_ROOT / "display" / "weather" / "main.py",
 }
 

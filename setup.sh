@@ -64,10 +64,10 @@ install_python_packages() {
     pip install -r requirements-api.txt --break-system-packages
 
     echo "--- Installing Python packages (captive portal — root, for systemd service)..."
-    sudo pip install -r requirements-api.txt --break-system-packages --upgrade
+    sudo pip install -r requirements-api.txt --break-system-packages --upgrade --ignore-installed
 
     echo "--- Installing Python packages (display — root, for sudo python3)..."
-    sudo pip install -r requirements-display.txt --break-system-packages --upgrade
+    sudo pip install -r requirements-display.txt --break-system-packages --upgrade --ignore-installed
 }
 
 # ---------------------------------------------------------------------------
@@ -128,9 +128,10 @@ setup_sudoers() {
     REBOOT=$(command -v reboot 2>/dev/null || echo /usr/sbin/reboot)
     cat > /tmp/nuggies-display-sudoers <<EOF
 # Display scripts
-$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/stocks/main.py
-$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/mta/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/clock/main.py
+$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/mta/main.py
+$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/sports/main.py
+$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/stocks/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/weather/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/setup/main.py
 # System commands called by the API

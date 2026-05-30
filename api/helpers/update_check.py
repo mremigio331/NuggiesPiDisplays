@@ -29,7 +29,9 @@ class UpdateStatus:
             "current_sha": self.current_sha,
             "latest_sha": self.latest_sha,
             "branch": self.branch,
-            "last_checked": self.last_checked.isoformat() if self.last_checked else None,
+            "last_checked": (
+                self.last_checked.isoformat() if self.last_checked else None
+            ),
             "error": self.error,
         }
 
@@ -58,14 +60,16 @@ def _fetch_and_compare() -> UpdateStatus:
     def _rev(ref: str) -> str:
         r = subprocess.run(
             ["git", "-C", str(_PROJECT_ROOT), "rev-parse", ref],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         return r.stdout.strip()
 
     def _count(range_: str) -> int:
         r = subprocess.run(
             ["git", "-C", str(_PROJECT_ROOT), "rev-list", range_, "--count"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         try:
             return int(r.stdout.strip())
@@ -74,7 +78,8 @@ def _fetch_and_compare() -> UpdateStatus:
 
     branch = subprocess.run(
         ["git", "-C", str(_PROJECT_ROOT), "rev-parse", "--abbrev-ref", "HEAD"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
 
     local = _rev("HEAD")
