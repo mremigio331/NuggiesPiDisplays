@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { restartWifiService } from "../../services/API";
 
 const SIGNAL_BARS = (signal) => {
   if (signal >= 75) return "████";
@@ -20,7 +21,7 @@ function useNetworks() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setNetworks(await res.json());
     } catch (e) {
-      setError("Could not load networks. Is the Pi in setup mode?");
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -38,7 +39,29 @@ export default function WifiSetup() {
   const [password, setPassword] = useState("");
   const [phase, setPhase] = useState("select"); // "select" | "connecting" | "success" | "error"
   const [errorMsg, setErrorMsg] = useState("");
+  const [restarting, setRestarting] = useState(false);
+  const [countdown, setCountdown] = useState(null);
   const passwordRef = useRef(null);
+
+  async function handleRestartWifi() {
+    setRestarting(true);
+    try {
+      await restartWifiService();
+    } catch {
+      // Fire-and-forget: service restart drops connection, so errors are expected
+    }
+    let secs = 5;
+    setCountdown(secs);
+    const interval = setInterval(() => {
+      secs -= 1;
+      if (secs <= 0) {
+        clearInterval(interval);
+        window.location.reload();
+      } else {
+        setCountdown(secs);
+      }
+    }, 1000);
+  }
 
   const selectedNetwork = networks.find((n) => n.ssid === selectedSsid);
 
@@ -85,6 +108,42 @@ export default function WifiSetup() {
     setPassword("");
     setErrorMsg("");
     refresh();
+  }
+
+  // ── Network load error screen ───────────────────────────────────────────
+  if (error && !loading) {
+    return (
+      <div>
+        <div className="m-section-title">WiFi Setup</div>
+        <div className="m-card" style={{ textAlign: "center" }}>
+          <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🤔</div>
+          <div className="m-card-title">Hmm, something might have gone wrong</div>
+          <div style={{ color: "#aaa", fontSize: "0.9rem", marginBottom: "1.5rem" }}>
+            The WiFi network list couldn&apos;t be loaded. The Pi might already be connected to a
+            network, or the setup service may have stopped.
+          </div>
+          {countdown !== null ? (
+            <div style={{ color: "#f0a800", fontSize: "1rem", fontWeight: 600 }}>
+              Page will refresh in {countdown} second{countdown !== 1 ? "s" : ""}…
+            </div>
+          ) : (
+            <>
+              <div style={{ color: "#ccc", fontSize: "0.9rem", marginBottom: "1rem" }}>
+                Would you like to restart the WiFi service?
+              </div>
+              <button
+                className="m-btn m-btn-primary"
+                style={{ minWidth: "180px" }}
+                disabled={restarting}
+                onClick={handleRestartWifi}
+              >
+                {restarting ? "Restarting…" : "Restart WiFi Service"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
   }
 
   // ── Success screen ──────────────────────────────────────────────────────
@@ -193,9 +252,7 @@ export default function WifiSetup() {
           </button>
         </div>
 
-        {error && <div style={{ color: "#d9534f", fontSize: "0.85rem" }}>{error}</div>}
-
-        {!loading && !error && networks.length === 0 && (
+        {!loading && networks.length === 0 && (
           <div style={{ color: "#aaa", fontSize: "0.85rem" }}>
             No networks found. Try refreshing.
           </div>

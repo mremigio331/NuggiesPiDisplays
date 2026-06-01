@@ -21,6 +21,11 @@ class SystemManager:
             logger.error(f"Reboot failed: {err}")
             raise RuntimeError(f"Reboot failed: {err}")
 
+    def wifi_service_restart(self) -> None:
+        subprocess.Popen(
+            ["sudo", "systemctl", "restart", "nuggies-wifi-setup.service"],
+        )
+
     def stop_display(self) -> None:
         try:
             _stop_display()

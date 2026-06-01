@@ -4,6 +4,7 @@ from .display import router as display_router
 from .start import router as start_router
 from .stop import router as stop_router
 from .restart import router as restart_router
+from .restart_wifi_service import router as restart_wifi_service_router
 from .update import router as update_router
 from .update_app import router as update_app_router
 from .factory_reset import router as factory_reset_router
@@ -21,6 +22,7 @@ router.include_router(display_router)
 router.include_router(start_router)
 router.include_router(stop_router)
 router.include_router(restart_router)
+router.include_router(restart_wifi_service_router)
 router.include_router(update_router)
 router.include_router(update_app_router)
 router.include_router(check_update_router)

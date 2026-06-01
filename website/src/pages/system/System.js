@@ -354,8 +354,8 @@ export default function System() {
             Reboot in progress
           </div>
           <div style={{ color: "#ddd", fontSize: "0.88rem", lineHeight: 1.7 }}>
-            This page will disconnect shortly. Reconnect to <strong>{SETUP_AP_SSID}</strong>
-            {" "}and open <strong>{LOCAL_HOSTNAME}</strong> to continue setup.
+            This page will disconnect shortly. Reconnect to <strong>{SETUP_AP_SSID}</strong> and
+            open <strong>{LOCAL_HOSTNAME}</strong> to continue setup.
           </div>
         </div>
       )}
@@ -516,8 +516,8 @@ export default function System() {
           <li>Reboot the Pi</li>
         </ul>
         <div style={{ color: "#aaa", fontSize: "0.8rem", marginTop: 10 }}>
-          After reboot, connect to the <strong style={{ color: "#fff" }}>{SETUP_AP_SSID}</strong>
-          {" "}WiFi network to reconfigure.
+          After reboot, connect to the <strong style={{ color: "#fff" }}>{SETUP_AP_SSID}</strong>{" "}
+          WiFi network to reconfigure.
         </div>
       </Modal>
 
@@ -527,7 +527,10 @@ export default function System() {
         header="Factory Reset Started"
         footer={
           <div className="m-btn-row">
-            <button className="m-btn m-btn-primary" onClick={() => setShowResetWifiInstructions(false)}>
+            <button
+              className="m-btn m-btn-primary"
+              onClick={() => setShowResetWifiInstructions(false)}
+            >
               Got It
             </button>
           </div>

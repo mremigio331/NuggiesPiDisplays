@@ -18,6 +18,7 @@ export const factoryReset = () => handle(api.post("/system/factory-reset"));
 export const factoryResetWifi = () => handle(api.post("/system/factory-reset-wifi"));
 export const getDevMode = () => handle(api.get("/system/dev-mode"));
 export const forgetWifi = () => handle(api.post("/system/forget-wifi"));
+export const restartWifiService = () => handle(api.post("/system/restart-wifi-service"));
 export const updateApp = (runSetup = true) =>
   handle(api.post("/system/update-app", { run_setup: runSetup }));
 export const getLogLevel = () => handle(api.get("/system/log-level"));
