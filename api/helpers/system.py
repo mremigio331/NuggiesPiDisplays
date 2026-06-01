@@ -40,8 +40,8 @@ class SystemManager:
         logger.info("Factory reset complete")
 
     def factory_reset_wifi(self) -> None:
-        """Reset settings, mark WiFi for wipe on next boot, then reboot."""
-        logger.info("Full factory reset: settings + WiFi wipe marker + reboot")
+        """Reset settings, mark WiFi for wipe, then restart captive-portal service."""
+        logger.info("Full factory reset: settings + WiFi wipe + service restart")
         self.stop_display()
         self.reset_settings()
         try:
@@ -52,7 +52,17 @@ class SystemManager:
         except Exception as e:
             logger.error(f"Failed to write reset marker: {e}")
             raise
-        self.reboot()
+        # Detach so the HTTP response flushes before the service restart
+        # wipes the WiFi connection and disrupts the network.
+        subprocess.Popen(
+            [
+                "sudo",
+                "bash",
+                "-c",
+                "sleep 2 && systemctl restart nuggies-wifi-setup.service",
+            ],
+            start_new_session=True,
+        )
 
     async def update_app(self, run_setup: bool = True) -> None:
         """Pull latest code, optionally re-run setup, then reboot."""
