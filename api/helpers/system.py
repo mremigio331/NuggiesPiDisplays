@@ -55,12 +55,7 @@ class SystemManager:
         # Detach so the HTTP response flushes before the service restart
         # wipes the WiFi connection and disrupts the network.
         subprocess.Popen(
-            [
-                "sudo",
-                "bash",
-                "-c",
-                "sleep 2 && systemctl restart nuggies-wifi-setup.service",
-            ],
+            ["sudo", "systemctl", "restart", "nuggies-wifi-setup.service"],
             start_new_session=True,
         )
 

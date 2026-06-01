@@ -126,6 +126,7 @@ setup_sudoers() {
     PYTHON=$(command -v python3)
     BASH=$(command -v bash)
     REBOOT=$(command -v reboot 2>/dev/null || echo /usr/sbin/reboot)
+    SYSTEMCTL=$(command -v systemctl 2>/dev/null || echo /usr/bin/systemctl)
     cat > /tmp/nuggies-display-sudoers <<EOF
 # Display scripts
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/clock/main.py
@@ -137,6 +138,7 @@ $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/setup/main.py
 # System commands called by the API
 $USER ALL=(ALL) NOPASSWD: $BASH $SCRIPT_DIR/setup.sh
 $USER ALL=(ALL) NOPASSWD: $REBOOT
+$USER ALL=(ALL) NOPASSWD: $SYSTEMCTL restart nuggies-wifi-setup.service
 EOF
     sudo install -m 0440 /tmp/nuggies-display-sudoers "$SUDOERS_FILE"
     rm /tmp/nuggies-display-sudoers
