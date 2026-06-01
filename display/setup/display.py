@@ -39,16 +39,18 @@ def run(ssid: str, password: str):
         options.parallel = 1
         options.hardware_mapping = "adafruit-hat"
         options.gpio_slowdown = 2
-        options.pwm_lsb_nanoseconds = 200
+        options.pwm_bits = (
+            1  # static screen — no PWM dithering needed, eliminates flicker
+        )
         matrix = RGBMatrix(options=options)
     except Exception as e:
         print(f"Matrix init failed: {e}", file=sys.stderr, flush=True)
         while True:
             time.sleep(60)
 
-    cyan = graphics.Color(0, 200, 255)
+    cyan = graphics.Color(0, 255, 255)
     white = graphics.Color(255, 255, 255)
-    yellow = graphics.Color(255, 200, 0)
+    yellow = graphics.Color(255, 255, 0)
 
     canvas = matrix.CreateFrameCanvas()
     canvas.Clear()
