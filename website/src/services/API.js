@@ -53,6 +53,9 @@ export const getStockNow = () => handle(api.get("/stonks/now"));
 export const getNBAScoreboard = () => handle(api.get("/sports/nba/scoreboard"));
 export const getMLBScoreboard = () => handle(api.get("/sports/mlb/scoreboard"));
 export const getNHLScoreboard = () => handle(api.get("/sports/nhl/scoreboard"));
+export const getSoccerScoreboard = (league = "fifa.world") =>
+  handle(api.get("/sports/soccer/scoreboard", { params: { league } }));
+export const getSoccerLeagues = () => handle(api.get("/sports/soccer/leagues"));
 export const getSportsSettings = () => handle(api.get("/sports/settings"));
 export const updateSportsSettings = (body) => handle(api.put("/sports/settings", body));
 export const getSportsNow = () => handle(api.get("/sports/now"));

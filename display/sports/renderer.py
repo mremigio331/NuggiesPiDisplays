@@ -1156,9 +1156,11 @@ def _render_soccer_left_panel(canvas, game: dict) -> None:
 
 
 def _render_soccer_right_stats(canvas, game: dict, details: dict | None) -> None:
-    """Right panel — possession / shots / SOG comparison."""
+    """Right panel — yellow cards / red cards / shots comparison."""
     away_col = _team_color(game.get("away_color", "ffffff"))
     home_col = _team_color(game.get("home_color", "ffffff"))
+    yellow = _color(255, 220, 0)
+    red = _color(220, 40, 0)
     gray = _color(100, 100, 100)
 
     d = details or {}
@@ -1166,16 +1168,16 @@ def _render_soccer_right_stats(canvas, game: dict, details: dict | None) -> None
     home_s = d.get("home", {}).get("stats", {})
 
     rows = [
-        ("POS", "possession"),
-        ("SHT", "shots"),
-        ("SOG", "sog"),
+        ("YC", "yellows", yellow),
+        ("RC", "reds", red),
+        ("SHT", "shots", gray),
     ]
 
-    for label, key, y in [(r[0], r[1], 12 + i * 8) for i, r in enumerate(rows)]:
-        aval = str(away_s.get(key, "-"))[:4]
-        hval = str(home_s.get(key, "-"))[:4]
+    for label, key, label_col, y in [(r[0], r[1], r[2], 12 + i * 8) for i, r in enumerate(rows)]:
+        aval = str(away_s.get(key, "0"))[:4]
+        hval = str(home_s.get(key, "0"))[:4]
         _draw_text(canvas, aval, RIGHT_X + 1, y, away_col)
-        _draw_text(canvas, label, _center_x(label, RIGHT_X, RIGHT_W), y, gray)
+        _draw_text(canvas, label, _center_x(label, RIGHT_X, RIGHT_W), y, label_col)
         _draw_text(canvas, hval, MATRIX_W - len(hval) * _CW, y, home_col)
 
 
@@ -1188,12 +1190,8 @@ def _render_soccer_right_goals(canvas, game: dict, details: dict | None) -> None
 
     goals = (details or {}).get("goals", [])
 
-    _draw_text(canvas, "GOALS", _center_x("GOALS", RIGHT_X, RIGHT_W), 5, white)
-    for x in range(RIGHT_X, MATRIX_W):
-        canvas.SetPixel(x, 7, 40, 40, 40)
-
     if not goals:
-        _draw_text(canvas, "0 - 0", _center_x("0 - 0", RIGHT_X, RIGHT_W), 20, gray)
+        _draw_text(canvas, "No Goals", _center_x("No Goals", RIGHT_X, RIGHT_W), 16, gray)
         return
 
     # Show up to 4 goals, paginate if more
@@ -1205,7 +1203,8 @@ def _render_soccer_right_goals(canvas, game: dict, details: dict | None) -> None
 
     for goal, y in zip(page_goals, [13, 19, 25, 31]):
         scorer = goal.get("scorer", "?")[:6]
-        t = goal.get("time", "")[:4]
+        # Just the minute number, 2 digits max (e.g. "21" not "21'")
+        t = goal.get("time", "").replace("'", "").strip()[:2]
         side = goal.get("side", "away")
         col = away_col if side == "away" else home_col
         _draw_text(canvas, scorer, RIGHT_X + 1, y, col)

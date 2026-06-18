@@ -29,6 +29,7 @@ export default function SportsPageHeader({ sport, isPending, onSportChange, onOp
         <option value="nba">NBA</option>
         <option value="mlb">MLB</option>
         <option value="nhl">NHL</option>
+        <option value="soccer">Soccer</option>
       </select>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

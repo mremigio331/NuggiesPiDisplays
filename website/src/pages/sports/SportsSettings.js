@@ -54,6 +54,7 @@ export default function SportsSettings() {
   const favTeams = settings?.favorite_teams ?? [];
   const displayMode = settings?.display_mode ?? "focus";
   const sport = settings?.sport ?? "nba";
+  const soccerLeague = settings?.soccer_league ?? "fifa.world";
 
   function toggleTeam(abbr) {
     const next = favTeams.includes(abbr) ? favTeams.filter((t) => t !== abbr) : [...favTeams, abbr];
@@ -105,11 +106,42 @@ export default function SportsSettings() {
           >
             MLB
           </button>
+          <button
+            className={`m-btn ${sport === "nhl" ? "m-btn-active" : "m-btn-neutral"}`}
+            disabled={mut.isPending}
+            onClick={() => mut.mutate({ sport: "nhl" })}
+          >
+            NHL
+          </button>
+          <button
+            className={`m-btn ${sport === "soccer" ? "m-btn-active" : "m-btn-neutral"}`}
+            disabled={mut.isPending}
+            onClick={() => mut.mutate({ sport: "soccer" })}
+          >
+            Soccer
+          </button>
         </div>
         <div className="m-form-desc">
-          Switches the matrix display and scoreboard between NBA and MLB.
+          Switches the matrix display and scoreboard between sports.
         </div>
       </div>
+
+      {/* Soccer league selection — only shown when soccer is active */}
+      {sport === "soccer" && (
+        <div className="m-card">
+          <div className="m-card-title">Soccer League</div>
+          <div className="m-btn-row" style={{ marginBottom: 8 }}>
+            <button
+              className={`m-btn ${soccerLeague === "fifa.world" ? "m-btn-active" : "m-btn-neutral"}`}
+              disabled={mut.isPending}
+              onClick={() => mut.mutate({ soccer_league: "fifa.world" })}
+            >
+              FIFA World Cup
+            </button>
+          </div>
+          <div className="m-form-desc">Select which soccer league to display on the matrix.</div>
+        </div>
+      )}
 
       {/* Display mode */}
       <div className="m-card">

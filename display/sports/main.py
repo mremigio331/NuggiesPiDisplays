@@ -219,10 +219,10 @@ def run() -> None:
             state = game.get("state", "pre")
 
             details: dict | None = None
-            fetch_details = event_id and (
+            should_fetch_details = event_id and (
                 state == "post" or (cfg["live_details"] and state == "in")
             )
-            if fetch_details:
+            if should_fetch_details:
                 cached = details_cache.get(event_id)
                 if not cached or (now - cached[0]) >= DETAILS_TTL:
                     logger.debug(

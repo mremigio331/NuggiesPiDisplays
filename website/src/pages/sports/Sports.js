@@ -5,6 +5,7 @@ import {
   getNBAScoreboard,
   getMLBScoreboard,
   getNHLScoreboard,
+  getSoccerScoreboard,
   getSportsSettings,
   updateSportsSettings,
   getSportsNow,
@@ -12,6 +13,7 @@ import {
 import NBAGameCard from "../../components/sports/NBAGameCard";
 import MLBGameCard from "../../components/sports/MLBGameCard";
 import NHLGameCard from "../../components/sports/NHLGameCard";
+import SoccerGameCard from "../../components/sports/SoccerGameCard";
 import SportsPageHeader from "../../components/sports/SportsPageHeader";
 import MatrixDisplayModeToggle from "../../components/sports/MatrixDisplayModeToggle";
 import GameSection from "../../components/sports/GameSection";
@@ -29,6 +31,7 @@ export default function Sports() {
   const sport = settings?.sport ?? "nba";
   const displayMode = settings?.display_mode ?? "focus";
   const favoriteTeams = settings?.favorite_teams ?? [];
+  const soccerLeague = settings?.soccer_league ?? "fifa.world";
 
   const modeMut = useMutation({
     mutationFn: updateSportsSettings,
@@ -53,6 +56,12 @@ export default function Sports() {
       queryFn: getNHLScoreboard,
       Card: NHLGameCard,
       label: "NHL",
+    },
+    soccer: {
+      queryKey: ["soccerScoreboard", soccerLeague],
+      queryFn: () => getSoccerScoreboard(soccerLeague),
+      Card: SoccerGameCard,
+      label: "FIFA World Cup",
     },
   };
   const {
