@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import subprocess
 
 from helpers.config import reset_settings as _reset_settings
@@ -12,10 +13,18 @@ logger = logging.getLogger(__name__)
 _FACTORY_WIFI_RESET = _PROJECT_ROOT / ".factory_wifi_reset"
 
 
+def _privileged_command(*args: str) -> list[str]:
+    # If already root (e.g., service user), run command directly.
+    if os.geteuid() == 0:
+        return list(args)
+    # -n prevents hanging on password prompts in HTTP request handlers.
+    return ["sudo", "-n", *args]
+
+
 class SystemManager:
     def reboot(self) -> None:
         logger.info("Rebooting Pi")
-        result = subprocess.run(["sudo", "reboot"], capture_output=True)
+        result = subprocess.run(_privileged_command("reboot"), capture_output=True)
         if result.returncode != 0:
             err = result.stderr.decode().strip()
             logger.error(f"Reboot failed: {err}")
@@ -23,7 +32,7 @@ class SystemManager:
 
     def wifi_service_restart(self) -> None:
         subprocess.Popen(
-            ["sudo", "systemctl", "restart", "nuggies-wifi-setup.service"],
+            _privileged_command("systemctl", "restart", "nuggies-wifi-setup.service"),
         )
 
     def stop_display(self) -> None:
@@ -60,7 +69,7 @@ class SystemManager:
         # Detach so the HTTP response flushes before the service restart
         # wipes the WiFi connection and disrupts the network.
         subprocess.Popen(
-            ["sudo", "systemctl", "restart", "nuggies-wifi-setup.service"],
+            _privileged_command("systemctl", "restart", "nuggies-wifi-setup.service"),
             start_new_session=True,
         )
 
@@ -82,7 +91,7 @@ class SystemManager:
             mode = "--dev" if is_dev_mode() else "--prod"
             logger.info(f"Running setup.sh {mode}...")
             subprocess.run(
-                ["sudo", "bash", str(_PROJECT_ROOT / "setup.sh"), mode],
+                _privileged_command("bash", str(_PROJECT_ROOT / "setup.sh"), mode),
                 cwd=str(_PROJECT_ROOT),
             )
 

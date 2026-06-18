@@ -6,18 +6,21 @@ USER="${SUDO_USER:-$(whoami)}"
 RGBMATRIX_REPO="/tmp/rpi-rgb-led-matrix"
 
 MODE=""
+SUBCOMMAND=""
 for arg in "$@"; do
   case "$arg" in
-    --dev)  MODE="dev"  ;;
-    --prod) MODE="prod" ;;
+    --dev)   MODE="dev"  ;;
+    --prod)  MODE="prod" ;;
+    --update)  SUBCOMMAND="update" ;;
   esac
 done
 
-if [[ -z "$MODE" ]]; then
-  echo "Usage: bash setup.sh --dev | --prod"
+if [[ -z "$MODE" && -z "$SUBCOMMAND" ]]; then
+  echo "Usage: bash setup.sh --dev | --prod | --update"
   echo ""
-  echo "  --dev   Screen sessions via cron (API + webpack dev server)"
-  echo "  --prod  Systemd service (API serves built React app)"
+  echo "  --dev     Full install: screen sessions (API + webpack dev server)"
+  echo "  --prod    Full install: systemd service (API serves built React app)"
+  echo "  --update  Pull latest code, reinstall deps, reapply sudoers"
   exit 1
 fi
 
@@ -139,6 +142,11 @@ $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/setup/main.py
 $USER ALL=(ALL) NOPASSWD: $BASH $SCRIPT_DIR/setup.sh
 $USER ALL=(ALL) NOPASSWD: $REBOOT
 $USER ALL=(ALL) NOPASSWD: $SYSTEMCTL restart nuggies-wifi-setup.service
+# Kill/sweep display processes (which run as root via sudo)
+$USER ALL=(ALL) NOPASSWD: /bin/kill
+$USER ALL=(ALL) NOPASSWD: /usr/bin/kill
+$USER ALL=(ALL) NOPASSWD: /usr/bin/pkill
+$USER ALL=(ALL) NOPASSWD: /usr/bin/pgrep
 EOF
     sudo install -m 0440 /tmp/nuggies-display-sudoers "$SUDOERS_FILE"
     rm /tmp/nuggies-display-sudoers
@@ -378,6 +386,41 @@ setup_isolcpus() {
     sudo sed -i 's/$/ isolcpus=3/' "$CMDLINE"
     echo "isolcpus=3 added. Takes effect after reboot."
 }
+
+# ---------------------------------------------------------------------------
+# Update — pull latest code, reinstall deps, reapply sudoers
+# ---------------------------------------------------------------------------
+run_update() {
+    echo "========================================="
+    echo " Nuggies Pi Displays — update"
+    echo "========================================="
+
+    echo "--- Pulling latest code..."
+    git -C "$SCRIPT_DIR" pull
+
+    echo "--- Installing Python dependencies..."
+    pip3 install -r "$SCRIPT_DIR/requirements-api.txt"
+    pip3 install -r "$SCRIPT_DIR/requirements-display.txt"
+
+    echo "--- Installing frontend dependencies..."
+    cd "$SCRIPT_DIR/website"
+    npm install
+    cd "$SCRIPT_DIR"
+
+    echo "--- Reapplying sudoers..."
+    setup_sudoers
+
+    echo ""
+    echo "Update complete."
+    echo "The API will reload automatically if running with --reload."
+    echo "If running as a systemd service, restart with:"
+    echo "  sudo systemctl restart nuggies-api.service"
+}
+
+if [[ "$SUBCOMMAND" == "update" ]]; then
+    run_update
+    exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # Run
