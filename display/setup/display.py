@@ -38,7 +38,7 @@ def run(ssid: str, password: str):
         options.chain_length = 1
         options.parallel = 1
         options.hardware_mapping = "adafruit-hat"
-        options.gpio_slowdown = 2
+        options.gpio_slowdown = 4
         options.pwm_bits = (
             1  # static screen — no PWM dithering needed, eliminates flicker
         )

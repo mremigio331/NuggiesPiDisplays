@@ -2,6 +2,13 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Re-exec as root if not already — ensures all internal sudo calls succeed
+# without password prompts (important when triggered from the API or --update).
+if [[ $EUID -ne 0 ]]; then
+    exec sudo bash "$0" "$@"
+fi
+
 USER="${SUDO_USER:-$(whoami)}"
 RGBMATRIX_REPO="/tmp/rpi-rgb-led-matrix"
 
@@ -130,6 +137,7 @@ setup_sudoers() {
     BASH=$(command -v bash)
     REBOOT=$(command -v reboot 2>/dev/null || echo /usr/sbin/reboot)
     SYSTEMCTL=$(command -v systemctl 2>/dev/null || echo /usr/bin/systemctl)
+    rm -f /tmp/nuggies-display-sudoers
     cat > /tmp/nuggies-display-sudoers <<EOF
 # Display scripts
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/clock/main.py
@@ -148,8 +156,8 @@ $USER ALL=(ALL) NOPASSWD: /usr/bin/kill
 $USER ALL=(ALL) NOPASSWD: /usr/bin/pkill
 $USER ALL=(ALL) NOPASSWD: /usr/bin/pgrep
 EOF
-    sudo install -m 0440 /tmp/nuggies-display-sudoers "$SUDOERS_FILE"
-    rm /tmp/nuggies-display-sudoers
+    install -m 0440 /tmp/nuggies-display-sudoers "$SUDOERS_FILE"
+    rm -f /tmp/nuggies-display-sudoers
     echo "Sudoers entry written to $SUDOERS_FILE"
 }
 
@@ -388,6 +396,36 @@ setup_isolcpus() {
 }
 
 # ---------------------------------------------------------------------------
+# Disable onboard audio — GPIO 18 (used for audio PWM) conflicts with the
+# RGB matrix data lines causing random pixel noise / speckling.
+# ---------------------------------------------------------------------------
+disable_onboard_audio() {
+    local CONFIG=""
+    if [[ -f /boot/firmware/config.txt ]]; then
+        CONFIG="/boot/firmware/config.txt"
+    elif [[ -f /boot/config.txt ]]; then
+        CONFIG="/boot/config.txt"
+    else
+        echo "Cannot find config.txt, skipping audio disable."
+        return
+    fi
+
+    if grep -q "^dtparam=audio=off" "$CONFIG"; then
+        echo "Onboard audio already disabled in $CONFIG, skipping."
+        return
+    fi
+
+    echo "--- Disabling onboard audio (conflicts with RGB matrix)..."
+    # Replace audio=on with audio=off, or add it if not present
+    if grep -q "^dtparam=audio=" "$CONFIG"; then
+        sudo sed -i 's/^dtparam=audio=on/dtparam=audio=off/' "$CONFIG"
+    else
+        echo "dtparam=audio=off" | sudo tee -a "$CONFIG" > /dev/null
+    fi
+    echo "Onboard audio disabled. Takes effect after reboot."
+}
+
+# ---------------------------------------------------------------------------
 # Update — pull latest code, reinstall deps, reapply sudoers
 # ---------------------------------------------------------------------------
 run_update() {
@@ -399,8 +437,8 @@ run_update() {
     git -C "$SCRIPT_DIR" pull
 
     echo "--- Installing Python dependencies..."
-    pip3 install -r "$SCRIPT_DIR/requirements-api.txt"
-    pip3 install -r "$SCRIPT_DIR/requirements-display.txt"
+    pip3 install --break-system-packages -r "$SCRIPT_DIR/requirements-api.txt"
+    pip3 install --break-system-packages -r "$SCRIPT_DIR/requirements-display.txt"
 
     echo "--- Installing frontend dependencies..."
     cd "$SCRIPT_DIR/website"
@@ -409,6 +447,10 @@ run_update() {
 
     echo "--- Reapplying sudoers..."
     setup_sudoers
+
+    echo "--- Checking hardware config..."
+    setup_isolcpus
+    disable_onboard_audio
 
     echo ""
     echo "Update complete."
@@ -438,6 +480,7 @@ build_frontend
 install_wifi_setup_service
 disable_wifi_power_save
 setup_isolcpus
+disable_onboard_audio
 init_settings
 verify_display
 

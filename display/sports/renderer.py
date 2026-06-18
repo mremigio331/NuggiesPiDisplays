@@ -1162,6 +1162,11 @@ def _render_soccer_right_stats(canvas, game: dict, details: dict | None) -> None
     yellow = _color(255, 220, 0)
     red = _color(220, 40, 0)
     gray = _color(100, 100, 100)
+    white = _color(210, 210, 210)
+
+    _draw_text(canvas, "Stats", _center_x("Stats", RIGHT_X, RIGHT_W), 5, white)
+    for x in range(RIGHT_X, MATRIX_W):
+        canvas.SetPixel(x, 7, 40, 40, 40)
 
     d = details or {}
     away_s = d.get("away", {}).get("stats", {})
@@ -1173,7 +1178,9 @@ def _render_soccer_right_stats(canvas, game: dict, details: dict | None) -> None
         ("SHT", "shots", gray),
     ]
 
-    for label, key, label_col, y in [(r[0], r[1], r[2], 12 + i * 8) for i, r in enumerate(rows)]:
+    for label, key, label_col, y in [
+        (r[0], r[1], r[2], 14 + i * 8) for i, r in enumerate(rows)
+    ]:
         aval = str(away_s.get(key, "0"))[:4]
         hval = str(home_s.get(key, "0"))[:4]
         _draw_text(canvas, aval, RIGHT_X + 1, y, away_col)
@@ -1188,10 +1195,16 @@ def _render_soccer_right_goals(canvas, game: dict, details: dict | None) -> None
     white = _color(210, 210, 210)
     gray = _color(100, 100, 100)
 
+    _draw_text(canvas, "Goals", _center_x("Goals", RIGHT_X, RIGHT_W), 5, white)
+    for x in range(RIGHT_X, MATRIX_W):
+        canvas.SetPixel(x, 7, 40, 40, 40)
+
     goals = (details or {}).get("goals", [])
 
     if not goals:
-        _draw_text(canvas, "No Goals", _center_x("No Goals", RIGHT_X, RIGHT_W), 16, gray)
+        _draw_text(
+            canvas, "No Goals", _center_x("No Goals", RIGHT_X, RIGHT_W), 16, gray
+        )
         return
 
     # Show up to 4 goals, paginate if more

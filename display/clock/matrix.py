@@ -17,8 +17,8 @@ try:
         options.chain_length = 1
         options.parallel = 1
         options.hardware_mapping = "adafruit-hat"
-        options.gpio_slowdown = 2
-        options.pwm_lsb_nanoseconds = 200
+        options.gpio_slowdown = 4
+        options.pwm_lsb_nanoseconds = 300
         return RGBMatrix(options=options)
 
 except ImportError:
