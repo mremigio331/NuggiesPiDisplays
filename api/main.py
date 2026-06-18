@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from helpers.config import read_settings
-from helpers.process import start_display
+from helpers.process import start_display, is_running
 from helpers.buttons import poll_buttons
 from helpers.wifi_state import WIFI_FLAG
 from helpers.update_check import run_background_checker
@@ -43,11 +43,15 @@ async def lifespan(app: FastAPI):
         mode = settings.get("active_display")
         logger.debug(f"Auto-start enabled, active_display={mode}")
         if mode:
-            try:
-                start_display(mode)
-                logger.info(f"Auto-started {mode} display on launch")
-            except Exception as e:
-                logger.warning(f"Auto-start display failed: {e}")
+            # Skip auto-start if the display is already running (e.g. uvicorn --reload)
+            if is_running():
+                logger.debug("Display already running, skipping auto-start")
+            else:
+                try:
+                    start_display(mode)
+                    logger.info(f"Auto-started {mode} display on launch")
+                except Exception as e:
+                    logger.warning(f"Auto-start display failed: {e}")
     else:
         logger.debug("Auto-start disabled")
 

@@ -34,7 +34,7 @@ OVERVIEW_CYCLE = 20  # seconds per game pair (overview mode)
 _CYCLES_PER_GAME = 2  # full stat cycles before advancing to next game (focus mode)
 
 _NBA_PANEL_VIEWS = ["pts", "ast", "reb", "fouls"]
-_MLB_POST_VIEWS = ["decisions", "hits", "rbi"]
+_MLB_POST_VIEWS = ["hits", "rbi"]
 _NHL_PANEL_VIEWS = ["stats", "goals", "away_ice", "home_ice"]
 _SOCCER_PANEL_VIEWS = ["stats", "goals"]
 

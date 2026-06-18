@@ -819,7 +819,7 @@ def _render_baseball_right_post(
     red = _color(220, 50, 50)
     gray = _color(80, 80, 80)
 
-    label_map = {"decisions": "W/L", "hits": "HITS", "rbi": "RBI"}
+    label_map = {"decisions": "PITCH", "hits": "HITS", "rbi": "RBI"}
     label = label_map.get(panel_view, "")
     _draw_text(canvas, label, _center_x(label, RIGHT_X, RIGHT_W), 5, white)
     for x in range(RIGHT_X, MATRIX_W):
@@ -830,30 +830,20 @@ def _render_baseball_right_post(
         return
 
     if panel_view == "decisions":
-        d = details.get("decisions", {})
-        winner = d.get("winner")
-        loser = d.get("loser")
+        # Show top pitcher from each team (most innings pitched)
+        away_col = _team_color(game.get("away_color", "ffffff"))
+        home_col = _team_color(game.get("home_color", "ffffff"))
 
-        if winner:
-            _draw_text(canvas, "W", RIGHT_X + 1, 18, green)
-            _draw_text(canvas, str(winner["jersey"])[:2], RIGHT_X + 6, 18, green)
-            era = (winner.get("era") or "")[:4]
-            if era:
-                _draw_text(canvas, era, MATRIX_W - 1 - len(era) * _CW, 18, white)
-
-        if loser:
-            _draw_text(canvas, "L", RIGHT_X + 1, 25, red)
-            _draw_text(canvas, str(loser["jersey"])[:2], RIGHT_X + 6, 25, red)
-            era = (loser.get("era") or "")[:4]
-            if era:
-                _draw_text(canvas, era, MATRIX_W - 1 - len(era) * _CW, 25, white)
-
-        save = d.get("save")
-        if save:
-            _draw_text(canvas, "S", RIGHT_X + 1, 31, _color(80, 180, 255))
-            _draw_text(
-                canvas, str(save["jersey"])[:2], RIGHT_X + 6, 31, _color(80, 180, 255)
-            )
+        for side, col, y in [("away", away_col, 16), ("home", home_col, 26)]:
+            pitchers = details.get(side, {}).get("pitchers", [])
+            if pitchers:
+                # Sort by IP descending (starter is usually first and longest)
+                top = max(pitchers, key=lambda p: float(p.get("ip", "0") or "0"))
+                name = (top.get("name", "") or "?").split()[-1][:5]
+                ip = (top.get("ip") or "")[:4]
+                _draw_text(canvas, name, RIGHT_X + 1, y, col)
+                if ip:
+                    _draw_text(canvas, ip, MATRIX_W - 1 - len(ip) * _CW, y, white)
 
     elif panel_view in ("hits", "rbi"):
         stat_key = "hits" if panel_view == "hits" else "rbi"
@@ -864,12 +854,12 @@ def _render_baseball_right_post(
         home_col = _team_color(game.get("home_color", "ffffff"))
 
         for player, text_y in zip(batters[:3], [14, 21, 28]):
-            jersey = str(player.get("jersey", "?"))[:2]
+            name = (player.get("name", "") or "?").split()[-1][:5]
             val = player.get(stat_key, 0)
             side = player.get("side", "away")
             team_col = away_col if side == "away" else home_col
             val_str = str(val)
-            _draw_text(canvas, jersey, RIGHT_X + 1, text_y, team_col)
+            _draw_text(canvas, name, RIGHT_X + 1, text_y, team_col)
             _draw_text(
                 canvas, val_str, MATRIX_W - 1 - len(val_str) * _CW, text_y, white
             )
