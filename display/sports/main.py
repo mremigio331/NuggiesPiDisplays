@@ -36,6 +36,7 @@ _CYCLES_PER_GAME = 2  # full stat cycles before advancing to next game (focus mo
 _NBA_PANEL_VIEWS = ["pts", "ast", "reb", "fouls"]
 _MLB_POST_VIEWS = ["decisions", "hits", "rbi"]
 _NHL_PANEL_VIEWS = ["stats", "goals", "away_ice", "home_ice"]
+_SOCCER_PANEL_VIEWS = ["stats", "goals"]
 
 # Adding a new sport: add one entry here + ESPN client methods + API endpoints.
 _SPORT_CONFIG: dict[str, dict] = {
@@ -65,6 +66,15 @@ _SPORT_CONFIG: dict[str, dict] = {
         "live_details": True,
         "render_focus": renderer.render_hockey_game,
         "render_overview": renderer.render_hockey_overview,
+    },
+    "soccer": {
+        "label": "Soccer",
+        "fetch_scoreboard": None,  # resolved dynamically based on league setting
+        "fetch_details": None,
+        "panel_views": _SOCCER_PANEL_VIEWS,
+        "live_details": True,
+        "render_focus": renderer.render_soccer_game,
+        "render_overview": renderer.render_soccer_overview,
     },
 }
 
@@ -129,11 +139,22 @@ def run() -> None:
             panel_flip_count = 0
             details_cache.clear()
 
+        # For soccer, resolve league-specific fetch functions
+        if sport == "soccer":
+            soccer_league = settings.get("soccer_league", "fifa.world")
+            fetch_scoreboard = lambda: api_client.get_soccer_scoreboard(soccer_league)
+            fetch_details = lambda eid: api_client.get_soccer_game_details(
+                eid, soccer_league
+            )
+        else:
+            fetch_scoreboard = cfg["fetch_scoreboard"]
+            fetch_details = cfg["fetch_details"]
+
         # Refresh scoreboard
         refresh_interval = LIVE_REFRESH if _has_live_game(games) else SCOREBOARD_REFRESH
         if (now - last_scoreboard_fetch) >= refresh_interval:
             logger.info(f"Fetching {cfg['label']} scoreboard…")
-            fresh = cfg["fetch_scoreboard"]()
+            fresh = fetch_scoreboard()
             if fresh is not None:
                 games = fresh.get("games", [])
                 last_scoreboard_fetch = now
@@ -207,7 +228,7 @@ def run() -> None:
                     logger.debug(
                         f"Fetching {cfg['label']} game details for {event_id}…"
                     )
-                    details = cfg["fetch_details"](event_id)
+                    details = fetch_details(event_id)
                     details_cache[event_id] = (now, details)
                     # Dump raw data to file once per event for debugging
                     if event_id not in _debug_dumped:

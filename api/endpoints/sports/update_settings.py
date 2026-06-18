@@ -8,8 +8,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Extend this set when adding new sports (NFL, NHL, …)
-_VALID_SPORTS = {"nba", "mlb", "nhl"}
+_VALID_SPORTS = {"nba", "mlb", "nhl", "soccer"}
 _VALID_DISPLAY_MODES = {"focus", "overview"}
+_VALID_SOCCER_LEAGUES = {"fifa.world"}
 
 
 class SportsSettingsBody(BaseModel):
@@ -17,6 +18,7 @@ class SportsSettingsBody(BaseModel):
     cycle_interval_seconds: int | None = None
     sport: str | None = None
     display_mode: str | None = None
+    soccer_league: str | None = None
 
 
 @router.put("/settings")
@@ -36,6 +38,14 @@ async def update_sports_settings(body: SportsSettingsBody):
             {"error": f"display_mode must be one of {sorted(_VALID_DISPLAY_MODES)}"},
             status_code=422,
         )
+    if (
+        body.soccer_league is not None
+        and body.soccer_league not in _VALID_SOCCER_LEAGUES
+    ):
+        return JSONResponse(
+            {"error": f"soccer_league must be one of {sorted(_VALID_SOCCER_LEAGUES)}"},
+            status_code=422,
+        )
 
     settings = read_settings()
     sports = settings.setdefault("sports", {})
@@ -47,6 +57,8 @@ async def update_sports_settings(body: SportsSettingsBody):
         sports["sport"] = body.sport
     if body.display_mode is not None:
         sports["display_mode"] = body.display_mode
+    if body.soccer_league is not None:
+        sports["soccer_league"] = body.soccer_league
     write_settings(settings)
     logger.info(f"Sports settings updated: {sports}")
     return JSONResponse(sports)

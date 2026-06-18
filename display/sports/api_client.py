@@ -40,6 +40,14 @@ def get_nhl_game_details(event_id: str) -> dict | None:
     return _get(f"/sports/nhl/game/{event_id}")
 
 
+def get_soccer_scoreboard(league: str = "fifa.world") -> dict | None:
+    return _get(f"/sports/soccer/scoreboard?league={league}")
+
+
+def get_soccer_game_details(event_id: str, league: str = "fifa.world") -> dict | None:
+    return _get(f"/sports/soccer/game/{event_id}?league={league}")
+
+
 def get_settings() -> dict | None:
     return _get("/sports/settings", timeout=5)
 

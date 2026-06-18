@@ -1103,3 +1103,155 @@ def render_hockey_overview(canvas, game_a: dict, game_b: dict | None) -> None:
     _render_hockey_overview_panel(canvas, game_a, _OVR_LEFT_X, _OVR_LEFT_W)
     if game_b:
         _render_hockey_overview_panel(canvas, game_b, _OVR_RIGHT_X, _OVR_RIGHT_W)
+
+
+# ── Soccer ─────────────────────────────────────────────────────────────────────
+#
+# Focus layout (64×32):
+#   Left panel (x=0..27):  away / home score rows; status zone y=20..31
+#                           match time / "Final" / kickoff time
+#   Divider (x=28):         dim vertical line
+#   Right panel (x=29..63) cycles between:
+#     "stats" — possession / shots / SOG comparison
+#     "goals" — goal scorers with minute
+#
+# Overview layout: same structure as other sports.
+
+
+def _soccer_period_label(period: int, clock: str, state: str) -> str:
+    """Return a compact match time string for the left panel."""
+    if state == "post":
+        return "Final"
+    if state == "pre":
+        return ""
+    if period == 1:
+        return f"1H {clock}" if clock else "1H"
+    if period == 2:
+        return f"2H {clock}" if clock else "2H"
+    if period >= 3:
+        return f"ET {clock}" if clock else "ET"
+    return clock or ""
+
+
+def _render_soccer_left_panel(canvas, game: dict) -> None:
+    state = _render_focus_left_header(canvas, game)
+    period = game.get("period", 0)
+    clock = game.get("clock", "")
+    status_detail = game.get("status_detail", "")
+    yellow = _color(255, 220, 0)
+    gray = _color(160, 160, 160)
+
+    if state == "in":
+        label = _soccer_period_label(period, clock, state)
+        while len(label) * _CW > LEFT_W and " " in label:
+            label = label.rsplit(" ", 1)[0]
+        _draw_text(canvas, label, _center_x(label, 0, LEFT_W), 28, yellow)
+    elif state == "post":
+        _draw_text(canvas, "Final", _center_x("Final", 0, LEFT_W), 28, gray)
+    else:
+        st = (_format_game_time(game.get("game_date", "")) or status_detail or "Soon")[
+            :7
+        ]
+        _draw_text(canvas, st, _center_x(st, 0, LEFT_W), 28, gray)
+
+
+def _render_soccer_right_stats(canvas, game: dict, details: dict | None) -> None:
+    """Right panel — possession / shots / SOG comparison."""
+    away_col = _team_color(game.get("away_color", "ffffff"))
+    home_col = _team_color(game.get("home_color", "ffffff"))
+    gray = _color(100, 100, 100)
+
+    d = details or {}
+    away_s = d.get("away", {}).get("stats", {})
+    home_s = d.get("home", {}).get("stats", {})
+
+    rows = [
+        ("POS", "possession"),
+        ("SHT", "shots"),
+        ("SOG", "sog"),
+    ]
+
+    for label, key, y in [(r[0], r[1], 12 + i * 8) for i, r in enumerate(rows)]:
+        aval = str(away_s.get(key, "-"))[:4]
+        hval = str(home_s.get(key, "-"))[:4]
+        _draw_text(canvas, aval, RIGHT_X + 1, y, away_col)
+        _draw_text(canvas, label, _center_x(label, RIGHT_X, RIGHT_W), y, gray)
+        _draw_text(canvas, hval, MATRIX_W - len(hval) * _CW, y, home_col)
+
+
+def _render_soccer_right_goals(canvas, game: dict, details: dict | None) -> None:
+    """Right panel — goal scorers with minute."""
+    away_col = _team_color(game.get("away_color", "ffffff"))
+    home_col = _team_color(game.get("home_color", "ffffff"))
+    white = _color(210, 210, 210)
+    gray = _color(100, 100, 100)
+
+    goals = (details or {}).get("goals", [])
+
+    _draw_text(canvas, "GOALS", _center_x("GOALS", RIGHT_X, RIGHT_W), 5, white)
+    for x in range(RIGHT_X, MATRIX_W):
+        canvas.SetPixel(x, 7, 40, 40, 40)
+
+    if not goals:
+        _draw_text(canvas, "0 - 0", _center_x("0 - 0", RIGHT_X, RIGHT_W), 20, gray)
+        return
+
+    # Show up to 4 goals, paginate if more
+    if len(goals) > 4:
+        page = (int(time.time()) // 15) % ((len(goals) - 1) // 4 + 1)
+        page_goals = goals[page * 4 : page * 4 + 4]
+    else:
+        page_goals = goals[:4]
+
+    for goal, y in zip(page_goals, [13, 19, 25, 31]):
+        scorer = goal.get("scorer", "?")[:6]
+        t = goal.get("time", "")[:4]
+        side = goal.get("side", "away")
+        col = away_col if side == "away" else home_col
+        _draw_text(canvas, scorer, RIGHT_X + 1, y, col)
+        _draw_text(canvas, t, MATRIX_W - len(t) * _CW, y, gray)
+
+
+def render_soccer_game(
+    canvas, game: dict, details: dict | None, panel_view: str
+) -> None:
+    """Render a full soccer focus frame."""
+    canvas.Clear()
+    _draw_divider(canvas)
+    _render_soccer_left_panel(canvas, game)
+    if panel_view == "goals":
+        _render_soccer_right_goals(canvas, game, details)
+    else:  # "stats" or fallback
+        _render_soccer_right_stats(canvas, game, details)
+
+
+def _render_soccer_overview_panel(canvas, game: dict, x0: int, w: int) -> None:
+    state, x1 = _render_overview_panel_base(canvas, game, x0, w)
+    period = game.get("period", 0)
+    clock = game.get("clock", "")
+    status_detail = game.get("status_detail", "")
+    yellow = _color(255, 220, 0)
+    gray = _color(140, 140, 140)
+
+    if state == "in":
+        label = _soccer_period_label(period, clock, state)
+        while len(label) * _CW > w - 2 and " " in label:
+            label = label.rsplit(" ", 1)[0]
+        _draw_text(canvas, label, x0 + max(0, (w - len(label) * _CW) // 2), 28, yellow)
+    elif state == "post":
+        _draw_text(canvas, "Final", x0 + max(0, (w - 5 * _CW) // 2), 28, gray)
+    else:
+        st = (_format_game_time(game.get("game_date", "")) or status_detail or "Soon")[
+            :7
+        ]
+        _draw_text(canvas, st, x0 + max(0, (w - len(st) * _CW) // 2), 28, gray)
+
+
+def render_soccer_overview(canvas, game_a: dict, game_b: dict | None) -> None:
+    """Split-screen soccer overview: two games side by side."""
+    canvas.Clear()
+    for y in range(MATRIX_H):
+        canvas.SetPixel(_OVR_DIV_X, y, 35, 35, 35)
+    _render_soccer_overview_panel(canvas, game_a, _OVR_LEFT_X, _OVR_LEFT_W)
+    if game_b:
+        _render_soccer_overview_panel(canvas, game_b, _OVR_RIGHT_X, _OVR_RIGHT_W)

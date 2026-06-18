@@ -577,3 +577,115 @@ class ESPNClient:
         except Exception as e:
             logger.error(f"Failed to parse MLB game details for {event_id}: {e}")
             return None
+
+    # ── Soccer ─────────────────────────────────────────────────────────────
+
+    def get_soccer_scoreboard(self, league: str = "fifa.world") -> list[dict]:
+        """Return current soccer matches for the given league."""
+        url = f"{_ESPN_BASE}/soccer/{league}/scoreboard"
+        try:
+            raw = self._get(url)
+        except Exception as e:
+            logger.error(f"ESPN Soccer ({league}) fetch failed: {e}")
+            return []
+
+        games = []
+        for event in raw.get("events", []):
+            comp = (event.get("competitions") or [{}])[0]
+            competitors = comp.get("competitors", [])
+            home = next((c for c in competitors if c.get("homeAway") == "home"), None)
+            away = next((c for c in competitors if c.get("homeAway") == "away"), None)
+            if not home or not away:
+                continue
+
+            status = comp.get("status", {})
+            stype = status.get("type", {})
+            game = _parse_base_game(event, home, away, stype, status)
+            game["clock"] = status.get("displayClock", "")
+            # Soccer period: 1=first half, 2=second half, 3+=extra time
+            game["detail"] = stype.get("detail", "")
+            games.append(game)
+        return games
+
+    def get_soccer_game_details(
+        self, event_id: str, league: str = "fifa.world"
+    ) -> dict | None:
+        """Return goal scorers and match stats for a soccer match."""
+        url = f"{_ESPN_BASE}/soccer/{league}/summary?event={event_id}"
+        try:
+            raw = self._get(url)
+        except Exception as e:
+            logger.error(f"ESPN Soccer game details fetch failed for {event_id}: {e}")
+            return None
+
+        try:
+            home_away_map = _build_home_away_map(raw)
+            result: dict = {"home": {}, "away": {}, "goals": []}
+
+            # Team abbreviations from boxscore.teams
+            tid_to_abbr: dict[str, str] = {}
+            for team_data in raw.get("boxscore", {}).get("teams") or []:
+                team = team_data.get("team", {})
+                tid = str(team.get("id", ""))
+                abbr = team.get("abbreviation", "???")
+                tid_to_abbr[tid] = abbr
+                side = home_away_map.get(tid, "away")
+                result[side]["abbreviation"] = abbr
+
+                # Team stats (possession, shots, shots on target)
+                stats: dict[str, str] = {}
+                for s in team_data.get("statistics", []):
+                    name = s.get("name", "")
+                    val = s.get("displayValue", "")
+                    if name in ("possessionPct", "possession"):
+                        stats["possession"] = val
+                    elif name in ("shotsTotal", "totalShots"):
+                        stats["shots"] = val
+                    elif name in ("shotsOnTarget", "shotsOnGoal"):
+                        stats["sog"] = val
+                    elif name == "foulsCommitted":
+                        stats["fouls"] = val
+                    elif name in ("yellowCards", "yellowRedCards"):
+                        stats["yellows"] = val
+                    elif name == "redCards":
+                        stats["reds"] = val
+                    elif name in ("cornerKicks", "corners"):
+                        stats["corners"] = val
+                result[side]["stats"] = stats
+
+            # Goal scorers from keyEvents or scoringPlays
+            key_events = raw.get("keyEvents") or raw.get("scoringPlays") or []
+            for play in key_events:
+                ptype = (play.get("type") or {}).get("text", "").lower()
+                if "goal" not in ptype:
+                    continue
+                team = play.get("team") or {}
+                tid = str(team.get("id", ""))
+                side = home_away_map.get(tid, "away")
+                clock = (play.get("clock") or {}).get("displayValue", "")
+                # Try to get scorer name
+                scorer = ""
+                for p in play.get("participants") or []:
+                    athlete = p.get("athlete") or {}
+                    if athlete.get("displayName"):
+                        scorer = _last_name(athlete["displayName"])
+                        break
+                if not scorer:
+                    text = play.get("text", "")
+                    if text:
+                        scorer = text.split("(")[0].strip().split(" ")[-1][:6]
+
+                result["goals"].append(
+                    {
+                        "time": clock,
+                        "scorer": scorer[:6],
+                        "team": tid_to_abbr.get(tid, ""),
+                        "side": side,
+                    }
+                )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to parse Soccer game details for {event_id}: {e}")
+            return None

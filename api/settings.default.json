@@ -47,6 +47,7 @@
     "sport": "nba",
     "favorite_teams": [],
     "cycle_interval_seconds": 10,
-    "display_mode": "focus"
+    "display_mode": "focus",
+    "soccer_league": "fifa.world"
   }
 }
