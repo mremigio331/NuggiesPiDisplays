@@ -6,7 +6,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-LOG="$PROJECT_DIR/logs/wifi_setup.log"
+LOG="/var/log/nuggies/wifi_setup.log"
 NM_DNSMASQ_DIR="/etc/NetworkManager/dnsmasq-shared.d"
 
 _AP_CFG="$PROJECT_DIR/wifi_ap.yaml"

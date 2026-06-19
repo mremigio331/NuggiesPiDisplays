@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
-_STATE_FILE = Path(__file__).parent.parent.parent.parent / "logs" / "sports_now.json"
+_STATE_FILE = Path("/var/log/nuggies") / "sports_now.json"
 
 
 @router.get("/now")

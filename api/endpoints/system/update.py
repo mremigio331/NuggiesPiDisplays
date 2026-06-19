@@ -15,8 +15,9 @@ async def system_update(websocket: WebSocket):
     await websocket.accept()
     logger.info("System update started")
     try:
+        cmd = ["sudo", "-n", "bash", str(_SETUP_SH), "--update"]
         process = subprocess.Popen(
-            ["bash", str(_SETUP_SH), "--update"],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

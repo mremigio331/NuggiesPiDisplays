@@ -10,6 +10,7 @@ import StocksSettings from "./pages/stocks/StocksSettings";
 import Clock from "./pages/clock/Clock";
 import ClockSettings from "./pages/clock/ClockSettings";
 import System from "./pages/system/System";
+import Logs from "./pages/system/Logs";
 import Sports from "./pages/sports/Sports";
 import SportsSettings from "./pages/sports/SportsSettings";
 import Weather from "./pages/weather/Weather";
@@ -32,6 +33,7 @@ export default function NuggiesDisplay() {
         <Route path="/sports" element={<Sports />} />
         <Route path="/sports/settings" element={<SportsSettings />} />
         <Route path="/system" element={<System />} />
+        <Route path="/system/logs" element={<Logs />} />
         <Route path="/weather" element={<Weather />} />
         <Route path="/weather/settings" element={<WeatherSettings />} />
         <Route path="/wifi-setup" element={<WifiSetup />} />

@@ -24,8 +24,8 @@
     "force_change_station": "",
     "log_level": "INFO",
     "create_log_file": false,
-    "log_file_name": "logs/mta.log",
-    "log_error_file_name": "logs/mta_errors.log"
+    "log_file_name": "/var/log/nuggies/mta.log",
+    "log_error_file_name": "/var/log/nuggies/mta_errors.log"
   },
 
   "clock": {

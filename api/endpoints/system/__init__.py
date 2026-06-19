@@ -15,6 +15,7 @@ from .get_log_level import router as get_log_level_router
 from .update_log_level import router as update_log_level_router
 from .check_update import router as check_update_router
 from .update_status import router as update_status_router
+from .logs import router as logs_router
 
 router = APIRouter(prefix="/system", tags=["system"])
 router.include_router(status_router)
@@ -33,3 +34,4 @@ router.include_router(dev_mode_router)
 router.include_router(forget_wifi_router)
 router.include_router(get_log_level_router)
 router.include_router(update_log_level_router)
+router.include_router(logs_router)

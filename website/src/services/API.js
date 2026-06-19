@@ -25,6 +25,9 @@ export const getLogLevel = () => handle(api.get("/system/log-level"));
 export const setLogLevel = (log_level) => handle(api.put("/system/log-level", { log_level }));
 export const getUpdateStatus = () => handle(api.get("/system/update-status"));
 export const checkUpdate = () => handle(api.post("/system/check-update"));
+export const getLogsList = () => handle(api.get("/system/logs"));
+export const getLogContent = (key, lines = 200) =>
+  api.get(`/system/logs/${key}`, { params: { lines } }).then((r) => r.data);
 
 // MTA — trains
 export const getNextFourTrains = () => handle(api.get("/mta/trains/next_four"));

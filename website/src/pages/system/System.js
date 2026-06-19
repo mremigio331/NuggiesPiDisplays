@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { useSystemStatus } from "../../hooks/useSystemStatus";
 import { DISPLAY_MODES, LOG_LEVELS } from "../../constants/display";
 import {
@@ -182,6 +183,7 @@ export default function System() {
     currentLogLevel,
     setLogLevelMut,
   } = useSystem();
+  const navigate = useNavigate();
   const [confirmRestart, setConfirmRestart] = React.useState(false);
   const [confirmReset, setConfirmReset] = React.useState(false);
   const [confirmResetWifi, setConfirmResetWifi] = React.useState(false);
@@ -285,6 +287,13 @@ export default function System() {
             </button>
           ))}
         </div>
+        <button
+          className="m-btn m-btn-neutral"
+          style={{ width: "100%", marginTop: "0.75rem" }}
+          onClick={() => navigate("/system/logs")}
+        >
+          📋 View Logs
+        </button>
       </div>
 
       {devMode && (

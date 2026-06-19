@@ -16,7 +16,7 @@ import api_client
 import renderer
 from matrix import build_matrix
 
-_DEBUG_DIR = Path(__file__).parent.parent.parent / "logs"
+_DEBUG_DIR = Path("/var/log/nuggies")
 _DEBUG_FILE = _DEBUG_DIR / "mlb_debug.json"
 _STATE_FILE = _DEBUG_DIR / "sports_now.json"
 

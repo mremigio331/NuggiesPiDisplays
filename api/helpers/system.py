@@ -47,17 +47,45 @@ class SystemManager:
         logger.info("Settings reset to defaults")
 
     def factory_reset(self) -> None:
-        """Reset settings to defaults. Does not affect WiFi or reboot."""
-        logger.info("Factory reset: restoring default settings")
+        """Reset settings to defaults, pull latest code, reapply setup, restart service."""
+        logger.info("Factory reset: restoring default settings + full re-setup")
         self.stop_display()
         self.reset_settings()
-        logger.info("Factory reset complete")
+
+        # Run setup.sh --update to pull latest code, reapply permissions, restart service
+        logger.info("Running setup.sh --update for full re-setup...")
+        result = subprocess.run(
+            _privileged_command("bash", str(_PROJECT_ROOT / "setup.sh"), "--update"),
+            cwd=str(_PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.error(f"setup.sh --update failed: {result.stderr}")
+        else:
+            logger.info("Factory reset complete — setup reapplied")
 
     def factory_reset_wifi(self) -> None:
-        """Reset settings, mark WiFi for wipe, then restart captive-portal service."""
-        logger.info("Full factory reset: settings + WiFi wipe + service restart")
+        """Reset settings, pull latest code, reapply setup, mark WiFi for wipe, then restart captive-portal."""
+        logger.info(
+            "Full factory reset: settings + re-setup + WiFi wipe + service restart"
+        )
         self.stop_display()
         self.reset_settings()
+
+        # Run setup.sh --update to pull latest code, reapply permissions
+        logger.info("Running setup.sh --update for full re-setup...")
+        result = subprocess.run(
+            _privileged_command("bash", str(_PROJECT_ROOT / "setup.sh"), "--update"),
+            cwd=str(_PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.error(f"setup.sh --update failed: {result.stderr}")
+        else:
+            logger.info("Setup reapplied successfully")
+
         try:
             if WIFI_FLAG.exists():
                 WIFI_FLAG.unlink()

@@ -166,8 +166,10 @@ EOF
 # ---------------------------------------------------------------------------
 setup_logs() {
     echo "--- Creating log directory..."
-    sudo mkdir -p /var/log/nuggies
-    sudo chown "$USER":"$USER" /var/log/nuggies
+    mkdir -p /var/log/nuggies
+    # Display processes run as daemon user via sudo, API runs as pi —
+    # make the directory writable by everyone who needs to log.
+    chmod 777 /var/log/nuggies
     echo "Log directory ready at /var/log/nuggies"
 }
 
@@ -451,12 +453,19 @@ run_update() {
     echo "--- Checking hardware config..."
     setup_isolcpus
     disable_onboard_audio
+    setup_logs
+
+    # Restart the API service so the new code takes effect (production only).
+    # In dev mode (--reload), uvicorn picks up changes automatically.
+    if systemctl is-active --quiet nuggies-api.service 2>/dev/null; then
+        echo "--- Restarting API service..."
+        systemctl restart nuggies-api.service
+    fi
 
     echo ""
     echo "Update complete."
     echo "The API will reload automatically if running with --reload."
-    echo "If running as a systemd service, restart with:"
-    echo "  sudo systemctl restart nuggies-api.service"
+    echo "If running as a systemd service, it has been restarted."
 }
 
 if [[ "$SUBCOMMAND" == "update" ]]; then
