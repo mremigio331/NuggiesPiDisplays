@@ -71,13 +71,13 @@ install_node() {
 # ---------------------------------------------------------------------------
 install_python_packages() {
     echo "--- Installing Python packages (API)..."
-    pip install -r requirements-api.txt --break-system-packages
+    pip install -r requirements-api.txt --break-system-packages --ignore-installed
 
     echo "--- Installing Python packages (captive portal — root, for systemd service)..."
-    sudo pip install -r requirements-api.txt --break-system-packages --upgrade --ignore-installed
+    pip install -r requirements-api.txt --break-system-packages --ignore-installed
 
     echo "--- Installing Python packages (display — root, for sudo python3)..."
-    sudo pip install -r requirements-display.txt --break-system-packages --upgrade --ignore-installed
+    pip install -r requirements-display.txt --break-system-packages --ignore-installed
 }
 
 # ---------------------------------------------------------------------------
@@ -439,8 +439,8 @@ run_update() {
     git -C "$SCRIPT_DIR" pull
 
     echo "--- Installing Python dependencies..."
-    pip3 install --break-system-packages -r "$SCRIPT_DIR/requirements-api.txt"
-    pip3 install --break-system-packages -r "$SCRIPT_DIR/requirements-display.txt"
+    pip3 install --break-system-packages --ignore-installed -r "$SCRIPT_DIR/requirements-api.txt"
+    pip3 install --break-system-packages --ignore-installed -r "$SCRIPT_DIR/requirements-display.txt"
 
     echo "--- Installing frontend dependencies..."
     cd "$SCRIPT_DIR/website"

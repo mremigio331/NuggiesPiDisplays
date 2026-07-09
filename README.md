@@ -31,6 +31,15 @@ Real-time departure times for your chosen NYC subway station, with station cycli
 - Adafruit 64×32 RGB LED matrix (single panel)
 - Adafruit RGB Matrix HAT/Bonnet
 - Raspberry Pi (tested on Pi 4)
+- 2× Adafruit STEMMA tactile buttons (3-wire: signal/3.3V/GND)
+
+### Button Wiring
+
+| | Button 1 (cycle left) | Button 2 (cycle right) |
+|---|---|---|
+| **White** (signal) | Pin 22 / GPIO 25 | Pin 35 / GPIO 19 |
+| **Red** (3.3V) | Pin 17 | Pin 1 |
+| **Black** (GND) | Pin 20 | Pin 34 |
 
 ---
 
@@ -178,18 +187,6 @@ nuggies_pi_displays/
 
 ## API
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/system/status` | Display state and active mode |
-| `POST` | `/system/display/start` | Start the active display |
-| `POST` | `/system/display/stop` | Stop the active display |
-| `POST` | `/system/display` | Switch mode (`mta` or `stocks`) |
-| `POST` | `/system/restart` | Reboot the Pi |
-| `GET` | `/mta/trains/next_four` | Next 4 trains at current station |
-| `GET/PUT` | `/mta/configs` | MTA settings |
-| `GET` | `/mta/stations` | All stations |
-| `GET/PUT` | `/mta/stations/current` | Current station |
-| `PUT` | `/mta/stations/{id}/enabled` | Toggle station enabled |
-| `GET/PUT` | `/stonks/settings` | Stock ticker settings |
+See [api/README.md](api/README.md) for the full endpoint reference.
 
 Interactive docs available at `http://nuggies.local:8000/docs`.
