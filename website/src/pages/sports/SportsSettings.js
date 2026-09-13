@@ -1,39 +1,22 @@
 import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { getSportsSettings, updateSportsSettings } from "../../services/API";
+import {
+  getSportsSettings,
+  updateSportsSettings,
+  getSportsTeams,
+  addFavoriteTeam,
+  removeFavoriteTeam,
+} from "../../services/API";
+import { favoritesForSport } from "../../utility/favorites";
 
-const NBA_TEAMS = [
-  "ATL",
-  "BOS",
-  "BKN",
-  "CHA",
-  "CHI",
-  "CLE",
-  "DAL",
-  "DEN",
-  "DET",
-  "GSW",
-  "HOU",
-  "IND",
-  "LAC",
-  "LAL",
-  "MEM",
-  "MIA",
-  "MIL",
-  "MIN",
-  "NOP",
-  "NYK",
-  "OKC",
-  "ORL",
-  "PHI",
-  "PHX",
-  "POR",
-  "SAC",
-  "SAS",
-  "TOR",
-  "UTA",
-  "WAS",
+// Leagues in alphabetical order
+const SPORTS = [
+  { key: "mlb", label: "MLB" },
+  { key: "nba", label: "NBA" },
+  { key: "nfl", label: "NFL" },
+  { key: "nhl", label: "NHL" },
+  { key: "soccer", label: "Soccer" },
 ];
 
 export default function SportsSettings() {
@@ -51,14 +34,28 @@ export default function SportsSettings() {
     onSuccess: (data) => qc.setQueryData(["sportsSettings"], data),
   });
 
-  const favTeams = settings?.favorite_teams ?? [];
   const displayMode = settings?.display_mode ?? "focus";
   const sport = settings?.sport ?? "nba";
   const soccerLeague = settings?.soccer_league ?? "fifa.world";
+  const favTeams = favoritesForSport(settings, sport);
 
-  function toggleTeam(abbr) {
-    const next = favTeams.includes(abbr) ? favTeams.filter((t) => t !== abbr) : [...favTeams, abbr];
-    mut.mutate({ favorite_teams: next });
+  // Real teams for the selected league, with the ESPN ids favourites are keyed by
+  const { data: teamsData, isLoading: teamsLoading } = useQuery({
+    queryKey: ["sportsTeams", sport, sport === "soccer" ? soccerLeague : null],
+    queryFn: () => getSportsTeams(sport, soccerLeague),
+    staleTime: 24 * 60 * 60 * 1000, // rosters of teams change once a season
+  });
+  const teamOptions = teamsData?.teams ?? [];
+
+  // Favourites are stored per sport, so toggling always writes into this league
+  const favMut = useMutation({
+    mutationFn: ({ teamId, favorited }) =>
+      favorited ? removeFavoriteTeam(teamId, sport) : addFavoriteTeam(teamId, sport),
+    onSuccess: (data) => qc.setQueryData(["sportsSettings"], data),
+  });
+
+  function toggleTeam(teamId) {
+    favMut.mutate({ teamId, favorited: favTeams.includes(String(teamId)) });
   }
 
   if (isLoading) {
@@ -92,34 +89,16 @@ export default function SportsSettings() {
       <div className="m-card">
         <div className="m-card-title">Sport</div>
         <div className="m-btn-row" style={{ marginBottom: 8 }}>
-          <button
-            className={`m-btn ${sport === "nba" ? "m-btn-active" : "m-btn-neutral"}`}
-            disabled={mut.isPending}
-            onClick={() => mut.mutate({ sport: "nba" })}
-          >
-            NBA
-          </button>
-          <button
-            className={`m-btn ${sport === "mlb" ? "m-btn-active" : "m-btn-neutral"}`}
-            disabled={mut.isPending}
-            onClick={() => mut.mutate({ sport: "mlb" })}
-          >
-            MLB
-          </button>
-          <button
-            className={`m-btn ${sport === "nhl" ? "m-btn-active" : "m-btn-neutral"}`}
-            disabled={mut.isPending}
-            onClick={() => mut.mutate({ sport: "nhl" })}
-          >
-            NHL
-          </button>
-          <button
-            className={`m-btn ${sport === "soccer" ? "m-btn-active" : "m-btn-neutral"}`}
-            disabled={mut.isPending}
-            onClick={() => mut.mutate({ sport: "soccer" })}
-          >
-            Soccer
-          </button>
+          {SPORTS.map(({ key, label }) => (
+            <button
+              key={key}
+              className={`m-btn ${sport === key ? "m-btn-active" : "m-btn-neutral"}`}
+              disabled={mut.isPending}
+              onClick={() => mut.mutate({ sport: key })}
+            >
+              {label}
+            </button>
+          ))}
         </div>
         <div className="m-form-desc">
           Switches the matrix display and scoreboard between sports.
@@ -171,35 +150,58 @@ export default function SportsSettings() {
           <strong style={{ color: "#ccc" }}>Overview</strong> — cycles through all games every 8
           seconds showing just the score and game status. Good for nights with many games.
         </div>
+        <div className="m-form-desc" style={{ marginTop: 6 }}>
+          Locking a game from the scoreboard overrides both: the matrix stays on that game, full
+          screen, with its stat panels still cycling.
+        </div>
       </div>
 
-      {/* Favorite teams */}
+      {/* Favorite teams — kept per league, so switching sports shows its own picks */}
       <div className="m-card">
-        <div className="m-card-title">Favorite Teams</div>
-        <div className="m-form-desc" style={{ marginBottom: 10 }}>
-          Highlighted on the scoreboard. Tap to toggle.
+        <div className="m-card-title">
+          Favorite Teams
+          <span style={{ color: "#777", fontWeight: 400, fontSize: "0.75rem" }}>
+            {" "}
+            · {SPORTS.find((s) => s.key === sport)?.label ?? sport}
+          </span>
         </div>
+        <div className="m-form-desc" style={{ marginBottom: 10 }}>
+          Highlighted on the scoreboard. Tap to toggle. Each league keeps its own list.
+        </div>
+
+        {teamsLoading && <div style={{ color: "#888", fontSize: "0.8rem" }}>Loading teams…</div>}
+        {!teamsLoading && teamOptions.length === 0 && (
+          <div style={{ color: "#888", fontSize: "0.8rem" }}>
+            No teams available for this league.
+          </div>
+        )}
+
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {NBA_TEAMS.map((abbr) => (
+          {teamOptions.map((team) => (
             <button
-              key={abbr}
-              className={`m-btn ${favTeams.includes(abbr) ? "m-btn-active" : "m-btn-neutral"}`}
+              key={team.id}
+              className={`m-btn ${favTeams.includes(String(team.id)) ? "m-btn-active" : "m-btn-neutral"}`}
               style={{ padding: "4px 8px", fontSize: "0.8rem", minWidth: 44 }}
-              disabled={mut.isPending}
-              onClick={() => toggleTeam(abbr)}
+              disabled={favMut.isPending}
+              onClick={() => toggleTeam(team.id)}
+              title={team.name}
             >
-              {abbr}
+              {team.abbreviation || team.short_name}
             </button>
           ))}
         </div>
+
         {favTeams.length > 0 && (
           <div style={{ marginTop: 8, color: "#aaa", fontSize: "0.75rem" }}>
-            Selected: {favTeams.join(", ")}
+            Selected:{" "}
+            {favTeams
+              .map((id) => teamOptions.find((t) => String(t.id) === String(id))?.abbreviation ?? id)
+              .join(", ")}
           </div>
         )}
       </div>
 
-      {mut.isError && (
+      {(mut.isError || favMut.isError) && (
         <div className="m-card" style={{ borderLeft: "3px solid #d9534f" }}>
           <div style={{ color: "#d9534f", fontSize: "0.85rem" }}>Failed to save settings.</div>
         </div>

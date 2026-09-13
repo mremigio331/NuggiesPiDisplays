@@ -1,5 +1,6 @@
 import React from "react";
 import TeamRow from "./TeamRow";
+import { isFavoriteGame } from "../../utility/favorites";
 
 function nhlPeriodLabel(game) {
   const { state, period, clock } = game;
@@ -30,7 +31,7 @@ export default function NHLGameCard({ game, favoriteTeams, activeEventIds }) {
     home_color,
   } = game;
 
-  const isFav = favoriteTeams.includes(away_team) || favoriteTeams.includes(home_team);
+  const isFav = isFavoriteGame(game, favoriteTeams);
   const isActive = activeEventIds?.has(game.event_id);
   const isLive = state === "in";
   const isFinal = state === "post";

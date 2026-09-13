@@ -2,24 +2,34 @@ import React from "react";
 import TeamRow from "./TeamRow";
 import { isFavoriteGame } from "../../utility/favorites";
 
-function soccerMatchLabel(game) {
-  const { state, period, clock } = game;
+// Shared by every football league (NFL, NCAAF, …) — identical game payload.
+function footballPeriodLabel(game) {
+  const { state, period, clock, status_detail } = game;
 
   if (state === "in") {
-    if (period === 1) return clock ? `1H ${clock}` : "1st Half";
-    if (period === 2) return clock ? `2H ${clock}` : "2nd Half";
-    if (period >= 3) return clock ? `ET ${clock}` : "Extra Time";
-    return clock || "Live";
+    if ((status_detail || "").toLowerCase().includes("half")) return "Halftime";
+    const q = period <= 4 ? `Q${period}` : period === 5 ? "OT" : `OT${period - 4}`;
+    return clock ? `${q} ${clock}` : q;
   }
 
   if (state === "post") {
-    return "Final";
+    return period > 4 ? "Final/OT" : "Final";
   }
 
   return null;
 }
 
-export default function SoccerGameCard({ game, favoriteTeams, activeEventIds }) {
+const ORDINALS = { 1: "1st", 2: "2nd", 3: "3rd", 4: "4th" };
+
+function downAndDistance(game) {
+  const { down, distance, yard_line_text } = game;
+  if (!down) return null;
+  const label = ORDINALS[down] ?? down;
+  const dd = distance ? `${label} & ${distance}` : `${label} & Goal`;
+  return yard_line_text ? `${dd} at ${yard_line_text}` : dd;
+}
+
+export default function FootballGameCard({ game, favoriteTeams, activeEventIds }) {
   const {
     away_team,
     home_team,
@@ -29,6 +39,8 @@ export default function SoccerGameCard({ game, favoriteTeams, activeEventIds }) 
     status_detail,
     away_color,
     home_color,
+    possession,
+    is_red_zone,
   } = game;
 
   const isFav = isFavoriteGame(game, favoriteTeams);
@@ -37,7 +49,10 @@ export default function SoccerGameCard({ game, favoriteTeams, activeEventIds }) 
   const isFinal = state === "post";
   const awayWin = isFinal && away_score > home_score;
   const homeWin = isFinal && home_score > away_score;
-  const matchLabel = soccerMatchLabel(game);
+  const periodLabel = footballPeriodLabel(game);
+  const situation = isLive ? downAndDistance(game) : null;
+  const possessionTeam =
+    possession === "away" ? away_team : possession === "home" ? home_team : null;
 
   return (
     <div
@@ -66,9 +81,9 @@ export default function SoccerGameCard({ game, favoriteTeams, activeEventIds }) 
           </span>
         )}
 
-        {matchLabel && (
+        {periodLabel && (
           <span style={{ color: isLive ? "#f0a800" : "#666", fontSize: "0.75rem" }}>
-            {matchLabel}
+            {periodLabel}
           </span>
         )}
 
@@ -77,6 +92,20 @@ export default function SoccerGameCard({ game, favoriteTeams, activeEventIds }) 
         )}
 
         <span style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+          {isLive && is_red_zone && (
+            <span
+              style={{
+                background: "#c0392b",
+                color: "#fff",
+                fontSize: "0.6rem",
+                fontWeight: 700,
+                padding: "1px 5px",
+                borderRadius: 3,
+              }}
+            >
+              RED ZONE
+            </span>
+          )}
           {isActive && (
             <span
               style={{ fontSize: "0.65rem", color: "#2196f3", fontWeight: 700, letterSpacing: 0.5 }}
@@ -104,6 +133,13 @@ export default function SoccerGameCard({ game, favoriteTeams, activeEventIds }) 
           winner={homeWin}
         />
       </div>
+
+      {situation && (
+        <div style={{ marginTop: 7, color: "#888", fontSize: "0.72rem" }}>
+          {situation}
+          {possessionTeam ? ` · ${possessionTeam} ball` : ""}
+        </div>
+      )}
     </div>
   );
 }

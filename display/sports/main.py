@@ -31,24 +31,37 @@ LIVE_REFRESH = 30  # re-fetch scoreboard when a game is live
 DETAILS_TTL = 15  # re-fetch game details (players/fouls)
 PANEL_CYCLE = 15  # seconds between stat views (focus mode)
 OVERVIEW_CYCLE = 20  # seconds per game pair (overview mode)
+PEEK_SECONDS = 30  # "show now" on a game the locks exclude
 _CYCLES_PER_GAME = 2  # full stat cycles before advancing to next game (focus mode)
 
 _NBA_PANEL_VIEWS = ["pts", "ast", "reb", "fouls"]
 _MLB_POST_VIEWS = ["hits", "rbi"]
 _NHL_PANEL_VIEWS = ["stats", "goals", "away_ice", "home_ice"]
 _SOCCER_PANEL_VIEWS = ["stats", "goals"]
+_FOOTBALL_PANEL_VIEWS = ["stats", "scoring", "pass", "rush", "recv"]
+
+
+def _football_config(label: str, sport: str) -> dict:
+    """Build a sport config for any football league (NFL, NCAAF, …).
+
+    Every football league shares the same fetchers and renderers — only the
+    sport key (which maps to an API route and an ESPN league slug server-side)
+    changes. Adding NCAA football is one more _SPORT_CONFIG entry built here.
+    """
+    return {
+        "label": label,
+        "fetch_scoreboard": lambda: api_client.get_football_scoreboard(sport),
+        "fetch_details": lambda eid: api_client.get_football_game_details(eid, sport),
+        "panel_views": _FOOTBALL_PANEL_VIEWS,
+        "live_details": True,
+        "render_focus": renderer.render_football_game,
+        "render_overview": renderer.render_football_overview,
+    }
+
 
 # Adding a new sport: add one entry here + ESPN client methods + API endpoints.
+# Keyed alphabetically, matching the league order in the web UI.
 _SPORT_CONFIG: dict[str, dict] = {
-    "nba": {
-        "label": "NBA",
-        "fetch_scoreboard": api_client.get_nba_scoreboard,
-        "fetch_details": api_client.get_nba_game_details,
-        "panel_views": _NBA_PANEL_VIEWS,
-        "live_details": True,  # fetch detail endpoint for live games (stat leaders)
-        "render_focus": renderer.render_game,
-        "render_overview": renderer.render_game_overview,
-    },
     "mlb": {
         "label": "MLB",
         "fetch_scoreboard": api_client.get_mlb_scoreboard,
@@ -58,6 +71,18 @@ _SPORT_CONFIG: dict[str, dict] = {
         "render_focus": renderer.render_baseball_game,
         "render_overview": renderer.render_baseball_overview,
     },
+    "nba": {
+        "label": "NBA",
+        "fetch_scoreboard": api_client.get_nba_scoreboard,
+        "fetch_details": api_client.get_nba_game_details,
+        "panel_views": _NBA_PANEL_VIEWS,
+        "live_details": True,  # fetch detail endpoint for live games (stat leaders)
+        "render_focus": renderer.render_game,
+        "render_overview": renderer.render_game_overview,
+    },
+    "nfl": _football_config("NFL", "nfl"),
+    # NCAA football: add "ncaaf": _football_config("NCAAF", "ncaaf") here plus a
+    # matching entry in api/endpoints/sports/football.py FOOTBALL_SPORTS.
     "nhl": {
         "label": "NHL",
         "fetch_scoreboard": api_client.get_nhl_scoreboard,
@@ -79,7 +104,13 @@ _SPORT_CONFIG: dict[str, dict] = {
 }
 
 
-def _write_state(sport: str, display_mode: str, event_ids: list[str]) -> None:
+def _write_state(
+    sport: str,
+    display_mode: str,
+    event_ids: list[str],
+    locked_event_ids: list[str] | None = None,
+) -> None:
+    """Publish what the matrix is showing for GET /sports/now."""
     try:
         _DEBUG_DIR.mkdir(exist_ok=True)
         _STATE_FILE.write_text(
@@ -88,6 +119,7 @@ def _write_state(sport: str, display_mode: str, event_ids: list[str]) -> None:
                     "sport": sport,
                     "display_mode": display_mode,
                     "active_event_ids": [e for e in event_ids if e],
+                    "locked_event_ids": locked_event_ids or [],
                 }
             )
         )
@@ -102,6 +134,34 @@ def _apply_log_level() -> None:
 
 def _has_live_game(games: list[dict]) -> bool:
     return any(g.get("state") == "in" for g in games)
+
+
+def _find_event(games: list[dict], event_id: str | None) -> int | None:
+    """Index of event_id in games, or None when blank or not on today's slate."""
+    if not event_id:
+        return None
+    for i, game in enumerate(games):
+        if game.get("event_id") == event_id:
+            return i
+    return None
+
+
+def _locked_ids(settings: dict, sport: str) -> list[str]:
+    """Event ids locked for this sport.
+
+    The API prunes expired locks before we see them, so anything here is live.
+    Entries carry their own sport so locks in other leagues are ignored rather
+    than blanking the display.
+    """
+    ids: list[str] = []
+    for entry in settings.get("locked_games") or []:
+        if not isinstance(entry, dict):
+            continue
+        event_id = str(entry.get("event_id") or "")
+        entry_sport = str(entry.get("sport") or "") or sport
+        if event_id and entry_sport == sport:
+            ids.append(event_id)
+    return ids
 
 
 def run() -> None:
@@ -121,6 +181,9 @@ def run() -> None:
     panel_idx = 0
     panel_flip_count = 0
     active_sport: str = ""  # tracks last seen sport to detect changes
+    last_forced: str = ""  # force_event_id already honoured (one-shot jump)
+    peek_event_id: str = ""  # game being shown outside the locked rotation
+    peek_until = 0.0
 
     while True:
         now = time.time()
@@ -137,6 +200,9 @@ def run() -> None:
             game_idx = 0
             panel_idx = 0
             panel_flip_count = 0
+            last_forced = ""
+            peek_event_id = ""
+            peek_until = 0.0
             details_cache.clear()
 
         # For soccer, resolve league-specific fetch functions
@@ -172,19 +238,65 @@ def run() -> None:
             time.sleep(1)
             continue
 
+        # ── Which games are on deck ──────────────────────────────────────────
+        # Locked games (if any are on today's slate) replace the full slate, so
+        # the rest of the loop cycles through them exactly as it would normally.
+        locked_ids = _locked_ids(settings, sport)
+        rotation = [g for g in games if g.get("event_id") in locked_ids]
+        if locked_ids and not rotation:
+            logger.debug("No locked game on today's slate; cycling all games")
+        if not rotation:
+            rotation = games
+
+        # "Show now": jump inside the rotation, or briefly peek at a game the
+        # locks are filtering out — otherwise the button would do nothing.
+        force_event_id = (settings.get("force_event_id") or "").strip()
+        if force_event_id and force_event_id != last_forced:
+            forced_idx = _find_event(rotation, force_event_id)
+            if forced_idx is not None:
+                logger.info(f"Jumping to requested game {force_event_id}")
+                game_idx = forced_idx
+                panel_idx = 0
+                panel_flip_count = 0
+                last_panel_flip = now
+                last_game_flip = now
+                last_forced = force_event_id  # consume only once applied
+            elif _find_event(games, force_event_id) is not None:
+                logger.info(f"Showing {force_event_id} for {PEEK_SECONDS}s")
+                peek_event_id = force_event_id
+                peek_until = now + PEEK_SECONDS
+                panel_idx = 0
+                last_panel_flip = now
+                last_forced = force_event_id
+
+        peek_idx = _find_event(games, peek_event_id) if now < peek_until else None
+        if peek_idx is None:
+            peek_event_id = ""
+        else:
+            rotation = [games[peek_idx]]
+
         display_mode = settings.get("display_mode", "focus")
+        # One game cannot fill a split view — show it full screen instead of
+        # leaving half the matrix blank.
+        if len(rotation) < 2:
+            display_mode = "focus"
+
+        state_locked = [i for i in locked_ids if _find_event(games, i) is not None]
 
         if display_mode == "overview":
             # Advance by 2 each cycle (two games shown at once)
             if (now - last_game_flip) >= OVERVIEW_CYCLE:
                 if last_game_flip > 0:
-                    game_idx = (game_idx + 2) % max(len(games), 1)
+                    game_idx = (game_idx + 2) % max(len(rotation), 1)
                 last_game_flip = now
 
-            game_a = games[game_idx % len(games)]
-            game_b = games[(game_idx + 1) % len(games)] if len(games) > 1 else None
+            game_a = rotation[game_idx % len(rotation)]
+            game_b = (
+                rotation[(game_idx + 1) % len(rotation)] if len(rotation) > 1 else None
+            )
             logger.debug(
-                f"{cfg['label']} overview {game_idx + 1}/{len(games)}: "
+                f"{cfg['label']} overview {game_idx + 1}/{len(rotation)}"
+                f"{f' of {len(state_locked)} locked' if state_locked else ''}: "
                 f"{game_a.get('away_team')} @ {game_a.get('home_team')} [{game_a.get('state')}]"
             )
             _write_state(
@@ -194,6 +306,7 @@ def run() -> None:
                     game_a.get("event_id", ""),
                     *(([game_b.get("event_id", "")] if game_b else [])),
                 ],
+                state_locked,
             )
             cfg["render_overview"](canvas, game_a, game_b)
 
@@ -201,7 +314,7 @@ def run() -> None:
             panel_views = cfg["panel_views"]
 
             # Sports without live detail endpoints (e.g. MLB) skip panel cycling when live
-            game = games[game_idx % len(games)]
+            game = rotation[game_idx % len(rotation)]
             skip_cycle = not cfg["live_details"] and game.get("state") == "in"
 
             if not skip_cycle:
@@ -210,11 +323,11 @@ def run() -> None:
                         panel_idx = (panel_idx + 1) % len(panel_views)
                         panel_flip_count += 1
                         if panel_flip_count >= len(panel_views) * _CYCLES_PER_GAME:
-                            game_idx = (game_idx + 1) % max(len(games), 1)
+                            game_idx = (game_idx + 1) % max(len(rotation), 1)
                             panel_flip_count = 0
                     last_panel_flip = now
 
-            game = games[game_idx % len(games)]
+            game = rotation[game_idx % len(rotation)]
             event_id = game.get("event_id", "")
             state = game.get("state", "pre")
 
@@ -246,12 +359,18 @@ def run() -> None:
             panel_view = (
                 "live" if skip_cycle else panel_views[panel_idx % len(panel_views)]
             )
+            if peek_event_id:
+                scope = " [showing]"
+            elif state_locked:
+                scope = f" [locked {len(state_locked)}]"
+            else:
+                scope = ""
             logger.debug(
-                f"{cfg['label']} focus {game_idx + 1}/{len(games)}: "
+                f"{cfg['label']} focus {game_idx + 1}/{len(rotation)}{scope}: "
                 f"{game.get('away_team')} @ {game.get('home_team')} "
                 f"[{state}] panel={panel_view}"
             )
-            _write_state(sport, display_mode, [game.get("event_id", "")])
+            _write_state(sport, display_mode, [game.get("event_id", "")], state_locked)
             cfg["render_focus"](canvas, game, details, panel_view)
 
         canvas = matrix.SwapOnVSync(canvas)

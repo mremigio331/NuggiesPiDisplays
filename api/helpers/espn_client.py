@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 
 import requests
@@ -8,6 +9,14 @@ logger = logging.getLogger(__name__)
 _ESPN_BASE = "http://site.api.espn.com/apis/site/v2/sports"
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 
+# sport key → ESPN league path. Soccer is resolved per league slug at call time.
+ESPN_LEAGUE_PATHS: dict[str, str] = {
+    "mlb": "baseball/mlb",
+    "nba": "basketball/nba",
+    "nfl": "football/nfl",
+    "nhl": "hockey/nhl",
+}
+
 
 def _parse_int(val: str) -> int:
     try:
@@ -16,11 +25,27 @@ def _parse_int(val: str) -> int:
         return 0
 
 
+def _to_int(val) -> int:
+    """Coerce anything numeric-ish (incl. '12.0' / 12.0) to int, else 0."""
+    try:
+        return int(float(val))
+    except (ValueError, TypeError):
+        return 0
+
+
+_NAME_SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v"}
+
+
 def _last_name(display_name: str) -> str:
-    """Extract last name from a full display name, e.g. 'Aaron Judge' → 'Judge'."""
+    """Extract last name from a full display name, e.g. 'Aaron Judge' → 'Judge'.
+
+    Generational suffixes are skipped so 'Devin Neal Jr.' → 'Neal'.
+    """
     if not display_name:
         return ""
-    parts = display_name.strip().split()
+    parts = [p for p in display_name.strip().split() if p]
+    while len(parts) > 1 and parts[-1].lower() in _NAME_SUFFIXES:
+        parts.pop()
     return parts[-1] if parts else ""
 
 
@@ -55,6 +80,72 @@ _BETWEEN_PLAY_FRAGMENTS = (
 )
 
 
+# ── Football (NFL / NCAA) parsing tables ──────────────────────────────────────
+# Shared by every football league — ESPN uses the same stat names for NFL and
+# college football, so adding a league needs no changes here.
+
+_FOOTBALL_TEAM_STATS: dict[str, str] = {
+    "totalYards": "yards",
+    "netPassingYards": "pass_yards",
+    "rushingYards": "rush_yards",
+    "turnovers": "turnovers",
+    "firstDowns": "first_downs",
+    "thirdDownEff": "third_down",
+    "totalPenaltiesYards": "penalties",
+    "sacksYardsLost": "sacks",
+    "completionAttempts": "comp_att",
+    "possessionTime": "possession_time",
+    "redZoneAttempts": "red_zone",
+}
+
+_FOOTBALL_LEADER_CATS: dict[str, str] = {
+    "passingYards": "passing",
+    "rushingYards": "rushing",
+    "receivingYards": "receiving",
+}
+
+_LEADER_TD_RE = re.compile(r"(\d+)\s*TD")
+_LEADER_INT_RE = re.compile(r"(\d+)\s*INT")
+
+# Scoring-play labels matched against type.text
+_FOOTBALL_SCORE_TYPES: tuple[tuple[str, str], ...] = (
+    ("touchdown", "TD"),
+    ("field goal", "FG"),
+    ("safety", "SF"),
+    ("two-point", "2P"),
+    ("extra point", "XP"),
+)
+
+# …and by points scored, for plays ESPN labels oddly (e.g. a fumble-return
+# touchdown typed "Sack Opp Fumble Recovery", abbreviation "SFOP").
+_FOOTBALL_SCORE_BY_POINTS: dict[int, str] = {
+    8: "TD",
+    7: "TD",
+    6: "TD",
+    3: "FG",
+    1: "XP",
+}
+
+
+def _match_int(pattern: re.Pattern, text: str) -> int:
+    """First integer captured by pattern in text, else 0."""
+    match = pattern.search(text or "")
+    return _to_int(match.group(1)) if match else 0
+
+
+def _football_score_type(ptype: dict, points: int) -> str:
+    """Compact 2-char scoring-play label, e.g. 'TD', 'FG', 'SF'."""
+    text = (ptype.get("text") or "").lower()
+    for fragment, label in _FOOTBALL_SCORE_TYPES:
+        if fragment in text:
+            return label
+    label = _FOOTBALL_SCORE_BY_POINTS.get(points)
+    if label:
+        return label
+    abbr = (ptype.get("abbreviation") or "").strip().upper()
+    return (abbr or text.upper())[:2]
+
+
 def _parse_base_game(
     event: dict, home: dict, away: dict, stype: dict, status: dict
 ) -> dict:
@@ -63,6 +154,11 @@ def _parse_base_game(
         "event_id": event.get("id", ""),
         "home_team": home["team"].get("abbreviation", ""),
         "away_team": away["team"].get("abbreviation", ""),
+        # ESPN team ids are unique within a league but reused across leagues
+        # (id 2 is the Red Sox, Celtics, Bills and Sabres), so anything keyed by
+        # team id must also be keyed by sport.
+        "home_id": str(home["team"].get("id", "")),
+        "away_id": str(away["team"].get("id", "")),
         "home_score": int(home.get("score") or 0),
         "away_score": int(away.get("score") or 0),
         "home_color": home["team"].get("color", "003366"),
@@ -75,6 +171,29 @@ def _parse_base_game(
         "state": stype.get("state", "pre"),
         "game_date": event.get("date", ""),
     }
+
+
+def _parse_possession(situation: dict, home_id: str, away_id: str) -> str | None:
+    """Return "home" | "away" | None from a live competition situation block.
+
+    ESPN reports the team with the ball either as situation.possession (a team
+    id string) or as situation.team.id, depending on the sport.
+    """
+    poss_id = str(
+        situation.get("possession") or (situation.get("team") or {}).get("id") or ""
+    )
+    if not poss_id:
+        return None
+    if poss_id == home_id:
+        return "home"
+    if poss_id == away_id:
+        return "away"
+    return None
+
+
+def _line_scores(competitor: dict) -> list[int]:
+    """Per-period scores for one competitor, e.g. [7, 10, 0, 3]."""
+    return [_to_int(ls.get("value")) for ls in competitor.get("linescores") or []]
 
 
 def _build_home_away_map(raw: dict) -> dict[str, str]:
@@ -105,6 +224,54 @@ class ESPNClient:
         self._cache[url] = (time.time(), data)
         return data
 
+    # ── Teams ──────────────────────────────────────────────────────────────
+
+    def get_teams(self, sport: str, soccer_league: str = "fifa.world") -> list[dict]:
+        """Return every team in a league, for favourite-team pickers.
+
+        Team ids are only unique within a league, so callers must keep the
+        sport alongside any id they store.
+        """
+        if sport == "soccer":
+            league_path = f"soccer/{soccer_league}"
+        else:
+            league_path = ESPN_LEAGUE_PATHS.get(sport, "")
+        if not league_path:
+            logger.error(f"No ESPN league path for sport {sport!r}")
+            return []
+
+        url = f"{_ESPN_BASE}/{league_path}/teams"
+        try:
+            raw = self._get(url)
+        except Exception as e:
+            logger.error(f"ESPN teams fetch failed for {sport}: {e}")
+            return []
+
+        try:
+            leagues = (raw.get("sports") or [{}])[0].get("leagues") or [{}]
+            entries = leagues[0].get("teams") or []
+        except (IndexError, AttributeError):
+            return []
+
+        teams = []
+        for entry in entries:
+            team = entry.get("team") or {}
+            team_id = str(team.get("id") or "")
+            if not team_id or team.get("isAllStar"):
+                continue
+            teams.append(
+                {
+                    "id": team_id,
+                    "abbreviation": team.get("abbreviation") or "",
+                    "name": team.get("displayName") or "",
+                    "short_name": team.get("shortDisplayName") or "",
+                    "color": team.get("color") or "",
+                    "alt_color": team.get("alternateColor") or "",
+                }
+            )
+        teams.sort(key=lambda t: t["abbreviation"] or t["name"])
+        return teams
+
     def get_nba_scoreboard(self) -> list[dict]:
         """Return today's NBA games in a simplified format."""
         url = f"{_ESPN_BASE}/basketball/nba/scoreboard"
@@ -127,20 +294,11 @@ class ESPNClient:
             stype = status.get("type", {})
             state = stype.get("state", "pre")  # "pre" | "in" | "post"
 
-            # Possession — ESPN returns situation.possession (team id string) or
-            # situation.team.id for live basketball games.
             situation = comp.get("situation") or {}
-            home_id = str(home["team"].get("id", ""))
-            away_id = str(away["team"].get("id", ""))
-            poss_id = str(
-                situation.get("possession")
-                or (situation.get("team") or {}).get("id")
-                or ""
-            )
-            possession = (
-                "home"
-                if poss_id and poss_id == home_id
-                else "away" if poss_id and poss_id == away_id else None
+            possession = _parse_possession(
+                situation,
+                str(home["team"].get("id", "")),
+                str(away["team"].get("id", "")),
             )
 
             game = _parse_base_game(event, home, away, stype, status)
@@ -688,4 +846,166 @@ class ESPNClient:
 
         except Exception as e:
             logger.error(f"Failed to parse Soccer game details for {event_id}: {e}")
+            return None
+
+    # ── Football (NFL / NCAA) ──────────────────────────────────────────────
+    #
+    # Every football league lives behind ESPN's /football/{league}/ endpoints
+    # and returns an identical payload shape, so one pair of methods serves
+    # them all — pass the ESPN league slug:
+    #   "nfl"              → /football/nfl/...
+    #   "college-football" → /football/college-football/...
+
+    def get_football_scoreboard(self, league: str = "nfl") -> list[dict]:
+        """Return the current football slate for the given league."""
+        url = f"{_ESPN_BASE}/football/{league}/scoreboard"
+        try:
+            raw = self._get(url)
+        except Exception as e:
+            logger.error(f"ESPN football ({league}) fetch failed: {e}")
+            return []
+
+        games = []
+        for event in raw.get("events", []):
+            comp = (event.get("competitions") or [{}])[0]
+            competitors = comp.get("competitors", [])
+            home = next((c for c in competitors if c.get("homeAway") == "home"), None)
+            away = next((c for c in competitors if c.get("homeAway") == "away"), None)
+            if not home or not away:
+                continue
+
+            status = comp.get("status", {})
+            stype = status.get("type", {})
+            situation = comp.get("situation") or {}
+
+            # ESPN sends down = -1 between plays (kickoff, PAT, timeout).
+            down = _to_int(situation.get("down"))
+
+            game = _parse_base_game(event, home, away, stype, status)
+            game["clock"] = status.get("displayClock", "")
+            game["possession"] = _parse_possession(
+                situation,
+                str(home["team"].get("id", "")),
+                str(away["team"].get("id", "")),
+            )
+            game.update(
+                {
+                    "down": down if down > 0 else 0,
+                    "distance": _to_int(situation.get("distance")),
+                    "down_distance": situation.get("shortDownDistanceText") or "",
+                    "yard_line_text": situation.get("possessionText") or "",
+                    "is_red_zone": bool(situation.get("isRedZone")),
+                    "home_timeouts": situation.get("homeTimeouts"),
+                    "away_timeouts": situation.get("awayTimeouts"),
+                    "home_line_scores": _line_scores(home),
+                    "away_line_scores": _line_scores(away),
+                }
+            )
+            games.append(game)
+
+        return games
+
+    def get_football_game_details(
+        self, event_id: str, league: str = "nfl"
+    ) -> dict | None:
+        """Return team stats, stat leaders, scoring plays and the current drive."""
+        url = f"{_ESPN_BASE}/football/{league}/summary?event={event_id}"
+        try:
+            raw = self._get(url)
+        except Exception as e:
+            logger.error(
+                f"ESPN football ({league}) details fetch failed for {event_id}: {e}"
+            )
+            return None
+
+        try:
+            home_away_map = _build_home_away_map(raw)
+            result: dict = {"home": {}, "away": {}, "scoring": [], "drive": {}}
+            tid_to_abbr: dict[str, str] = {}
+
+            # Team stats from boxscore.teams
+            for team_data in raw.get("boxscore", {}).get("teams") or []:
+                team = team_data.get("team", {})
+                tid = str(team.get("id", ""))
+                abbr = team.get("abbreviation", "???")
+                tid_to_abbr[tid] = abbr
+                side = home_away_map.get(tid, "away")
+                result[side]["abbreviation"] = abbr
+                stats: dict[str, str] = {}
+                for s in team_data.get("statistics", []):
+                    key = _FOOTBALL_TEAM_STATS.get(s.get("name", ""))
+                    if key:
+                        stats[key] = str(s.get("displayValue") or s.get("value") or "0")
+                result[side]["stats"] = stats
+
+            # Stat leaders — one passing / rushing / receiving leader per team
+            for group in raw.get("leaders") or []:
+                tid = str((group.get("team") or {}).get("id", ""))
+                side = home_away_map.get(tid, "away")
+                leaders: dict[str, dict] = result[side].setdefault("leaders", {})
+                for category in group.get("leaders") or []:
+                    key = _FOOTBALL_LEADER_CATS.get(category.get("name", ""))
+                    if not key:
+                        continue
+                    entry = next(iter(category.get("leaders") or []), None)
+                    if not entry:
+                        continue
+                    athlete = entry.get("athlete") or {}
+                    detail = entry.get("displayValue") or ""
+                    leaders[key] = {
+                        # ESPN's lastName keeps suffixes ("Etienne Jr.") —
+                        # _last_name strips them.
+                        "name": _last_name(
+                            athlete.get("lastName") or athlete.get("displayName", "")
+                        ),
+                        "jersey": athlete.get("jersey", "") or "",
+                        "yards": _to_int(entry.get("value")),
+                        "touchdowns": _match_int(_LEADER_TD_RE, detail),
+                        "interceptions": _match_int(_LEADER_INT_RE, detail),
+                        "detail": detail,
+                    }
+
+            # Scoring plays, chronological. Points come from the running score
+            # delta, which also resolves ESPN's odd play-type labels.
+            running = {"away": 0, "home": 0}
+            for play in raw.get("scoringPlays") or []:
+                tid = str((play.get("team") or {}).get("id", ""))
+                side = home_away_map.get(tid, "away")
+                away_score = _to_int(play.get("awayScore"))
+                home_score = _to_int(play.get("homeScore"))
+                scores = {"away": away_score, "home": home_score}
+                points = scores[side] - running[side]
+                running = scores
+                result["scoring"].append(
+                    {
+                        "period": (play.get("period") or {}).get("number", 0),
+                        "time": (play.get("clock") or {}).get("displayValue", ""),
+                        "type": _football_score_type(play.get("type") or {}, points),
+                        "points": points,
+                        "side": side,
+                        "team": tid_to_abbr.get(tid, ""),
+                        "away_score": away_score,
+                        "home_score": home_score,
+                        "text": play.get("text", "") or "",
+                    }
+                )
+
+            # Current drive (live games only)
+            current = (raw.get("drives") or {}).get("current") or {}
+            if current:
+                drive_team = current.get("team") or {}
+                dtid = str(drive_team.get("id", ""))
+                result["drive"] = {
+                    "side": home_away_map.get(dtid, ""),
+                    "team": drive_team.get("abbreviation") or tid_to_abbr.get(dtid, ""),
+                    "description": current.get("description", "") or "",
+                    "yards": _to_int(current.get("yards")),
+                    "plays": len(current.get("plays") or []),
+                    "is_score": bool(current.get("isScore")),
+                }
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to parse football details for {event_id}: {e}")
             return None

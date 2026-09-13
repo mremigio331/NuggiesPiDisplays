@@ -26,8 +26,9 @@ export default function SportsPageHeader({ sport, isPending, onSportChange, onOp
           cursor: "pointer",
         }}
       >
-        <option value="nba">NBA</option>
         <option value="mlb">MLB</option>
+        <option value="nba">NBA</option>
+        <option value="nfl">NFL</option>
         <option value="nhl">NHL</option>
         <option value="soccer">Soccer</option>
       </select>

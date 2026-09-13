@@ -45,9 +45,11 @@
 
   "sports": {
     "sport": "nba",
-    "favorite_teams": [],
+    "favorite_teams": {},
     "cycle_interval_seconds": 10,
     "display_mode": "focus",
-    "soccer_league": "fifa.world"
+    "soccer_league": "fifa.world",
+    "locked_games": [],
+    "force_event_id": ""
   }
 }

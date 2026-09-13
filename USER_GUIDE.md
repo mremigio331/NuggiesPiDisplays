@@ -44,7 +44,7 @@ The display supports five modes, switchable from the **System** page:
 |------|---------------|
 | **Clock** | Current time |
 | **MTA** | Next subway departures for your configured NYC station |
-| **Sports** | Live / recent scores for MLB, NBA, or NHL |
+| **Sports** | Live / recent scores for NFL, MLB, NBA, NHL, or soccer |
 | **Stocks** | Stock ticker for your configured watchlist |
 | **Weather** | Current conditions and forecast |
 

@@ -1,5 +1,6 @@
 import React from "react";
 import TeamRow from "./TeamRow";
+import { isFavoriteGame } from "../../utility/favorites";
 
 function BSODots({ count, max, color }) {
   return (
@@ -74,7 +75,7 @@ export default function MLBGameCard({ game, favoriteTeams, activeEventIds }) {
     on_third,
   } = game;
 
-  const isFav = favoriteTeams.includes(away_team) || favoriteTeams.includes(home_team);
+  const isFav = isFavoriteGame(game, favoriteTeams);
   const isActive = activeEventIds?.has(game.event_id);
   const isLive = state === "in";
   const isFinal = state === "post";

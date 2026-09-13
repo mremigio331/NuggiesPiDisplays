@@ -53,12 +53,24 @@ FastAPI backend serving the RGB LED matrix display system. Manages display proce
 | `GET` | `/sports/settings` | Sports display settings |
 | `PUT` | `/sports/settings` | Update sport, league, display mode, etc. |
 | `GET` | `/sports/now` | Currently displayed game(s) on matrix |
+| `GET` | `/sports/teams` | Teams in a league (query: `?sport=nfl`) |
+| `GET` | `/sports/favorites` | Favourite team ids, keyed by sport |
+| `PUT` | `/sports/favorites` | Replace one sport's favourites |
+| `PUT` | `/sports/favorites/{team_id}` | Favourite a team (query/body: `sport`) |
+| `DELETE` | `/sports/favorites/{team_id}` | Unfavourite a team |
+| `GET` | `/sports/locks` | Locked games (expired locks excluded) |
+| `PUT` | `/sports/locks/{event_id}` | Lock a game to the matrix for 24h |
+| `DELETE` | `/sports/locks/{event_id}` | Unlock a game |
+| `DELETE` | `/sports/locks` | Unlock all games |
 | `GET` | `/sports/nba/scoreboard` | Today's NBA games |
 | `GET` | `/sports/nba/game/{event_id}` | NBA game details (box score) |
 | `GET` | `/sports/mlb/scoreboard` | Today's MLB games |
 | `GET` | `/sports/mlb/game/{event_id}` | MLB game details (batters/pitchers) |
 | `GET` | `/sports/nhl/scoreboard` | Today's NHL games |
 | `GET` | `/sports/nhl/game/{event_id}` | NHL game details (stats/goals) |
+| `GET` | `/sports/nfl/scoreboard` | Today's NFL games |
+| `GET` | `/sports/nfl/game/{event_id}` | NFL game details (team stats/leaders/scoring) |
+| `GET` | `/sports/football/leagues` | Available football leagues (NFL, NCAAF, …) |
 | `GET` | `/sports/soccer/scoreboard` | Soccer matches (query: `?league=fifa.world`) |
 | `GET` | `/sports/soccer/game/{event_id}` | Soccer match details |
 | `GET` | `/sports/soccer/leagues` | Available soccer leagues |

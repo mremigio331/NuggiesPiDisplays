@@ -1,4 +1,5 @@
 import React from "react";
+import GameControls from "./GameControls";
 
 export default function GameSection({
   title,
@@ -7,6 +8,11 @@ export default function GameSection({
   GameCard,
   favoriteTeams,
   activeEventIds,
+  lockedIds,
+  isPending,
+  onShowGame,
+  onLockGame,
+  onUnlockGame,
 }) {
   if (!games.length) return null;
 
@@ -16,7 +22,17 @@ export default function GameSection({
         {title}
       </div>
       {games.map((g, i) => (
-        <GameCard key={i} game={g} favoriteTeams={favoriteTeams} activeEventIds={activeEventIds} />
+        <div key={g.event_id ?? i}>
+          <GameCard game={g} favoriteTeams={favoriteTeams} activeEventIds={activeEventIds} />
+          <GameControls
+            isLocked={lockedIds?.has(g.event_id)}
+            isOnMatrix={activeEventIds?.has(g.event_id)}
+            isPending={isPending}
+            onShow={() => onShowGame(g.event_id)}
+            onLock={() => onLockGame(g.event_id)}
+            onUnlock={() => onUnlockGame(g.event_id)}
+          />
+        </div>
       ))}
     </>
   );

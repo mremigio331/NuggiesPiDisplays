@@ -280,6 +280,21 @@ def _render_overview_panel_base(canvas, game: dict, x0: int, w: int) -> tuple[st
     return state, x1
 
 
+def _draw_possession_column(canvas, game: dict) -> None:
+    """Possession marker — 5px column at x=63, top for away / bottom for home."""
+    possession = game.get("possession")
+    if possession == "away":
+        r, g, b = _team_color_rgb(game.get("away_color", "ffffff"))
+        rows = range(0, 5)
+    elif possession == "home":
+        r, g, b = _team_color_rgb(game.get("home_color", "ffffff"))
+        rows = range(27, 32)
+    else:
+        return
+    for y in rows:
+        canvas.SetPixel(MATRIX_W - 1, y, r, g, b)
+
+
 def _foul_color(fouls: int):
     if fouls <= 2:
         return _color(0, 200, 80)  # green — safe
@@ -367,8 +382,6 @@ def _render_right_stat(
     """
     away_col = _team_color(game.get("away_color", "ffffff"))
     home_col = _team_color(game.get("home_color", "ffffff"))
-    away_rgb = _team_color_rgb(game.get("away_color", "ffffff"))
-    home_rgb = _team_color_rgb(game.get("home_color", "ffffff"))
     gray = _color(80, 80, 80)
     white = _color(210, 210, 210)
 
@@ -377,16 +390,7 @@ def _render_right_stat(
     for x in range(RIGHT_X, MATRIX_W - 1):  # leave x=63 for possession
         canvas.SetPixel(x, 7, 55, 55, 55)
 
-    # Possession indicator — 5-pixel column at x=63
-    possession = game.get("possession")
-    if possession == "away":
-        r, g, b = away_rgb
-        for y in range(0, 5):
-            canvas.SetPixel(63, y, r, g, b)
-    elif possession == "home":
-        r, g, b = home_rgb
-        for y in range(27, 32):
-            canvas.SetPixel(63, y, r, g, b)
+    _draw_possession_column(canvas, game)
 
     if not details:
         _draw_text(canvas, "No Data", _center_x("No Data", RIGHT_X, RIGHT_W), 20, gray)
@@ -1257,3 +1261,416 @@ def render_soccer_overview(canvas, game_a: dict, game_b: dict | None) -> None:
     _render_soccer_overview_panel(canvas, game_a, _OVR_LEFT_X, _OVR_LEFT_W)
     if game_b:
         _render_soccer_overview_panel(canvas, game_b, _OVR_RIGHT_X, _OVR_RIGHT_W)
+
+
+# ── Football (NFL / NCAAF) ─────────────────────────────────────────────────────
+#
+# League-agnostic: every football league (NFL, NCAA, …) renders through these
+# functions — the data contract is identical, only the league slug differs.
+#
+# Focus layout (64×32):
+#   Left panel (x=0..27):  away / home score rows — a small football is drawn
+#                            beside the abbreviation of the team with the ball;
+#                            status zone y=20..31
+#                            LIVE:  quarter label (left) + clock (right) @ y=25
+#                                   situation centred @ y=31, alternating every
+#                                   5s between down & distance ("1st&13") and
+#                                   the ball spot ("DEN 25") — drawn in the
+#                                   possessing team's color, red in the red zone
+#                            POST:  "Final" / "Fin OT"
+#                            PRE:   kickoff time
+#   Divider (x=28):         dim vertical line
+#   Right panel (x=29..63) cycles every PANEL_CYCLE seconds:
+#     "stats"   — YD / PS / RS / TO comparison (away left · label centre ·
+#                 home right)
+#     "scoring" — scoring plays, most recent first (team · TD/FG · quarter)
+#     "pass"    — passing leaders, away above home (name + yards/TD)
+#     "rush"    — rushing leaders
+#     "recv"    — receiving leaders
+#
+# Overview layout: possession football in the team rows (red in the red zone),
+#   info strip carries quarter + clock on one row (y=28). The 11px strip cannot
+#   fit a second text row without clipping descenders, so down & distance and
+#   the ball spot stay in focus mode.
+
+# Right-panel column anchors (panel spans x=29..63, 35px). Football uses the
+# full width — there is no possession column here, the football icon in the
+# team row carries possession.
+_FB_COL_L = RIGHT_X  # left column: away value / team abbreviation
+_FB_COL_M = RIGHT_X + 15  # middle column: scoring play type
+_FB_RIGHT_EDGE = MATRIX_W  # right-aligned text ends at x=63
+
+# Right-panel team comparison rows — 2-char labels keep 3-digit values legible.
+_FOOTBALL_STAT_ROWS: tuple[tuple[str, str], ...] = (
+    ("YD", "yards"),
+    ("PS", "pass_yards"),
+    ("RS", "rush_yards"),
+    ("TO", "turnovers"),
+)
+
+# panel_view → (header, details leaders key)
+_FOOTBALL_LEADER_VIEWS: dict[str, tuple[str, str]] = {
+    "pass": ("PASS", "passing"),
+    "rush": ("RUSH", "rushing"),
+    "recv": ("RECV", "receiving"),
+}
+
+_RED_ZONE_RGB = (255, 40, 0)
+
+# Possession football — 5×3 filled ellipse drawn beside the team abbreviation.
+# Leather brown, bright enough to read against a team-color background (which
+# is normalized to _BG_PEAK); turns _RED_ZONE_RGB inside the red zone.
+_FB_ICON_W = 5
+_FB_ICON_H = 3
+_FB_ICON_RGB = (205, 120, 45)
+
+# Team-row bounds (y_top, y_bottom) for each layout, used to centre the icon.
+_FB_FOCUS_ROWS = {"away": (0, 9), "home": (10, 19)}
+_FB_OVERVIEW_ROWS = {"away": (0, 9), "home": (11, 20)}
+
+
+def _draw_football_icon(canvas, x0: int, y0: int, rgb=_FB_ICON_RGB) -> None:
+    """Draw a 5×3 filled football with its top-left corner at (x0, y0).
+
+    .###.
+    #####
+    .###.
+    """
+    r, g, b = rgb
+    for x in range(x0 + 1, x0 + _FB_ICON_W - 1):
+        canvas.SetPixel(x, y0, r, g, b)
+        canvas.SetPixel(x, y0 + 2, r, g, b)
+    for x in range(x0, x0 + _FB_ICON_W):
+        canvas.SetPixel(x, y0 + 1, r, g, b)
+
+
+def _draw_football_possession(
+    canvas, game: dict, x0: int, x1: int, rows: dict, abbr_max: int
+) -> None:
+    """Mark the team with the ball: a football right of its abbreviation.
+
+    Skipped when the row is too tight to fit the icon between the abbreviation
+    and the score (only happens with 4-char abbreviations, i.e. some college
+    teams) — the down & distance color still carries possession in that case.
+    """
+    side = game.get("possession")
+    if side not in ("home", "away") or game.get("state") != "in":
+        return
+
+    abbr = str(game.get(f"{side}_team", ""))[:abbr_max]
+    score = str(game.get(f"{side}_score", 0))
+    icon_x = x0 + 1 + len(abbr) * _CW + 1  # 1px gap after the abbreviation
+    icon_limit = x1 - len(score) * _CW  # stay clear of the right-aligned score
+    if icon_x + _FB_ICON_W - 1 > icon_limit:
+        return
+
+    top, bottom = rows[side]
+    icon_y = top + (bottom - top + 1 - _FB_ICON_H) // 2
+    # Red in the red zone — the only situation cue the overview has room for
+    rgb = _RED_ZONE_RGB if game.get("is_red_zone") else _FB_ICON_RGB
+    _draw_football_icon(canvas, icon_x, icon_y, rgb)
+
+
+def _football_period_label(period: int) -> str:
+    """Q1–Q4, then OT / OT2 / OT3 …"""
+    if period <= 1:
+        return "Q1"
+    if period <= 4:
+        return f"Q{period}"
+    if period == 5:
+        return "OT"
+    return f"OT{period - 4}"
+
+
+def _football_period_compact(period: int) -> str:
+    """2-char period label ('O2' for OT2) so it always fits beside a clock."""
+    label = _football_period_label(period)
+    return label if len(label) <= 2 else label.replace("OT", "O", 1)
+
+
+_FB_ORDINALS = {1: "1st", 2: "2nd", 3: "3rd", 4: "4th"}
+_FB_SITUATION_CYCLE = 5  # seconds per situation view
+
+
+def _football_down_distance(game: dict) -> str:
+    """Down & distance, e.g. '1st&13' or '1st&G'. Empty between plays.
+
+    No spaces around the '&': the status row is 28px, and the 4x6 font is fixed
+    width, so '1st & 13' (8 chars = 32px) would not fit — '1st&13' (24px) does.
+    """
+    down = game.get("down") or 0
+    if not down:
+        return ""
+    label = _FB_ORDINALS.get(down, str(down))
+    distance = game.get("distance") or 0
+    return f"{label}&{distance}" if distance else f"{label}&G"
+
+
+def _football_ball_spot(game: dict) -> str:
+    """Where the ball is, e.g. 'DEN 25' (ESPN's possessionText)."""
+    return (game.get("yard_line_text") or "").strip()
+
+
+def _football_situation_text(game: dict, max_chars: int) -> str:
+    """Down & distance and ball spot, alternating every _FB_SITUATION_CYCLE s.
+
+    '1st&13 DEN 25' is 13 chars and never fits a 7-char row, so the two take
+    turns. If only one is available it stays put instead of blinking.
+    """
+    down_distance = _football_down_distance(game)
+    spot = _football_ball_spot(game)
+    if down_distance and spot:
+        show_spot = (int(time.time()) // _FB_SITUATION_CYCLE) % 2 == 1
+        text = spot if show_spot else down_distance
+    else:
+        text = down_distance or spot
+    return text[:max_chars]
+
+
+_FB_MIN_TEXT_PEAK = 100  # below this a primary color is unreadable on black
+
+
+def _football_team_text_color(game: dict, side: str):
+    """Team text color for the black right panel.
+
+    Some primaries are too dark to read on black even after the
+    _MIN_BRIGHTNESS boost (Bears navy 0b1c3a, Steelers black 000000), so fall
+    back to the alternate color when it is brighter. Teams with a usable
+    primary keep it, so a light-gray alternate never replaces a team's real
+    color.
+    """
+    primary = game.get(f"{side}_color") or "ffffff"
+    alt = game.get(f"{side}_alt_color") or ""
+    try:
+        primary_peak = max(_parse_hex(primary))
+    except Exception:
+        return _team_color(primary)
+    if primary_peak >= _FB_MIN_TEXT_PEAK or not alt:
+        return _team_color(primary)
+    try:
+        if max(_parse_hex(alt)) > primary_peak:
+            return _team_color(alt)
+    except Exception:
+        pass
+    return _team_color(primary)
+
+
+def _football_situation_color(game: dict):
+    """Color for the down & distance text: red zone red, else possession color."""
+    if game.get("is_red_zone"):
+        return _color(*_RED_ZONE_RGB)
+    possession = game.get("possession")
+    if possession in ("home", "away"):
+        return _football_team_text_color(game, possession)
+    return _color(160, 160, 160)
+
+
+def _is_halftime(game: dict) -> bool:
+    return "half" in (game.get("status_detail") or "").lower()
+
+
+def _render_football_left_panel(canvas, game: dict) -> None:
+    state = _render_focus_left_header(canvas, game)
+    _draw_football_possession(canvas, game, 0, LEFT_W - 1, _FB_FOCUS_ROWS, 4)
+    period = game.get("period", 0)
+    clock = game.get("clock", "")
+    yellow = _color(255, 220, 0)
+    gray = _color(160, 160, 160)
+
+    if state == "in":
+        if _is_halftime(game):
+            _draw_text(canvas, "HALF", _center_x("HALF", 0, LEFT_W), 25, yellow)
+        elif clock:
+            # Quarter left, clock right. A 2-digit-minute clock ("15:00") plus
+            # the label fills all 28px, leaving no word gap, so the two are
+            # separated by color instead: quarter dim white, clock live yellow.
+            label = _football_period_compact(period)
+            _draw_text(canvas, label, 0, 25, _color(190, 190, 190))
+            _draw_text(canvas, clock, LEFT_W - len(clock) * _CW, 25, yellow)
+        else:
+            label = _football_period_label(period)
+            _draw_text(canvas, label, _center_x(label, 0, LEFT_W), 25, yellow)
+
+        situation = _football_situation_text(game, LEFT_W // _CW)
+        if situation:
+            _draw_text(
+                canvas,
+                situation,
+                _center_x(situation, 0, LEFT_W),
+                31,
+                _football_situation_color(game),
+            )
+    elif state == "post":
+        label = "Final" if period <= 4 else "Fin OT"
+        _draw_text(canvas, label, _center_x(label, 0, LEFT_W), 28, gray)
+    else:
+        st = (
+            _format_game_time(game.get("game_date", ""))
+            or game.get("status_detail", "")
+            or "Soon"
+        )[:7]
+        _draw_text(canvas, st, _center_x(st, 0, LEFT_W), 28, gray)
+
+
+def _render_football_right_stats(canvas, game: dict, details: dict | None) -> None:
+    """Right panel — team comparison rows at y=9/16/23/30."""
+    away_col = _football_team_text_color(game, "away")
+    home_col = _football_team_text_color(game, "home")
+    gray = _color(100, 100, 100)
+
+    d = details or {}
+    away_s = d.get("away", {}).get("stats", {})
+    home_s = d.get("home", {}).get("stats", {})
+    if not away_s and not home_s:
+        _draw_text(canvas, "No Data", _center_x("No Data", RIGHT_X, RIGHT_W), 20, gray)
+        return
+
+    # away value | label | home value — anchored to the panel edges so 3-digit
+    # yardage keeps a gap either side of the label.
+    for (label, key), y in zip(_FOOTBALL_STAT_ROWS, [9, 16, 23, 30]):
+        aval = str(away_s.get(key, "0"))[:3]
+        hval = str(home_s.get(key, "0"))[:3]
+        _draw_text(canvas, aval, _FB_COL_L, y, away_col)
+        _draw_text(canvas, label, _center_x(label, RIGHT_X, RIGHT_W), y, gray)
+        _draw_text(canvas, hval, _FB_RIGHT_EDGE - len(hval) * _CW, y, home_col)
+
+
+def _render_football_right_scoring(canvas, game: dict, details: dict | None) -> None:
+    """Right panel — scoring plays, most recent first, 4 per page."""
+    away_col = _football_team_text_color(game, "away")
+    home_col = _football_team_text_color(game, "home")
+    white = _color(210, 210, 210)
+    gray = _color(100, 100, 100)
+
+    _draw_text(canvas, "SCORE", _center_x("SCORE", RIGHT_X, RIGHT_W), 5, white)
+    for x in range(RIGHT_X, MATRIX_W):
+        canvas.SetPixel(x, 7, 40, 40, 40)
+
+    plays = list(reversed((details or {}).get("scoring", [])))
+    if not plays:
+        _draw_text(
+            canvas, "No Score", _center_x("No Score", RIGHT_X, RIGHT_W), 20, gray
+        )
+        return
+
+    pages = (len(plays) - 1) // 4 + 1
+    page = (int(time.time()) // 15) % pages if pages > 1 else 0
+    page_plays = plays[page * 4 : page * 4 + 4]
+
+    # team | play type | quarter — fixed columns so nothing runs together
+    # ("DET TD Q1"). The compact period label keeps the last column at 2 chars.
+    for play, y in zip(page_plays, [13, 19, 25, 31]):
+        abbr = str(play.get("team", ""))[:3]
+        kind = str(play.get("type", ""))[:2]
+        period = play.get("period", 0)
+        p_label = _football_period_compact(period) if period else "?"
+        col = away_col if play.get("side") == "away" else home_col
+
+        _draw_text(canvas, abbr, _FB_COL_L, y, col)
+        _draw_text(canvas, kind, _FB_COL_M, y, white)
+        _draw_text(canvas, p_label, _FB_RIGHT_EDGE - len(p_label) * _CW, y, gray)
+
+
+def _football_leader_value(leader: dict) -> str:
+    """Compact leader line, e.g. '128 2TD' or '56yd'."""
+    yards = leader.get("yards", 0)
+    tds = leader.get("touchdowns", 0)
+    return f"{yards} {tds}TD" if tds else f"{yards}yd"
+
+
+_FB_NAME_MAX = 8  # 8 chars × 4px = 32px, fits the 35px right panel
+
+
+def _fit_name(name: str, max_chars: int = _FB_NAME_MAX) -> str:
+    """Trim a surname to fit, dropping leading parts before truncating.
+
+    'St. Brown' → 'Brown' (not 'St. Brow'); 'Higginbotham' → 'Higginbo'.
+    """
+    name = (name or "").strip()
+    while len(name) > max_chars and " " in name:
+        name = name.split(" ", 1)[1]
+    return name[:max_chars]
+
+
+def _render_football_right_leader(
+    canvas, game: dict, details: dict | None, header: str, key: str
+) -> None:
+    """Right panel — one stat leader per team: name above, yards/TD below."""
+    white = _color(210, 210, 210)
+    gray = _color(100, 100, 100)
+
+    _draw_text(canvas, header, _center_x(header, RIGHT_X, RIGHT_W), 5, white)
+    for x in range(RIGHT_X, MATRIX_W):
+        canvas.SetPixel(x, 7, 40, 40, 40)
+
+    d = details or {}
+    if not d:
+        _draw_text(canvas, "No Data", _center_x("No Data", RIGHT_X, RIGHT_W), 20, gray)
+        return
+
+    for side, name_y, val_y in (("away", 13, 19), ("home", 25, 31)):
+        leader = d.get(side, {}).get("leaders", {}).get(key) or {}
+        col = _football_team_text_color(game, side)
+        name = _fit_name(leader.get("name") or game.get(f"{side}_team", ""))
+        _draw_text(canvas, name, RIGHT_X + 1, name_y, col)
+        value = _football_leader_value(leader) if leader else "-"
+        _draw_text(canvas, value, RIGHT_X + 1, val_y, white if leader else gray)
+
+
+def render_football_game(
+    canvas, game: dict, details: dict | None, panel_view: str
+) -> None:
+    """Render a full football focus frame (NFL, NCAAF, …)."""
+    canvas.Clear()
+    _draw_divider(canvas)
+    _render_football_left_panel(canvas, game)
+
+    if panel_view == "scoring":
+        _render_football_right_scoring(canvas, game, details)
+    elif panel_view in _FOOTBALL_LEADER_VIEWS:
+        header, key = _FOOTBALL_LEADER_VIEWS[panel_view]
+        _render_football_right_leader(canvas, game, details, header, key)
+    else:  # "stats" or fallback
+        _render_football_right_stats(canvas, game, details)
+
+
+def _render_football_overview_panel(canvas, game: dict, x0: int, w: int) -> None:
+    state, x1 = _render_overview_panel_base(canvas, game, x0, w)
+    _draw_football_possession(canvas, game, x0, x1, _FB_OVERVIEW_ROWS, 3)
+    period = game.get("period", 0)
+    clock = game.get("clock", "")
+    yellow = _color(255, 220, 0)
+    gray = _color(140, 140, 140)
+
+    if state == "in":
+        # Single row at y=28, like the other sports' overviews. The strip is
+        # only 11px (y=21..31) so a second text row would overlap: 'Q' has a
+        # descender, and the row below would clip its tail into an 'O'.
+        # Possession lives in the football icon, situation detail in focus mode.
+        if _is_halftime(game):
+            _draw_text(canvas, "HALF", x0 + max(0, (w - 4 * _CW) // 2), 28, yellow)
+        else:
+            label = _football_period_compact(period)
+            _draw_text(canvas, label, x0 + 1, 28, yellow)
+            # +1 for the left inset — keep the clock clear of the label
+            if clock and (len(label) + len(clock)) * _CW + 1 <= w:
+                _draw_text(canvas, clock, x1 - len(clock) * _CW + 1, 28, yellow)
+    elif state == "post":
+        _draw_text(canvas, "Final", x0 + max(0, (w - 5 * _CW) // 2), 28, gray)
+    else:
+        st = (
+            _format_game_time(game.get("game_date", ""))
+            or game.get("status_detail", "")
+            or "Soon"
+        )[:7]
+        _draw_text(canvas, st, x0 + max(0, (w - len(st) * _CW) // 2), 28, gray)
+
+
+def render_football_overview(canvas, game_a: dict, game_b: dict | None) -> None:
+    """Split-screen football overview: two games side by side."""
+    canvas.Clear()
+    for y in range(MATRIX_H):
+        canvas.SetPixel(_OVR_DIV_X, y, 35, 35, 35)
+    _render_football_overview_panel(canvas, game_a, _OVR_LEFT_X, _OVR_LEFT_W)
+    if game_b:
+        _render_football_overview_panel(canvas, game_b, _OVR_RIGHT_X, _OVR_RIGHT_W)

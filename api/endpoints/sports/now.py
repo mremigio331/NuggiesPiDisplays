@@ -16,5 +16,10 @@ async def sports_now():
         return JSONResponse(json.loads(_STATE_FILE.read_text()))
     except Exception:
         return JSONResponse(
-            {"sport": None, "display_mode": None, "active_event_ids": []}
+            {
+                "sport": None,
+                "display_mode": None,
+                "active_event_ids": [],
+                "locked_event_ids": [],
+            }
         )

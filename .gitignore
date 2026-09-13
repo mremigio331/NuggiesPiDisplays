@@ -37,3 +37,4 @@ website/dist/
 # Vibe Coder
 CLAUDE.md
 docs/*
+.kiro/*
