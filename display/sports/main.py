@@ -59,6 +59,25 @@ def _football_config(label: str, sport: str) -> dict:
     }
 
 
+def _soccer_config(label: str, sport: str) -> dict:
+    """Build a sport config for any soccer league (NWSL, …).
+
+    Every soccer league shares the same fetchers and renderers — only the sport
+    key (which maps to an API route and an ESPN league slug server-side)
+    changes. Adding a league is one more _SPORT_CONFIG entry built here plus a
+    matching entry in api/endpoints/sports/soccer.py SOCCER_SPORTS.
+    """
+    return {
+        "label": label,
+        "fetch_scoreboard": lambda: api_client.get_soccer_scoreboard(sport),
+        "fetch_details": lambda eid: api_client.get_soccer_game_details(eid, sport),
+        "panel_views": _SOCCER_PANEL_VIEWS,
+        "live_details": True,
+        "render_focus": renderer.render_soccer_game,
+        "render_overview": renderer.render_soccer_overview,
+    }
+
+
 # Adding a new sport: add one entry here + ESPN client methods + API endpoints.
 # Keyed alphabetically, matching the league order in the web UI.
 _SPORT_CONFIG: dict[str, dict] = {
@@ -92,15 +111,9 @@ _SPORT_CONFIG: dict[str, dict] = {
         "render_focus": renderer.render_hockey_game,
         "render_overview": renderer.render_hockey_overview,
     },
-    "soccer": {
-        "label": "Soccer",
-        "fetch_scoreboard": None,  # resolved dynamically based on league setting
-        "fetch_details": None,
-        "panel_views": _SOCCER_PANEL_VIEWS,
-        "live_details": True,
-        "render_focus": renderer.render_soccer_game,
-        "render_overview": renderer.render_soccer_overview,
-    },
+    "nwsl": _soccer_config("NWSL", "nwsl"),
+    # More soccer leagues: add "<key>": _soccer_config("<Label>", "<key>") here
+    # plus a matching entry in api/endpoints/sports/soccer.py SOCCER_SPORTS.
 }
 
 
@@ -205,16 +218,8 @@ def run() -> None:
             peek_until = 0.0
             details_cache.clear()
 
-        # For soccer, resolve league-specific fetch functions
-        if sport == "soccer":
-            soccer_league = settings.get("soccer_league", "fifa.world")
-            fetch_scoreboard = lambda: api_client.get_soccer_scoreboard(soccer_league)
-            fetch_details = lambda eid: api_client.get_soccer_game_details(
-                eid, soccer_league
-            )
-        else:
-            fetch_scoreboard = cfg["fetch_scoreboard"]
-            fetch_details = cfg["fetch_details"]
+        fetch_scoreboard = cfg["fetch_scoreboard"]
+        fetch_details = cfg["fetch_details"]
 
         # Refresh scoreboard
         refresh_interval = LIVE_REFRESH if _has_live_game(games) else SCOREBOARD_REFRESH

@@ -6,7 +6,7 @@ import {
   getMLBScoreboard,
   getNHLScoreboard,
   getNFLScoreboard,
-  getSoccerScoreboard,
+  getNWSLScoreboard,
   getSportsSettings,
   updateSportsSettings,
   getSportsNow,
@@ -37,7 +37,6 @@ export default function Sports() {
 
   const sport = settings?.sport ?? "nba";
   const displayMode = settings?.display_mode ?? "focus";
-  const soccerLeague = settings?.soccer_league ?? "fifa.world";
   // Favourites are per sport: ESPN team ids are reused across leagues
   const favoriteTeams = favoritesForSport(settings, sport);
   // Locks for the selected league; the API drops expired ones before we see them
@@ -89,11 +88,11 @@ export default function Sports() {
       Card: NHLGameCard,
       label: "NHL",
     },
-    soccer: {
-      queryKey: ["soccerScoreboard", soccerLeague],
-      queryFn: () => getSoccerScoreboard(soccerLeague),
+    nwsl: {
+      queryKey: ["nwslScoreboard"],
+      queryFn: getNWSLScoreboard,
       Card: SoccerGameCard,
-      label: "FIFA World Cup",
+      label: "NWSL",
     },
   };
   const {

@@ -61,17 +61,19 @@ export const getFootballScoreboard = (sport = "nfl") =>
   handle(api.get(`/sports/${sport}/scoreboard`));
 export const getFootballLeagues = () => handle(api.get("/sports/football/leagues"));
 export const getNFLScoreboard = () => getFootballScoreboard("nfl");
-export const getSoccerScoreboard = (league = "fifa.world") =>
-  handle(api.get("/sports/soccer/scoreboard", { params: { league } }));
+// Soccer — one sport per league (nwsl, …), same payload shape
+export const getSoccerScoreboard = (sport = "nwsl") =>
+  handle(api.get(`/sports/${sport}/scoreboard`));
 export const getSoccerLeagues = () => handle(api.get("/sports/soccer/leagues"));
+export const getNWSLScoreboard = () => getSoccerScoreboard("nwsl");
 export const getSportsSettings = () => handle(api.get("/sports/settings"));
 export const updateSportsSettings = (body) => handle(api.put("/sports/settings", body));
 export const getSportsNow = () => handle(api.get("/sports/now"));
 // Game locks — the matrix cycles through locked games only. Each lock expires
 // 24h after it is set; all four calls return the updated sports settings.
-// Teams in a league, for the favourite-team picker
-export const getSportsTeams = (sport, league) =>
-  handle(api.get("/sports/teams", { params: { sport, league } }));
+// Teams in a league, for the favourite-team picker (sport key encodes the league)
+export const getSportsTeams = (sport) =>
+  handle(api.get("/sports/teams", { params: { sport } }));
 // Favourite teams — per sport, keyed by ESPN team id
 export const getSportsFavorites = () => handle(api.get("/sports/favorites"));
 export const addFavoriteTeam = (teamId, sport) =>

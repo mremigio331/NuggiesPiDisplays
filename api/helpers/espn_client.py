@@ -9,12 +9,15 @@ logger = logging.getLogger(__name__)
 _ESPN_BASE = "http://site.api.espn.com/apis/site/v2/sports"
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-# sport key → ESPN league path. Soccer is resolved per league slug at call time.
+# sport key → ESPN league path.
 ESPN_LEAGUE_PATHS: dict[str, str] = {
     "mlb": "baseball/mlb",
     "nba": "basketball/nba",
     "nfl": "football/nfl",
     "nhl": "hockey/nhl",
+    # Soccer leagues are each their own sport key → ESPN "soccer/<slug>" path.
+    # Keep in sync with SOCCER_SPORTS in api/endpoints/sports/soccer.py.
+    "nwsl": "soccer/usa.nwsl",
 }
 
 
@@ -226,16 +229,13 @@ class ESPNClient:
 
     # ── Teams ──────────────────────────────────────────────────────────────
 
-    def get_teams(self, sport: str, soccer_league: str = "fifa.world") -> list[dict]:
+    def get_teams(self, sport: str) -> list[dict]:
         """Return every team in a league, for favourite-team pickers.
 
         Team ids are only unique within a league, so callers must keep the
         sport alongside any id they store.
         """
-        if sport == "soccer":
-            league_path = f"soccer/{soccer_league}"
-        else:
-            league_path = ESPN_LEAGUE_PATHS.get(sport, "")
+        league_path = ESPN_LEAGUE_PATHS.get(sport, "")
         if not league_path:
             logger.error(f"No ESPN league path for sport {sport!r}")
             return []

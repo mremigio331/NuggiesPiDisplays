@@ -6,15 +6,16 @@ from helpers.config import read_settings, write_settings
 
 from . import _favorites, _locks
 from .football import FOOTBALL_SPORTS
+from .soccer import SOCCER_SPORTS
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Extend this set when adding new sports. Football leagues (NFL, NCAAF, …) are
-# each their own sport and come from FOOTBALL_SPORTS.
-VALID_SPORTS = {"nba", "mlb", "nhl", "soccer", *FOOTBALL_SPORTS}
+# Extend this set when adding new sports. Football leagues (NFL, NCAAF, …) and
+# soccer leagues (NWSL, …) are each their own sport and come from
+# FOOTBALL_SPORTS / SOCCER_SPORTS.
+VALID_SPORTS = {"nba", "mlb", "nhl", *FOOTBALL_SPORTS, *SOCCER_SPORTS}
 _VALID_DISPLAY_MODES = {"focus", "overview"}
-_VALID_SOCCER_LEAGUES = {"fifa.world"}
 
 
 class SportsSettingsBody(BaseModel):
@@ -23,7 +24,6 @@ class SportsSettingsBody(BaseModel):
     cycle_interval_seconds: int | None = None
     sport: str | None = None
     display_mode: str | None = None
-    soccer_league: str | None = None
     # One-shot "show this game now" — the display jumps to it, then resumes
     # cycling. The display consumes it once, so it is not cleared here.
     # Game locks are a list with timestamps; see locks.py.
@@ -47,14 +47,6 @@ async def update_sports_settings(body: SportsSettingsBody):
             {"error": f"display_mode must be one of {sorted(_VALID_DISPLAY_MODES)}"},
             status_code=422,
         )
-    if (
-        body.soccer_league is not None
-        and body.soccer_league not in _VALID_SOCCER_LEAGUES
-    ):
-        return JSONResponse(
-            {"error": f"soccer_league must be one of {sorted(_VALID_SOCCER_LEAGUES)}"},
-            status_code=422,
-        )
     if body.force_event_id and not _locks.valid_event_id(body.force_event_id):
         return JSONResponse(
             {
@@ -76,8 +68,6 @@ async def update_sports_settings(body: SportsSettingsBody):
         sports["sport"] = body.sport
     if body.display_mode is not None:
         sports["display_mode"] = body.display_mode
-    if body.soccer_league is not None:
-        sports["soccer_league"] = body.soccer_league
     if body.force_event_id is not None:
         sports["force_event_id"] = body.force_event_id
     # Any write is a chance to persist normal form: drop expired locks and

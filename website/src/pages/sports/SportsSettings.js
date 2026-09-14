@@ -16,7 +16,7 @@ const SPORTS = [
   { key: "nba", label: "NBA" },
   { key: "nfl", label: "NFL" },
   { key: "nhl", label: "NHL" },
-  { key: "soccer", label: "Soccer" },
+  { key: "nwsl", label: "NWSL" },
 ];
 
 export default function SportsSettings() {
@@ -36,13 +36,12 @@ export default function SportsSettings() {
 
   const displayMode = settings?.display_mode ?? "focus";
   const sport = settings?.sport ?? "nba";
-  const soccerLeague = settings?.soccer_league ?? "fifa.world";
   const favTeams = favoritesForSport(settings, sport);
 
   // Real teams for the selected league, with the ESPN ids favourites are keyed by
   const { data: teamsData, isLoading: teamsLoading } = useQuery({
-    queryKey: ["sportsTeams", sport, sport === "soccer" ? soccerLeague : null],
-    queryFn: () => getSportsTeams(sport, soccerLeague),
+    queryKey: ["sportsTeams", sport],
+    queryFn: () => getSportsTeams(sport),
     staleTime: 24 * 60 * 60 * 1000, // rosters of teams change once a season
   });
   const teamOptions = teamsData?.teams ?? [];
@@ -104,23 +103,6 @@ export default function SportsSettings() {
           Switches the matrix display and scoreboard between sports.
         </div>
       </div>
-
-      {/* Soccer league selection — only shown when soccer is active */}
-      {sport === "soccer" && (
-        <div className="m-card">
-          <div className="m-card-title">Soccer League</div>
-          <div className="m-btn-row" style={{ marginBottom: 8 }}>
-            <button
-              className={`m-btn ${soccerLeague === "fifa.world" ? "m-btn-active" : "m-btn-neutral"}`}
-              disabled={mut.isPending}
-              onClick={() => mut.mutate({ soccer_league: "fifa.world" })}
-            >
-              FIFA World Cup
-            </button>
-          </div>
-          <div className="m-form-desc">Select which soccer league to display on the matrix.</div>
-        </div>
-      )}
 
       {/* Display mode */}
       <div className="m-card">

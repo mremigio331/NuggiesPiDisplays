@@ -50,12 +50,14 @@ def get_football_game_details(event_id: str, sport: str = "nfl") -> dict | None:
     return _get(f"/sports/{sport}/game/{event_id}")
 
 
-def get_soccer_scoreboard(league: str = "fifa.world") -> dict | None:
-    return _get(f"/sports/soccer/scoreboard?league={league}")
+def get_soccer_scoreboard(sport: str = "nwsl") -> dict | None:
+    """Scoreboard for any soccer sport key (nwsl, …)."""
+    return _get(f"/sports/{sport}/scoreboard")
 
 
-def get_soccer_game_details(event_id: str, league: str = "fifa.world") -> dict | None:
-    return _get(f"/sports/soccer/game/{event_id}?league={league}")
+def get_soccer_game_details(event_id: str, sport: str = "nwsl") -> dict | None:
+    """Game details for any soccer sport key (nwsl, …)."""
+    return _get(f"/sports/{sport}/game/{event_id}")
 
 
 def get_settings() -> dict | None:

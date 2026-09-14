@@ -14,11 +14,11 @@ router = APIRouter()
 
 
 @router.get("/teams")
-async def get_teams(sport: str, league: str = "fifa.world"):
-    """Teams in a league. `league` only applies to soccer."""
+async def get_teams(sport: str):
+    """Teams in a league, keyed by the sport (which encodes the league)."""
     if sport not in VALID_SPORTS:
         return JSONResponse(
             {"error": f"sport must be one of {sorted(VALID_SPORTS)}"}, status_code=422
         )
-    teams = _client.get_teams(sport, soccer_league=league)
+    teams = _client.get_teams(sport)
     return JSONResponse({"sport": sport, "teams": teams})
