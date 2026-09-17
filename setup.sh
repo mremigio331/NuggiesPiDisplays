@@ -137,6 +137,8 @@ setup_sudoers() {
     BASH=$(command -v bash)
     REBOOT=$(command -v reboot 2>/dev/null || echo /usr/sbin/reboot)
     SYSTEMCTL=$(command -v systemctl 2>/dev/null || echo /usr/bin/systemctl)
+    CHMOD=$(command -v chmod 2>/dev/null || echo /usr/bin/chmod)
+    IPTABLES=$(command -v iptables 2>/dev/null || echo /usr/sbin/iptables)
     rm -f /tmp/nuggies-display-sudoers
     cat > /tmp/nuggies-display-sudoers <<EOF
 # Display scripts
@@ -155,6 +157,13 @@ $USER ALL=(ALL) NOPASSWD: /bin/kill
 $USER ALL=(ALL) NOPASSWD: /usr/bin/kill
 $USER ALL=(ALL) NOPASSWD: /usr/bin/pkill
 $USER ALL=(ALL) NOPASSWD: /usr/bin/pgrep
+# Narrowly-scoped privileged actions the API issues.
+# chmod is scoped to the single settings file factory reset repairs; a bare
+# chmod grant would be equivalent to root (chmod on /etc/shadow, or on setup.sh).
+# iptables is granted read-only: mutating forms (-A/-D/-I/-F) stay ungranted
+# because every mutation in the WiFi flow already happens as root under systemd.
+$USER ALL=(ALL) NOPASSWD: $CHMOD 666 $SCRIPT_DIR/api/settings.json
+$USER ALL=(ALL) NOPASSWD: $IPTABLES -t nat -L PREROUTING -n
 EOF
     install -m 0440 /tmp/nuggies-display-sudoers "$SUDOERS_FILE"
     rm -f /tmp/nuggies-display-sudoers
@@ -246,6 +255,10 @@ init_settings() {
     else
         echo "dev_config.json already exists, skipping."
     fi
+    # Ensure settings files are owned by the API user (pi), not root
+    chown "$USER":"$USER" api/settings.json api/settings.json.lock 2>/dev/null || true
+    chown "$USER":"$USER" dev_config.json 2>/dev/null || true
+    chmod 644 api/settings.json
 }
 
 # ---------------------------------------------------------------------------
@@ -428,6 +441,248 @@ disable_onboard_audio() {
 }
 
 # ---------------------------------------------------------------------------
+# Marker ownership — every marker file in the WiFi flow is written by *both*
+# the root boot script and the API (which runs as $USER), so each one has to be
+# owned by $USER:$USER for both writers to work.
+#
+# The project root is drwxrwxr-x pi pi, so $USER can *unlink* a root-owned
+# marker but cannot *open it for writing* — marker deletes succeed while marker
+# writes fail. Normalising ownership here removes that asymmetry.
+#
+# This only ever changes ownership: a marker that does not exist is NOT created,
+# because creating one would change the boot verdict.
+# ---------------------------------------------------------------------------
+MARKER_PATHS=(
+    ".wifi_configured"
+    ".force_portal"
+    ".factory_wifi_reset"
+    "wifi_setup/.last_scan.json"
+)
+
+normalize_marker_ownership() {
+    echo "--- Normalising marker ownership to $USER:$USER..."
+    local rel path
+    for rel in "${MARKER_PATHS[@]}"; do
+        path="$SCRIPT_DIR/$rel"
+        if [[ -e "$path" ]]; then
+            chown "$USER":"$USER" "$path"
+            echo "    $rel -> $USER:$USER"
+        else
+            echo "    $rel absent, not created."
+        fi
+    done
+}
+
+# ---------------------------------------------------------------------------
+# Tree ownership — hand the repository back to $USER after any root-level git
+# operation. run_update() pulls as root, while api/helpers/update_check.py runs
+# `git fetch origin` as $USER. Root-owned objects under .git accumulate and
+# eventually break that fetch, so the update path silently degrades its own
+# ability to notice that updates exist.
+#
+# .git is the mandatory part. The working tree is handed back too, excluding
+# website/node_modules (~270MB of npm-owned files that no $USER-level git
+# operation needs) so the pass stays cheap on a Pi.
+# ---------------------------------------------------------------------------
+restore_tree_ownership() {
+    echo "--- Restoring tree ownership to $USER:$USER..."
+    chown -R "$USER":"$USER" "$SCRIPT_DIR/.git"
+    echo "    .git -> $USER:$USER"
+
+    find "$SCRIPT_DIR" \
+        -path "$SCRIPT_DIR/.git" -prune -o \
+        -path "$SCRIPT_DIR/website/node_modules" -prune -o \
+        -exec chown -h "$USER":"$USER" {} +
+    echo "    working tree -> $USER:$USER (website/node_modules skipped)"
+}
+
+# ---------------------------------------------------------------------------
+# WiFi flag — if WiFi is already connected, ensure the .wifi_configured flag
+# exists so the API auto-starts the display on boot.
+# Ownership is handled by normalize_marker_ownership().
+# ---------------------------------------------------------------------------
+ensure_wifi_flag() {
+    WIFI_FLAG="$SCRIPT_DIR/.wifi_configured"
+    if [[ -f "$WIFI_FLAG" ]]; then
+        echo "--- WiFi flag already exists, skipping."
+        return
+    fi
+
+    # Check if wlan0 is connected
+    if nmcli -t -f STATE general 2>/dev/null | grep -q "connected"; then
+        echo "--- WiFi is connected, creating .wifi_configured flag..."
+        touch "$WIFI_FLAG"
+        echo "WiFi flag created."
+    else
+        echo "--- WiFi not connected, skipping .wifi_configured flag."
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Verify permissions — probe every grant and every writable path this runtime
+# depends on, print one pass/fail line per item, and exit 1 if any item failed.
+#
+# Why this fails loudly at provisioning time: the runtime failure mode is
+# silent. A refused `sudo -n` inside an HTTP handler returns a non-zero code
+# that nobody reads, so today the operator finishes setup believing it worked
+# and the *user* discovers the gap later — as an action that reports success
+# and changes nothing. Provisioning time is the only moment a human is present
+# who can act on the information, so any gap has to be surfaced here, now.
+#
+# All grant probes use the non-interactive refusal probe (sudo's -n flag), never
+# the list-privileges probe (sudo's -l flag): pi is in the sudo group and matches
+# (ALL:ALL) ALL, so the list-privileges form exits 0 even for commands that would
+# prompt for a password — it always reports a pass and is not a valid NOPASSWD
+# probe. The -n form refuses with "sudo: a password is required" whenever no
+# NOPASSWD rule matches, which is the exact condition each check is testing.
+#
+# setup.sh runs as root, but the API runs as $USER, so every probe is executed
+# *as $USER* via `sudo -u "$USER" sudo -n …` to reproduce the runtime caller.
+# ---------------------------------------------------------------------------
+verify_permissions() {
+    echo "--- Verifying permissions (provisioning-time gate)..."
+
+    local SUDOERS_FILE="/etc/sudoers.d/nuggies-display"
+    local PYTHON BASH REBOOT SYSTEMCTL CHMOD IPTABLES
+    PYTHON=$(command -v python3)
+    BASH=$(command -v bash)
+    REBOOT=$(command -v reboot 2>/dev/null || echo /usr/sbin/reboot)
+    SYSTEMCTL=$(command -v systemctl 2>/dev/null || echo /usr/bin/systemctl)
+    CHMOD=$(command -v chmod 2>/dev/null || echo /usr/bin/chmod)
+    IPTABLES=$(command -v iptables 2>/dev/null || echo /usr/sbin/iptables)
+
+    local failures=0
+
+    # -- helper: run an argv as $USER through `sudo -n` and classify the result.
+    # A refused grant prints "a password is required" on stderr; anything else
+    # (success, or a command's own non-zero exit) means the grant matched.
+    _probe_nopasswd() {
+        local label="$1"; shift
+        local err
+        err=$(sudo -u "$USER" sudo -n "$@" 2>&1 >/dev/null)
+        if printf '%s' "$err" | grep -q "a password is required"; then
+            echo "    [PROBED ] FAIL  $label — sudo refused (no matching NOPASSWD grant): $*"
+            failures=$((failures + 1))
+        else
+            echo "    [PROBED ] pass  $label"
+        fi
+    }
+
+    # -- helper: probe `bash setup.sh` with no args. The grant is argument-free,
+    # so it covers this invocation; the script prints its usage banner and exits
+    # 1 without doing any work. Distinguish that legitimate exit-1 from a genuine
+    # sudo refusal purely by whether stderr carries the password message.
+    _probe_setup_sh() {
+        local label="bash setup.sh (no args, usage-banner exit)"
+        local err
+        err=$(sudo -u "$USER" sudo -n "$BASH" "$SCRIPT_DIR/setup.sh" 2>&1 >/dev/null)
+        if printf '%s' "$err" | grep -q "a password is required"; then
+            echo "    [PROBED ] FAIL  $label — sudo refused (no matching NOPASSWD grant)"
+            failures=$((failures + 1))
+        else
+            echo "    [PROBED ] pass  $label"
+        fi
+    }
+
+    # -- helper: assert an exact line is present in the installed sudoers file.
+    # Used for grants that cannot be executed as a live test (they would seize
+    # the LED matrix, reboot the device, or drop the WiFi association). Labelled
+    # ASSERTED, never PROBED, so nobody mistakes a file match for an execution.
+    _assert_sudoers_line() {
+        local label="$1"; local expected="$2"
+        if grep -qF "$expected" "$SUDOERS_FILE" 2>/dev/null; then
+            echo "    [ASSERTED] pass  $label"
+        else
+            echo "    [ASSERTED] FAIL  $label — expected line absent from $SUDOERS_FILE: $expected"
+            failures=$((failures + 1))
+        fi
+    }
+
+    # === PROBED: granted argv executed as $USER, each read-only or idempotent ===
+    _probe_nopasswd "chmod 666 api/settings.json" \
+        "$CHMOD" 666 "$SCRIPT_DIR/api/settings.json"
+    _probe_nopasswd "iptables -t nat -L PREROUTING -n (read-only)" \
+        "$IPTABLES" -t nat -L PREROUTING -n
+    _probe_nopasswd "kill -0 (/bin/kill)" \
+        /bin/kill -0 "$$"
+    _probe_nopasswd "kill -0 (/usr/bin/kill)" \
+        /usr/bin/kill -0 "$$"
+    _probe_nopasswd "pkill -0 (no-match sentinel)" \
+        /usr/bin/pkill -0 -f nuggies-verify-no-match
+    _probe_nopasswd "pgrep (no-match sentinel)" \
+        /usr/bin/pgrep -f nuggies-verify-no-match
+    _probe_setup_sh
+
+    # === ASSERTED: grants that cannot be executed as a live test ===
+    # Six display scripts (they seize the LED matrix):
+    _assert_sudoers_line "grant: display/clock/main.py" \
+        "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/clock/main.py"
+    _assert_sudoers_line "grant: display/mta/main.py" \
+        "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/mta/main.py"
+    _assert_sudoers_line "grant: display/sports/main.py" \
+        "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/sports/main.py"
+    _assert_sudoers_line "grant: display/stocks/main.py" \
+        "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/stocks/main.py"
+    _assert_sudoers_line "grant: display/weather/main.py" \
+        "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/weather/main.py"
+    _assert_sudoers_line "grant: display/setup/main.py" \
+        "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/setup/main.py"
+    # reboot (it reboots the device):
+    _assert_sudoers_line "grant: reboot" \
+        "$USER ALL=(ALL) NOPASSWD: $REBOOT"
+    # systemctl restart of the wifi-setup service (it drops the WiFi association);
+    # the .service suffix is load-bearing — the bare form does not match:
+    _assert_sudoers_line "grant: systemctl restart nuggies-wifi-setup.service" \
+        "$USER ALL=(ALL) NOPASSWD: $SYSTEMCTL restart nuggies-wifi-setup.service"
+
+    # === WRITABILITY: markers openable/creatable by $USER, plus .git ownership ===
+    local rel path dir
+    for rel in "${MARKER_PATHS[@]}"; do
+        path="$SCRIPT_DIR/$rel"
+        dir="$(dirname "$path")"
+        if [[ -e "$path" ]]; then
+            # Existing marker: must be openable for writing by $USER (append, so
+            # the probe never truncates or alters the marker's contents).
+            if sudo -u "$USER" test -w "$path" && \
+               sudo -u "$USER" bash -c ": >> \"$path\"" 2>/dev/null; then
+                echo "    [WRITABLE] pass  marker exists and is $USER-writable: $rel"
+            else
+                echo "    [WRITABLE] FAIL  marker exists but is NOT $USER-writable: $rel"
+                failures=$((failures + 1))
+            fi
+        else
+            # Absent marker: $USER must be able to create and remove it in its
+            # directory. Create then immediately remove so the verdict is not
+            # changed by inventing a marker.
+            if sudo -u "$USER" bash -c "touch \"$path\" && rm -f \"$path\"" 2>/dev/null; then
+                echo "    [WRITABLE] pass  marker absent but $USER can create/remove it: $rel"
+            else
+                echo "    [WRITABLE] FAIL  marker absent and $USER cannot create it in $dir: $rel"
+                failures=$((failures + 1))
+            fi
+        fi
+    done
+
+    # .git must be $USER-owned so the $USER-level `git fetch origin` keeps working.
+    local git_owner
+    git_owner=$(stat -c '%U' "$SCRIPT_DIR/.git" 2>/dev/null || echo "?")
+    if [[ "$git_owner" == "$USER" ]]; then
+        echo "    [WRITABLE] pass  .git is owned by $USER"
+    else
+        echo "    [WRITABLE] FAIL  .git is owned by '$git_owner', expected $USER"
+        failures=$((failures + 1))
+    fi
+
+    if [[ "$failures" -ne 0 ]]; then
+        echo ""
+        echo "!!! verify_permissions: $failures item(s) FAILED. Provisioning is incomplete."
+        echo "!!! Fix the grants/ownership above and re-run: sudo bash setup.sh --update"
+        exit 1
+    fi
+    echo "--- verify_permissions: all items passed."
+}
+
+# ---------------------------------------------------------------------------
 # Update — pull latest code, reinstall deps, reapply sudoers
 # ---------------------------------------------------------------------------
 run_update() {
@@ -437,6 +692,10 @@ run_update() {
 
     echo "--- Pulling latest code..."
     git -C "$SCRIPT_DIR" pull
+
+    # The pull just ran as root; hand the tree back before anything else so the
+    # $USER-level `git fetch origin` in api/helpers/update_check.py keeps working.
+    restore_tree_ownership
 
     echo "--- Installing Python dependencies..."
     pip3 install --break-system-packages --ignore-installed -r "$SCRIPT_DIR/requirements-api.txt"
@@ -454,6 +713,9 @@ run_update() {
     setup_isolcpus
     disable_onboard_audio
     setup_logs
+    ensure_wifi_flag
+    normalize_marker_ownership
+    init_settings
 
     # Restart the API service so the new code takes effect (production only).
     # In dev mode (--reload), uvicorn picks up changes automatically.
@@ -461,6 +723,10 @@ run_update() {
         echo "--- Restarting API service..."
         systemctl restart nuggies-api.service
     fi
+
+    # Verify the grants and ownership this update just (re)applied, and fail
+    # loudly if any of it is missing — this is the last step of the update path.
+    verify_permissions
 
     echo ""
     echo "Update complete."
@@ -492,12 +758,19 @@ setup_isolcpus
 disable_onboard_audio
 init_settings
 verify_display
+ensure_wifi_flag
+normalize_marker_ownership
 
 if [[ "$MODE" == "dev" ]]; then
     setup_dev
 else
     setup_prod
 fi
+
+# Verify every grant and writable path before announcing success — this is the
+# last step of the fresh-install path, and it exits non-zero (before the reboot
+# below) if anything the runtime depends on is missing.
+verify_permissions
 
 echo ""
 echo "========================================="

@@ -15,13 +15,19 @@ When the device has no saved WiFi connection, it starts a temporary hotspot so y
    | **Network name** | `NuggiesDisplay` |
    | **Password** | `SetUpNuggies` |
 
-2. Once connected, your device may automatically open the setup page. If not, open a browser and go to **`nuggies.local`**.
+2. Once connected, your device may automatically open the setup page. If not, open a browser and go to **`http://10.42.0.1`** (the setup hotspot's address).
 
 3. The setup page will show nearby WiFi networks. Select your home network, enter the password, and tap **Connect**.
 
 4. The Pi will reboot automatically. After ~30 seconds, reconnect your phone/laptop to your normal WiFi.
 
-5. The display is now on your network. Access it anytime at **`nuggies.local`** (or `http://nuggies.local:8080`).
+5. The display is now on your network. Access it anytime at **`<hostname>.local`** (or `http://<hostname>.local:8080`).
+
+> **What's `<hostname>`?** The device advertises itself on your network as `<hostname>.local`, where
+> `<hostname>` is whatever name the SD card image was flashed with — the setup process installs mDNS
+> (`avahi-daemon`) but never renames the device. For example, if your hostname is `nuggies`, that's
+> `nuggies.local`. If your client (some Android devices) can't resolve `.local` names, use the Pi's
+> IP address instead — find it in your router's device list.
 
 ---
 
@@ -30,7 +36,7 @@ When the device has no saved WiFi connection, it starts a temporary hotspot so y
 Once the Pi is on your WiFi:
 
 - Open a browser on any device on the same network
-- Go to: **`nuggies.local`**
+- Go to: **`<hostname>.local`** (the device's hostname, e.g. `nuggies.local` if the hostname is `nuggies`)
 
 The site works on phones, tablets, and desktop browsers.
 
@@ -127,9 +133,9 @@ After the reboot, you'll need to reconnect via the `NuggiesDisplay` hotspot (see
 
 ## Troubleshooting
 
-### Can't reach `nuggies.local`
+### Can't reach `<hostname>.local`
 - Make sure your phone/laptop is on the **same WiFi network** as the Pi
-- Try `http://nuggies.local` (with `http://`, not `https://`)
+- Try `http://<hostname>.local` (with `http://`, not `https://`), substituting the device's hostname (e.g. `http://nuggies.local` if the hostname is `nuggies`)
 - Some Android devices struggle with `.local` hostnames — try connecting to the Pi's IP address instead (find it in your router's device list)
 
 ### Display is blank / frozen
@@ -140,7 +146,7 @@ After the reboot, you'll need to reconnect via the `NuggiesDisplay` hotspot (see
 - Go to **System** and tap the mode you want — the Pi restores the last active mode on boot
 
 ### WiFi setup page didn't appear automatically
-- After connecting to `NuggiesDisplay`, open a browser and type `nuggies.local` or `10.42.0.1`
+- After connecting to `NuggiesDisplay`, open a browser and go to `http://10.42.0.1` (the setup hotspot's address)
 - On iOS, you may need to dismiss any "No Internet" warning and try manually navigating to the address
 
 ### Need to move the Pi to a new WiFi network

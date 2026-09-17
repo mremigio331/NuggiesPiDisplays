@@ -189,4 +189,6 @@ nuggies_pi_displays/
 
 See [api/README.md](api/README.md) for the full endpoint reference.
 
-Interactive docs available at `http://nuggies.local:8000/docs`.
+Interactive docs available at `http://<hostname>.local:8000/docs` (replace `<hostname>` with the
+device's hostname — whatever the image was flashed with; use the device's IP address if your client
+can't resolve `.local`).

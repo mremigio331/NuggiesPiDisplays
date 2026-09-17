@@ -17,12 +17,17 @@ import {
   setLogLevel,
   getUpdateStatus,
   checkUpdate,
+  getWifiStatus,
 } from "../../services/API";
 import Modal from "../../components/shared/Modal";
 
 const SETUP_AP_SSID = "NuggiesDisplay";
 const SETUP_AP_PASSWORD = "SetUpNuggies";
-const LOCAL_HOSTNAME = "nuggies.local";
+// The address a client uses to reach this device WHILE the setup AP/portal is
+// up. DNS is hijacked by the portal in that mode, so the .local name will not
+// resolve to the setup page — only the fixed portal IP works. This matches the
+// address discipline used on the WiFi setup page.
+const PORTAL_ADDRESS = "10.42.0.1";
 
 function useSystem() {
   const qc = useQueryClient();
@@ -48,6 +53,12 @@ function useSystem() {
   });
   const { data: devConfig } = useQuery({ queryKey: ["devMode"], queryFn: getDevMode });
   const devMode = devConfig?.dev_mode ?? false;
+  // Derived device address for the post-reboot "your device is on your network"
+  // instruction. mdns_name is "<hostname>.local"; ip is the IPv4 fallback for
+  // clients that can't resolve .local. Nothing is hardcoded — a device whose
+  // hostname is "nuggies" naturally yields that same .local name (preservation
+  // 3.9), because the address comes straight from the API.
+  const { data: wifiStatus } = useQuery({ queryKey: ["wifiStatus"], queryFn: getWifiStatus });
   const { data: logLevelData, refetch: refetchLogLevel } = useQuery({
     queryKey: ["logLevel"],
     queryFn: getLogLevel,
@@ -79,7 +90,30 @@ function useSystem() {
     devMode,
     currentLogLevel,
     setLogLevelMut,
+    mdnsName: wifiStatus?.mdns_name ?? null,
+    deviceIp: wifiStatus?.ip ?? null,
   };
+}
+
+// Renders this device's post-reboot address: <hostname>.local with the IPv4 as
+// an explicit fallback for clients that cannot resolve .local. Falls back to
+// generic wording while the wifi-status query hasn't resolved or returned null.
+function DerivedAddress({ mdnsName, deviceIp }) {
+  if (!mdnsName && !deviceIp) {
+    return <strong style={{ color: "#fff" }}>your device&apos;s address</strong>;
+  }
+  return (
+    <>
+      {mdnsName && <strong style={{ color: "#fff" }}>{mdnsName}</strong>}
+      {mdnsName && deviceIp && " "}
+      {deviceIp && (
+        <span style={{ color: "#aaa" }}>
+          (or <strong style={{ color: "#fff" }}>{deviceIp}</strong> if{" "}
+          {mdnsName ? mdnsName : "the .local name"} doesn&apos;t resolve)
+        </span>
+      )}
+    </>
+  );
 }
 
 function formatChecked(iso) {
@@ -182,6 +216,8 @@ export default function System() {
     devMode,
     currentLogLevel,
     setLogLevelMut,
+    mdnsName,
+    deviceIp,
   } = useSystem();
   const navigate = useNavigate();
   const [confirmRestart, setConfirmRestart] = React.useState(false);
@@ -364,7 +400,8 @@ export default function System() {
           </div>
           <div style={{ color: "#ddd", fontSize: "0.88rem", lineHeight: 1.7 }}>
             This page will disconnect shortly. Reconnect to <strong>{SETUP_AP_SSID}</strong> and
-            open <strong>{LOCAL_HOSTNAME}</strong> to continue setup.
+            open <strong>http://{PORTAL_ADDRESS}</strong> to continue setup. Once it&apos;s back on
+            your network, reach it at <DerivedAddress mdnsName={mdnsName} deviceIp={deviceIp} />.
           </div>
         </div>
       )}
@@ -565,9 +602,14 @@ export default function System() {
             Password: <strong style={{ color: "#fff" }}>{SETUP_AP_PASSWORD}</strong>
           </li>
           <li>
-            Open <strong style={{ color: "#fff" }}>{LOCAL_HOSTNAME}</strong>
+            Open <strong style={{ color: "#fff" }}>http://{PORTAL_ADDRESS}</strong> to reconfigure
+            WiFi
           </li>
         </ol>
+        <div style={{ color: "#aaa", fontSize: "0.8rem", marginTop: 10, lineHeight: 1.7 }}>
+          Once it&apos;s back on your network, reach it at{" "}
+          <DerivedAddress mdnsName={mdnsName} deviceIp={deviceIp} />.
+        </div>
       </Modal>
     </div>
   );

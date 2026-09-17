@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 
 from helpers.dev_config import is_dev_mode
 from helpers.process import _PROJECT_ROOT
-from helpers.wifi_state import WIFI_FLAG
+from helpers.wifi_state import FORCE_PORTAL, WIFI_FLAG
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -22,7 +22,10 @@ async def forget_wifi():
     if WIFI_FLAG.exists():
         WIFI_FLAG.unlink()
     _FACTORY_WIFI_RESET.touch()
-    logger.info("Wrote .factory_wifi_reset marker")
+    # Additive: also force the portal so a reset device reaches the setup page even if a
+    # stale association survives. Does not change the .factory_wifi_reset write above.
+    FORCE_PORTAL.touch()
+    logger.info("Wrote .factory_wifi_reset and .force_portal markers")
 
     return JSONResponse(
         {

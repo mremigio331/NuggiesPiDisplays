@@ -2,7 +2,9 @@
 
 FastAPI backend serving the RGB LED matrix display system. Manages display processes, settings, and proxies data from ESPN, Yahoo Finance, MTA GTFS, and weather APIs.
 
-**Base URL:** `http://nuggies.local:8000/api`
+**Base URL:** `http://<hostname>.local:8000/api` — `<hostname>` follows the device's own hostname
+(whatever the image was flashed with); use the device's IP address if your client can't resolve
+`.local`.
 
 ---
 

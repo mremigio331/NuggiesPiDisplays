@@ -23,6 +23,7 @@ from endpoints.mta import router as mta_router
 from endpoints.clock import router as clock_router
 from endpoints.sports import router as sports_router
 from endpoints.weather import router as weather_router
+from endpoints.wifi import router as wifi_router
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ app.include_router(mta_router, prefix="/api")
 app.include_router(clock_router, prefix="/api")
 app.include_router(sports_router, prefix="/api")
 app.include_router(weather_router, prefix="/api")
+app.include_router(wifi_router, prefix="/api")
 
 # SPA catch-all — must be last. Serves the built React app for any path not matched above.
 app.include_router(spa_router)

@@ -17,6 +17,7 @@ dev_config.json
 .wifi_configured
 .force_portal
 .factory_wifi_reset
+wifi_setup/.last_scan.json
 
 # Fonts — copied from rgbmatrix repo by setup.sh
 display/fonts/

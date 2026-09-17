@@ -19,6 +19,11 @@ export const factoryResetWifi = () => handle(api.post("/system/factory-reset-wif
 export const getDevMode = () => handle(api.get("/system/dev-mode"));
 export const forgetWifi = () => handle(api.post("/system/forget-wifi"));
 export const restartWifiService = () => handle(api.post("/system/restart-wifi-service"));
+// Force the setup portal to come up on a device that currently reports a
+// connection: writes the .force_portal marker and restarts the wifi service
+// detached so the setup AP reappears. This is how a connected device is
+// reconfigured. See POST /api/system/force-wifi-portal (task 5.1).
+export const forceWifiPortal = () => handle(api.post("/system/force-wifi-portal"));
 export const updateApp = (runSetup = true) =>
   handle(api.post("/system/update-app", { run_setup: runSetup }));
 export const getLogLevel = () => handle(api.get("/system/log-level"));
@@ -26,6 +31,12 @@ export const setLogLevel = (log_level) => handle(api.put("/system/log-level", { 
 export const getUpdateStatus = () => handle(api.get("/system/update-status"));
 export const checkUpdate = () => handle(api.post("/system/check-update"));
 export const getLogsList = () => handle(api.get("/system/logs"));
+
+// WiFi — derived device address for the post-reboot / reconnect instructions.
+// Returns { configured, connected, ssid, portal_active, hostname, mdns_name, ip }.
+// mdns_name is "<hostname>.local"; ip is the device IPv4 (or null). Nothing is
+// hardcoded to nuggies — the address follows the device's own hostname.
+export const getWifiStatus = () => handle(api.get("/wifi/status"));
 export const getLogContent = (key, lines = 200) =>
   api.get(`/system/logs/${key}`, { params: { lines } }).then((r) => r.data);
 
