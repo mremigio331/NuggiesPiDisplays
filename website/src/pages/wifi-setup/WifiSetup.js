@@ -326,7 +326,10 @@ export default function WifiSetup() {
   // not resolve to the setup page.
   function ForcedGuidance() {
     return (
-      <div className="m-card" style={{ background: "#1a1a2a", textAlign: "left", marginTop: "1rem" }}>
+      <div
+        className="m-card"
+        style={{ background: "#1a1a2a", textAlign: "left", marginTop: "1rem" }}
+      >
         <div className="m-card-title" style={{ color: "#5b9bd5" }}>
           WiFi setup is starting
         </div>
@@ -402,8 +405,8 @@ export default function WifiSetup() {
           <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>⚠️</div>
           <div className="m-card-title">The setup service is unavailable</div>
           <div style={{ color: "#aaa", fontSize: "0.9rem", marginBottom: "1.5rem" }}>
-            We couldn&apos;t reach the WiFi setup service. It may still be starting up, or it may have
-            stopped. You can try again, or force WiFi setup to restart it.
+            We couldn&apos;t reach the WiFi setup service. It may still be starting up, or it may
+            have stopped. You can try again, or force WiFi setup to restart it.
           </div>
           {forced ? (
             <ForcedGuidance />
@@ -439,8 +442,8 @@ export default function WifiSetup() {
           <div style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>✓</div>
           <div className="m-card-title">Connected!</div>
           <div style={{ color: "#aaa", fontSize: "0.9rem", marginBottom: "1.5rem" }}>
-            The Pi joined <strong style={{ color: "#fff" }}>{selectedSsid}</strong> and confirmed the
-            connection.
+            The Pi joined <strong style={{ color: "#fff" }}>{selectedSsid}</strong> and confirmed
+            the connection.
           </div>
           <div className="m-card" style={{ background: "#1a2a1a", textAlign: "left" }}>
             <div className="m-card-title" style={{ color: "#5cb85c" }}>
@@ -511,8 +514,8 @@ export default function WifiSetup() {
               </li>
               <li>
                 If it doesn&apos;t load, rejoin <strong>{setupSsid}</strong> and open{" "}
-                <strong style={{ color: "#5b9bd5" }}>http://10.42.0.1</strong> — if the setup page is
-                still there, the join didn&apos;t take and you can try again.
+                <strong style={{ color: "#5b9bd5" }}>http://10.42.0.1</strong> — if the setup page
+                is still there, the join didn&apos;t take and you can try again.
               </li>
             </ol>
           </div>
@@ -550,8 +553,8 @@ export default function WifiSetup() {
             style={{ background: "#1a1a2a", textAlign: "left", marginTop: "1rem" }}
           >
             <div style={{ color: "#aaa", fontSize: "0.85rem", lineHeight: "1.7" }}>
-              If this page stops responding, hang tight — we&apos;ll keep checking. If it doesn&apos;t
-              recover on its own:
+              If this page stops responding, hang tight — we&apos;ll keep checking. If it
+              doesn&apos;t recover on its own:
               <ol style={{ margin: "0.4rem 0 0", paddingLeft: "1.2rem" }}>
                 <li>
                   Rejoin <strong style={{ color: "#fff" }}>{setupSsid}</strong> and open{" "}
@@ -622,167 +625,168 @@ export default function WifiSetup() {
           </div>
         )}
 
-        {!loading && networks.map((net) => {
-          const isSelected = selectedSsid === net.ssid;
-          return (
-            <div key={net.ssid}>
-              <button
-                className={`m-btn ${isSelected ? "m-btn-active" : "m-btn-neutral"}`}
-                style={{
-                  width: "100%",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: isSelected ? "0" : "0.4rem",
-                  padding: "0.6rem 0.8rem",
-                  borderRadius: isSelected ? "8px 8px 0 0" : "8px",
-                }}
-                onClick={() => selectNetwork(net)}
-              >
-                <span>
-                  {net.secured ? "🔒 " : ""}
-                  {net.ssid}
-                </span>
-                <span style={{ fontFamily: "monospace", fontSize: "0.75rem", color: "#aaa" }}>
-                  {SIGNAL_BARS(net.signal)}
-                </span>
-              </button>
-
-              {isSelected && (
-                <div
+        {!loading &&
+          networks.map((net) => {
+            const isSelected = selectedSsid === net.ssid;
+            return (
+              <div key={net.ssid}>
+                <button
+                  className={`m-btn ${isSelected ? "m-btn-active" : "m-btn-neutral"}`}
                   style={{
-                    background: "#1e1e1e",
-                    border: "1px solid #444",
-                    borderTop: "none",
-                    borderRadius: "0 0 8px 8px",
-                    padding: "0.75rem 0.8rem",
-                    marginBottom: "0.4rem",
+                    width: "100%",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: isSelected ? "0" : "0.4rem",
+                    padding: "0.6rem 0.8rem",
+                    borderRadius: isSelected ? "8px 8px 0 0" : "8px",
                   }}
+                  onClick={() => selectNetwork(net)}
                 >
-                  {net.secured ? (
-                    <input
-                      ref={passwordRef}
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleConnect()}
-                      placeholder="Password"
-                      style={{
-                        width: "100%",
-                        padding: "0.5rem 0.6rem",
-                        background: "#111",
-                        border: "1px solid #555",
-                        borderRadius: "6px",
-                        color: "#fff",
-                        fontSize: "1rem",
-                        boxSizing: "border-box",
-                        marginBottom: "0.6rem",
-                      }}
-                    />
-                  ) : (
-                    <div style={{ color: "#aaa", fontSize: "0.85rem", marginBottom: "0.6rem" }}>
-                      Open network — no password needed.
-                    </div>
-                  )}
-                  <button
-                    className="m-btn m-btn-primary"
-                    style={{ width: "100%" }}
-                    disabled={net.secured && !password}
-                    onClick={() => handleConnect()}
+                  <span>
+                    {net.secured ? "🔒 " : ""}
+                    {net.ssid}
+                  </span>
+                  <span style={{ fontFamily: "monospace", fontSize: "0.75rem", color: "#aaa" }}>
+                    {SIGNAL_BARS(net.signal)}
+                  </span>
+                </button>
+
+                {isSelected && (
+                  <div
+                    style={{
+                      background: "#1e1e1e",
+                      border: "1px solid #444",
+                      borderTop: "none",
+                      borderRadius: "0 0 8px 8px",
+                      padding: "0.75rem 0.8rem",
+                      marginBottom: "0.4rem",
+                    }}
                   >
-                    Join
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })}
+                    {net.secured ? (
+                      <input
+                        ref={passwordRef}
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+                        placeholder="Password"
+                        style={{
+                          width: "100%",
+                          padding: "0.5rem 0.6rem",
+                          background: "#111",
+                          border: "1px solid #555",
+                          borderRadius: "6px",
+                          color: "#fff",
+                          fontSize: "1rem",
+                          boxSizing: "border-box",
+                          marginBottom: "0.6rem",
+                        }}
+                      />
+                    ) : (
+                      <div style={{ color: "#aaa", fontSize: "0.85rem", marginBottom: "0.6rem" }}>
+                        Open network — no password needed.
+                      </div>
+                    )}
+                    <button
+                      className="m-btn m-btn-primary"
+                      style={{ width: "100%" }}
+                      disabled={net.secured && !password}
+                      onClick={() => handleConnect()}
+                    >
+                      Join
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
         {/* Manual entry for a network that isn't listed (e.g. hidden SSIDs, or
             a scan that missed it). Feeds the typed values straight into
             handleConnect(ssid, password) to avoid stale-state issues. A blank
             password means an open network. */}
         {!loading && (
-        <div
-          style={{
-            marginTop: "0.8rem",
-            paddingTop: "0.8rem",
-            borderTop: "1px solid #333",
-          }}
-        >
-          {!showManual ? (
-            <button
-              className="m-btn m-btn-neutral"
-              style={{ width: "100%" }}
-              onClick={() => setShowManual(true)}
-            >
-              Network not listed?
-            </button>
-          ) : (
-            <>
-              <div style={{ color: "#ccc", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
-                Network not listed?
-              </div>
-              <input
-                ref={manualSsidRef}
-                type="text"
-                value={manualSsid}
-                onChange={(e) => setManualSsid(e.target.value)}
-                placeholder="Network name (SSID)"
-                style={{
-                  width: "100%",
-                  padding: "0.5rem 0.6rem",
-                  background: "#111",
-                  border: "1px solid #555",
-                  borderRadius: "6px",
-                  color: "#fff",
-                  fontSize: "1rem",
-                  boxSizing: "border-box",
-                  marginBottom: "0.5rem",
-                }}
-              />
-              <input
-                type="password"
-                value={manualPassword}
-                onChange={(e) => setManualPassword(e.target.value)}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && manualSsid && handleConnect(manualSsid, manualPassword)
-                }
-                placeholder="Password (leave blank for open network)"
-                style={{
-                  width: "100%",
-                  padding: "0.5rem 0.6rem",
-                  background: "#111",
-                  border: "1px solid #555",
-                  borderRadius: "6px",
-                  color: "#fff",
-                  fontSize: "1rem",
-                  boxSizing: "border-box",
-                  marginBottom: "0.6rem",
-                }}
-              />
-              <button
-                className="m-btn m-btn-primary"
-                style={{ width: "100%", marginBottom: "0.4rem" }}
-                disabled={!manualSsid}
-                onClick={() => handleConnect(manualSsid, manualPassword)}
-              >
-                Join
-              </button>
+          <div
+            style={{
+              marginTop: "0.8rem",
+              paddingTop: "0.8rem",
+              borderTop: "1px solid #333",
+            }}
+          >
+            {!showManual ? (
               <button
                 className="m-btn m-btn-neutral"
-                style={{ width: "100%", fontSize: "0.8rem" }}
-                onClick={() => {
-                  setShowManual(false);
-                  setManualSsid("");
-                  setManualPassword("");
-                }}
+                style={{ width: "100%" }}
+                onClick={() => setShowManual(true)}
               >
-                Cancel
+                Network not listed?
               </button>
-            </>
-          )}
-        </div>
+            ) : (
+              <>
+                <div style={{ color: "#ccc", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
+                  Network not listed?
+                </div>
+                <input
+                  ref={manualSsidRef}
+                  type="text"
+                  value={manualSsid}
+                  onChange={(e) => setManualSsid(e.target.value)}
+                  placeholder="Network name (SSID)"
+                  style={{
+                    width: "100%",
+                    padding: "0.5rem 0.6rem",
+                    background: "#111",
+                    border: "1px solid #555",
+                    borderRadius: "6px",
+                    color: "#fff",
+                    fontSize: "1rem",
+                    boxSizing: "border-box",
+                    marginBottom: "0.5rem",
+                  }}
+                />
+                <input
+                  type="password"
+                  value={manualPassword}
+                  onChange={(e) => setManualPassword(e.target.value)}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && manualSsid && handleConnect(manualSsid, manualPassword)
+                  }
+                  placeholder="Password (leave blank for open network)"
+                  style={{
+                    width: "100%",
+                    padding: "0.5rem 0.6rem",
+                    background: "#111",
+                    border: "1px solid #555",
+                    borderRadius: "6px",
+                    color: "#fff",
+                    fontSize: "1rem",
+                    boxSizing: "border-box",
+                    marginBottom: "0.6rem",
+                  }}
+                />
+                <button
+                  className="m-btn m-btn-primary"
+                  style={{ width: "100%", marginBottom: "0.4rem" }}
+                  disabled={!manualSsid}
+                  onClick={() => handleConnect(manualSsid, manualPassword)}
+                >
+                  Join
+                </button>
+                <button
+                  className="m-btn m-btn-neutral"
+                  style={{ width: "100%", fontSize: "0.8rem" }}
+                  onClick={() => {
+                    setShowManual(false);
+                    setManualSsid("");
+                    setManualPassword("");
+                  }}
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+          </div>
         )}
       </div>
     </div>

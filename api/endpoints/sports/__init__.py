@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from .nba import router as nba_router
+from .wnba import router as wnba_router
 from .mlb import router as mlb_router
 from .nhl import router as nhl_router
 from .football import router as football_router
@@ -13,6 +14,7 @@ from .update_settings import router as update_settings_router
 
 router = APIRouter(prefix="/sports", tags=["sports"])
 router.include_router(nba_router)
+router.include_router(wnba_router)
 router.include_router(mlb_router)
 router.include_router(nhl_router)
 router.include_router(football_router)

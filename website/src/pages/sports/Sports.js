@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   getNBAScoreboard,
+  getWNBAScoreboard,
   getMLBScoreboard,
   getNHLScoreboard,
   getNFLScoreboard,
@@ -75,6 +76,13 @@ export default function Sports() {
       queryFn: getNBAScoreboard,
       Card: NBAGameCard,
       label: "NBA",
+    },
+    // WNBA reuses NBAGameCard — the basketball scoreboard payload is identical
+    wnba: {
+      queryKey: ["wnbaScoreboard"],
+      queryFn: getWNBAScoreboard,
+      Card: NBAGameCard,
+      label: "WNBA",
     },
     nfl: {
       queryKey: ["nflScoreboard"],

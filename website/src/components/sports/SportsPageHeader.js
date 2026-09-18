@@ -1,6 +1,16 @@
 import React from "react";
 import SwitchDisplayButton from "../shared/SwitchDisplayButton";
 
+// Leagues — sorted alphabetically by label at render
+const SPORT_OPTIONS = [
+  { key: "mlb", label: "MLB" },
+  { key: "nba", label: "NBA" },
+  { key: "wnba", label: "WNBA" },
+  { key: "nfl", label: "NFL" },
+  { key: "nhl", label: "NHL" },
+  { key: "nwsl", label: "NWSL" },
+];
+
 export default function SportsPageHeader({ sport, isPending, onSportChange, onOpenSettings }) {
   return (
     <div
@@ -26,11 +36,13 @@ export default function SportsPageHeader({ sport, isPending, onSportChange, onOp
           cursor: "pointer",
         }}
       >
-        <option value="mlb">MLB</option>
-        <option value="nba">NBA</option>
-        <option value="nfl">NFL</option>
-        <option value="nhl">NHL</option>
-        <option value="nwsl">NWSL</option>
+        {[...SPORT_OPTIONS]
+          .sort((a, b) => a.label.localeCompare(b.label))
+          .map(({ key, label }) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
       </select>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

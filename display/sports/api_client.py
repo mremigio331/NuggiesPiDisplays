@@ -24,6 +24,14 @@ def get_nba_game_details(event_id: str) -> dict | None:
     return _get(f"/sports/nba/game/{event_id}")
 
 
+def get_wnba_scoreboard() -> dict | None:
+    return _get("/sports/wnba/scoreboard")
+
+
+def get_wnba_game_details(event_id: str) -> dict | None:
+    return _get(f"/sports/wnba/game/{event_id}")
+
+
 def get_mlb_scoreboard() -> dict | None:
     return _get("/sports/mlb/scoreboard")
 

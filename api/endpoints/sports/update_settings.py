@@ -14,7 +14,7 @@ router = APIRouter()
 # Extend this set when adding new sports. Football leagues (NFL, NCAAF, …) and
 # soccer leagues (NWSL, …) are each their own sport and come from
 # FOOTBALL_SPORTS / SOCCER_SPORTS.
-VALID_SPORTS = {"nba", "mlb", "nhl", *FOOTBALL_SPORTS, *SOCCER_SPORTS}
+VALID_SPORTS = {"nba", "wnba", "mlb", "nhl", *FOOTBALL_SPORTS, *SOCCER_SPORTS}
 _VALID_DISPLAY_MODES = {"focus", "overview"}
 
 

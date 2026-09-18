@@ -13,6 +13,7 @@ _HEADERS = {"User-Agent": "Mozilla/5.0"}
 ESPN_LEAGUE_PATHS: dict[str, str] = {
     "mlb": "baseball/mlb",
     "nba": "basketball/nba",
+    "wnba": "basketball/wnba",
     "nfl": "football/nfl",
     "nhl": "hockey/nhl",
     # Soccer leagues are each their own sport key → ESPN "soccer/<slug>" path.
@@ -272,13 +273,17 @@ class ESPNClient:
         teams.sort(key=lambda t: t["abbreviation"] or t["name"])
         return teams
 
-    def get_nba_scoreboard(self) -> list[dict]:
-        """Return today's NBA games in a simplified format."""
-        url = f"{_ESPN_BASE}/basketball/nba/scoreboard"
+    def _get_basketball_scoreboard(self, league: str) -> list[dict]:
+        """Return today's games for a basketball league (nba, wnba).
+
+        NBA and WNBA share identical ESPN payload shapes, so both leagues use
+        this helper — only the league slug (e.g. "basketball/nba") differs.
+        """
+        url = f"{_ESPN_BASE}/basketball/{league}/scoreboard"
         try:
             raw = self._get(url)
         except Exception as e:
-            logger.error(f"ESPN NBA fetch failed: {e}")
+            logger.error(f"ESPN {league.upper()} fetch failed: {e}")
             return []
 
         games = []
@@ -308,15 +313,23 @@ class ESPNClient:
 
         return games
 
-    def get_nba_game_details(self, event_id: str) -> dict | None:
-        """Return boxscore player data for a specific game.
+    def get_nba_scoreboard(self) -> list[dict]:
+        """Return today's NBA games in a simplified format."""
+        return self._get_basketball_scoreboard("nba")
+
+    def get_wnba_scoreboard(self) -> list[dict]:
+        """Return today's WNBA games in a simplified format."""
+        return self._get_basketball_scoreboard("wnba")
+
+    def _get_basketball_game_details(self, league: str, event_id: str) -> dict | None:
+        """Return boxscore player data for a basketball game (nba, wnba).
 
         Returns a dict with keys "away" and "home", each containing:
           - abbreviation: str
           - team_fouls: int (sum of all player PF)
           - players: list of {jersey, points, fouls} sorted by points desc
         """
-        url = f"{_ESPN_BASE}/basketball/nba/summary?event={event_id}"
+        url = f"{_ESPN_BASE}/basketball/{league}/summary?event={event_id}"
         try:
             raw = self._get(url)
         except Exception as e:
@@ -388,6 +401,14 @@ class ESPNClient:
         except Exception as e:
             logger.error(f"Failed to parse game details for {event_id}: {e}")
             return None
+
+    def get_nba_game_details(self, event_id: str) -> dict | None:
+        """Return NBA boxscore player data for a specific game."""
+        return self._get_basketball_game_details("nba", event_id)
+
+    def get_wnba_game_details(self, event_id: str) -> dict | None:
+        """Return WNBA boxscore player data for a specific game."""
+        return self._get_basketball_game_details("wnba", event_id)
 
     # ── MLB ────────────────────────────────────────────────────────────────
 

@@ -10,10 +10,11 @@ import {
 } from "../../services/API";
 import { favoritesForSport } from "../../utility/favorites";
 
-// Leagues in alphabetical order
+// Leagues — sorted alphabetically at render
 const SPORTS = [
   { key: "mlb", label: "MLB" },
   { key: "nba", label: "NBA" },
+  { key: "wnba", label: "WNBA" },
   { key: "nfl", label: "NFL" },
   { key: "nhl", label: "NHL" },
   { key: "nwsl", label: "NWSL" },
@@ -88,16 +89,18 @@ export default function SportsSettings() {
       <div className="m-card">
         <div className="m-card-title">Sport</div>
         <div className="m-btn-row" style={{ marginBottom: 8 }}>
-          {SPORTS.map(({ key, label }) => (
-            <button
-              key={key}
-              className={`m-btn ${sport === key ? "m-btn-active" : "m-btn-neutral"}`}
-              disabled={mut.isPending}
-              onClick={() => mut.mutate({ sport: key })}
-            >
-              {label}
-            </button>
-          ))}
+          {[...SPORTS]
+            .sort((a, b) => a.label.localeCompare(b.label))
+            .map(({ key, label }) => (
+              <button
+                key={key}
+                className={`m-btn ${sport === key ? "m-btn-active" : "m-btn-neutral"}`}
+                disabled={mut.isPending}
+                onClick={() => mut.mutate({ sport: key })}
+              >
+                {label}
+              </button>
+            ))}
         </div>
         <div className="m-form-desc">
           Switches the matrix display and scoreboard between sports.

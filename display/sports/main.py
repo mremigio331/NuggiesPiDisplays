@@ -99,6 +99,17 @@ _SPORT_CONFIG: dict[str, dict] = {
         "render_focus": renderer.render_game,
         "render_overview": renderer.render_game_overview,
     },
+    # WNBA is basketball and shares NBA's payload shape, panel views, and
+    # renderers — only the fetchers (API routes / ESPN slug) differ.
+    "wnba": {
+        "label": "WNBA",
+        "fetch_scoreboard": api_client.get_wnba_scoreboard,
+        "fetch_details": api_client.get_wnba_game_details,
+        "panel_views": _NBA_PANEL_VIEWS,
+        "live_details": True,  # fetch detail endpoint for live games (stat leaders)
+        "render_focus": renderer.render_game,
+        "render_overview": renderer.render_game_overview,
+    },
     "nfl": _football_config("NFL", "nfl"),
     # NCAA football: add "ncaaf": _football_config("NCAAF", "ncaaf") here plus a
     # matching entry in api/endpoints/sports/football.py FOOTBALL_SPORTS.

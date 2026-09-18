@@ -65,6 +65,7 @@ export const getStockNow = () => handle(api.get("/stonks/now"));
 
 // Sports
 export const getNBAScoreboard = () => handle(api.get("/sports/nba/scoreboard"));
+export const getWNBAScoreboard = () => handle(api.get("/sports/wnba/scoreboard"));
 export const getMLBScoreboard = () => handle(api.get("/sports/mlb/scoreboard"));
 export const getNHLScoreboard = () => handle(api.get("/sports/nhl/scoreboard"));
 // Football — one sport per league (nfl, ncaaf, …), same payload shape
@@ -83,8 +84,7 @@ export const getSportsNow = () => handle(api.get("/sports/now"));
 // Game locks — the matrix cycles through locked games only. Each lock expires
 // 24h after it is set; all four calls return the updated sports settings.
 // Teams in a league, for the favourite-team picker (sport key encodes the league)
-export const getSportsTeams = (sport) =>
-  handle(api.get("/sports/teams", { params: { sport } }));
+export const getSportsTeams = (sport) => handle(api.get("/sports/teams", { params: { sport } }));
 // Favourite teams — per sport, keyed by ESPN team id
 export const getSportsFavorites = () => handle(api.get("/sports/favorites"));
 export const addFavoriteTeam = (teamId, sport) =>

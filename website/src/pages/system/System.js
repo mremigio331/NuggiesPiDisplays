@@ -401,9 +401,9 @@ export default function System() {
             Reboot in progress
           </div>
           <div style={{ color: "#ddd", fontSize: "0.88rem", lineHeight: 1.7 }}>
-            This page will disconnect shortly. Reconnect to <strong>{setupSsid}</strong> and
-            open <strong>http://{PORTAL_ADDRESS}</strong> to continue setup. Once it&apos;s back on
-            your network, reach it at <DerivedAddress mdnsName={mdnsName} deviceIp={deviceIp} />.
+            This page will disconnect shortly. Reconnect to <strong>{setupSsid}</strong> and open{" "}
+            <strong>http://{PORTAL_ADDRESS}</strong> to continue setup. Once it&apos;s back on your
+            network, reach it at <DerivedAddress mdnsName={mdnsName} deviceIp={deviceIp} />.
           </div>
         </div>
       )}
@@ -564,8 +564,8 @@ export default function System() {
           <li>Reboot the Pi</li>
         </ul>
         <div style={{ color: "#aaa", fontSize: "0.8rem", marginTop: 10 }}>
-          After reboot, connect to the <strong style={{ color: "#fff" }}>{setupSsid}</strong>{" "}
-          WiFi network to reconfigure.
+          After reboot, connect to the <strong style={{ color: "#fff" }}>{setupSsid}</strong> WiFi
+          network to reconfigure.
         </div>
       </Modal>
 

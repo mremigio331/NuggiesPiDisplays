@@ -51,8 +51,7 @@ async def soccer_leagues():
     return JSONResponse(
         {
             "leagues": [
-                {"key": key, "name": cfg["name"]}
-                for key, cfg in SOCCER_SPORTS.items()
+                {"key": key, "name": cfg["name"]} for key, cfg in SOCCER_SPORTS.items()
             ]
         }
     )
