@@ -7,6 +7,7 @@ import {
   getMLBScoreboard,
   getNHLScoreboard,
   getNFLScoreboard,
+  getNCAAFScoreboard,
   getNWSLScoreboard,
   getSportsSettings,
   updateSportsSettings,
@@ -89,6 +90,13 @@ export default function Sports() {
       queryFn: getNFLScoreboard,
       Card: FootballGameCard,
       label: "NFL",
+    },
+    // NCAAF reuses FootballGameCard — college football shares NFL's payload shape
+    ncaaf: {
+      queryKey: ["ncaafScoreboard"],
+      queryFn: getNCAAFScoreboard,
+      Card: FootballGameCard,
+      label: "NCAA Football",
     },
     nhl: {
       queryKey: ["nhlScoreboard"],

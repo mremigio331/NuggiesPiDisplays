@@ -16,6 +16,7 @@ const SPORTS = [
   { key: "nba", label: "NBA" },
   { key: "wnba", label: "WNBA" },
   { key: "nfl", label: "NFL" },
+  { key: "ncaaf", label: "NCAA Football" },
   { key: "nhl", label: "NHL" },
   { key: "nwsl", label: "NWSL" },
 ];

@@ -15,6 +15,7 @@ ESPN_LEAGUE_PATHS: dict[str, str] = {
     "nba": "basketball/nba",
     "wnba": "basketball/wnba",
     "nfl": "football/nfl",
+    "ncaaf": "football/college-football",
     "nhl": "hockey/nhl",
     # Soccer leagues are each their own sport key → ESPN "soccer/<slug>" path.
     # Keep in sync with SOCCER_SPORTS in api/endpoints/sports/soccer.py.
@@ -135,6 +136,16 @@ def _match_int(pattern: re.Pattern, text: str) -> int:
     """First integer captured by pattern in text, else 0."""
     match = pattern.search(text or "")
     return _to_int(match.group(1)) if match else 0
+
+
+def _football_rank(competitor: dict) -> int | None:
+    """AP top-25 rank for a competitor, or None when unranked.
+
+    ESPN reports the ranking as competitor.curatedRank.current; 99 (and 0) mean
+    unranked. Only 1–25 count as ranked.
+    """
+    rank = _to_int((competitor.get("curatedRank") or {}).get("current"))
+    return rank if 1 <= rank <= 25 else None
 
 
 def _football_score_type(ptype: dict, points: int) -> str:
@@ -895,6 +906,9 @@ class ESPNClient:
             if not home or not away:
                 continue
 
+            home_rank = _football_rank(home)
+            away_rank = _football_rank(away)
+
             status = comp.get("status", {})
             stype = status.get("type", {})
             situation = comp.get("situation") or {}
@@ -920,6 +934,9 @@ class ESPNClient:
                     "away_timeouts": situation.get("awayTimeouts"),
                     "home_line_scores": _line_scores(home),
                     "away_line_scores": _line_scores(away),
+                    # AP top-25 rank, or None when unranked (college football)
+                    "home_rank": home_rank,
+                    "away_rank": away_rank,
                 }
             )
             games.append(game)

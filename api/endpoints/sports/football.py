@@ -16,7 +16,7 @@ from .common import _client, game_details_or_404, sort_games
 # sport key → {league: ESPN league slug, name: human label}
 FOOTBALL_SPORTS: dict[str, dict[str, str]] = {
     "nfl": {"league": "nfl", "name": "NFL"},
-    # "ncaaf": {"league": "college-football", "name": "NCAA Football"},
+    "ncaaf": {"league": "college-football", "name": "NCAA Football"},
 }
 
 

@@ -111,8 +111,7 @@ _SPORT_CONFIG: dict[str, dict] = {
         "render_overview": renderer.render_game_overview,
     },
     "nfl": _football_config("NFL", "nfl"),
-    # NCAA football: add "ncaaf": _football_config("NCAAF", "ncaaf") here plus a
-    # matching entry in api/endpoints/sports/football.py FOOTBALL_SPORTS.
+    "ncaaf": _football_config("NCAAF", "ncaaf"),
     "nhl": {
         "label": "NHL",
         "fetch_scoreboard": api_client.get_nhl_scoreboard,

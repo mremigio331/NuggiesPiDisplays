@@ -73,6 +73,7 @@ export const getFootballScoreboard = (sport = "nfl") =>
   handle(api.get(`/sports/${sport}/scoreboard`));
 export const getFootballLeagues = () => handle(api.get("/sports/football/leagues"));
 export const getNFLScoreboard = () => getFootballScoreboard("nfl");
+export const getNCAAFScoreboard = () => getFootballScoreboard("ncaaf");
 // Soccer — one sport per league (nwsl, …), same payload shape
 export const getSoccerScoreboard = (sport = "nwsl") =>
   handle(api.get(`/sports/${sport}/scoreboard`));
