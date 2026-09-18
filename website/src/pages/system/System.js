@@ -21,7 +21,6 @@ import {
 } from "../../services/API";
 import Modal from "../../components/shared/Modal";
 
-const SETUP_AP_SSID = "NuggiesDisplay";
 const SETUP_AP_PASSWORD = "SetUpNuggies";
 // The address a client uses to reach this device WHILE the setup AP/portal is
 // up. DNS is hijacked by the portal in that mode, so the .local name will not
@@ -92,6 +91,8 @@ function useSystem() {
     setLogLevelMut,
     mdnsName: wifiStatus?.mdns_name ?? null,
     deviceIp: wifiStatus?.ip ?? null,
+    // Visible setup-AP SSID, derived server-side from the hostname (never hardcoded).
+    setupSsid: wifiStatus?.setup_ssid ?? "NuggiesDisplay",
   };
 }
 
@@ -218,6 +219,7 @@ export default function System() {
     setLogLevelMut,
     mdnsName,
     deviceIp,
+    setupSsid,
   } = useSystem();
   const navigate = useNavigate();
   const [confirmRestart, setConfirmRestart] = React.useState(false);
@@ -384,7 +386,7 @@ export default function System() {
             </button>
             <div className="m-form-desc" style={{ marginTop: 6 }}>
               Resets all settings, removes all saved WiFi networks, and reboots. You'll need to
-              reconnect via the {SETUP_AP_SSID} network.
+              reconnect via the {setupSsid} network.
             </div>
           </div>
         </div>
@@ -399,7 +401,7 @@ export default function System() {
             Reboot in progress
           </div>
           <div style={{ color: "#ddd", fontSize: "0.88rem", lineHeight: 1.7 }}>
-            This page will disconnect shortly. Reconnect to <strong>{SETUP_AP_SSID}</strong> and
+            This page will disconnect shortly. Reconnect to <strong>{setupSsid}</strong> and
             open <strong>http://{PORTAL_ADDRESS}</strong> to continue setup. Once it&apos;s back on
             your network, reach it at <DerivedAddress mdnsName={mdnsName} deviceIp={deviceIp} />.
           </div>
@@ -562,7 +564,7 @@ export default function System() {
           <li>Reboot the Pi</li>
         </ul>
         <div style={{ color: "#aaa", fontSize: "0.8rem", marginTop: 10 }}>
-          After reboot, connect to the <strong style={{ color: "#fff" }}>{SETUP_AP_SSID}</strong>{" "}
+          After reboot, connect to the <strong style={{ color: "#fff" }}>{setupSsid}</strong>{" "}
           WiFi network to reconfigure.
         </div>
       </Modal>
@@ -596,7 +598,7 @@ export default function System() {
         >
           <li>Open your phone/laptop WiFi list</li>
           <li>
-            Join <strong style={{ color: "#fff" }}>{SETUP_AP_SSID}</strong>
+            Join <strong style={{ color: "#fff" }}>{setupSsid}</strong>
           </li>
           <li>
             Password: <strong style={{ color: "#fff" }}>{SETUP_AP_PASSWORD}</strong>

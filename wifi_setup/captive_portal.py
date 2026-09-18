@@ -15,6 +15,10 @@ from pydantic import BaseModel
 
 from . import wifi_manager
 
+# The visible setup-AP SSID, derived at runtime from the hostname (never hardcoded). Surfaced
+# in the status response so the frontend can name the setup network correctly.
+from .ap_config import AP_SSID
+
 PROJECT_DIR = Path(__file__).parent.parent
 DIST_DIR = PROJECT_DIR / "website" / "dist"
 INDEX_HTML = DIST_DIR / "index.html"
@@ -89,7 +93,9 @@ def _run_connect_job(job_id: str, ssid: str, password: str | None) -> None:
             # Preservation 3.4: a verified join records config (done inside
             # connect_to_network) and reboots into normal operation with the display up.
             asyncio.run(_finalize_after_connect())
-    except Exception as exc:  # noqa: BLE001 — never leave the job wedged on "connecting"
+    except (
+        Exception
+    ) as exc:  # noqa: BLE001 — never leave the job wedged on "connecting"
         _JOBS[job_id].update(state="failed", ssid=ssid, message=str(exc))
 
 
@@ -213,7 +219,7 @@ def _derive_address() -> dict:
 
 @app.get("/api/wifi/status")
 async def get_status():
-    body = {"connected": wifi_manager.is_connected()}
+    body = {"connected": wifi_manager.is_connected(), "setup_ssid": AP_SSID}
     body.update(_derive_address())
     return body
 

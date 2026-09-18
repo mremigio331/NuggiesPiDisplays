@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -10,6 +11,22 @@ from pathlib import Path
 
 from wifi_setup.ap_config import AP_SSID, AP_PASSWORD, AP_CON_NAME, AP_IP
 from wifi_setup.wifi_state import WIFI_FLAG, mark_configured
+
+# Module logger. The captive portal runs under uvicorn (as root) which configures root
+# logging, so INFO/WARNING here surface in journalctl -u nuggies-wifi-setup.service.
+logger = logging.getLogger(__name__)
+# uvicorn sets this logger's effective level to WARNING+, which suppresses our INFO
+# handover trace. Attach our own stderr handler (uvicorn captures stderr -> journalctl) and
+# force INFO so the full connect/verify narration is visible regardless of uvicorn config.
+# propagate=False avoids double-logging through the root/uvicorn handlers.
+if not logger.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(
+        logging.Formatter("%(asctime)s wifi_manager %(levelname)s: %(message)s")
+    )
+    logger.addHandler(_h)
+logger.setLevel(logging.INFO)
+logger.propagate = False
 
 # Where the boot script caches a scan taken while wlan0 is still free, so the portal can
 # serve a network list even when a live rescan is unavailable in AP mode (task 3.3 / 4.2).
@@ -168,12 +185,19 @@ def scan_networks() -> dict:
         return {
             "networks": cached,
             "stale": True,
-            "error": "network list unavailable (%s); showing cached results" % exc
-            if cached
-            else "network list unavailable (%s) and no cached results available" % exc,
+            "error": (
+                "network list unavailable (%s); showing cached results" % exc
+                if cached
+                else "network list unavailable (%s) and no cached results available"
+                % exc
+            ),
         }
 
-    return {"networks": _parse_scan_output(result.stdout), "stale": False, "error": None}
+    return {
+        "networks": _parse_scan_output(result.stdout),
+        "stale": False,
+        "error": None,
+    }
 
 
 def _wlan0_device_status() -> tuple[str | None, str | None]:
@@ -216,32 +240,90 @@ def _wlan0_active_connection() -> str | None:
 
 
 def _verify_association(ssid: str) -> bool:
-    """True only when wlan0 is genuinely associated to the requested client network.
+    """True when wlan0 itself reports it has joined the requested client network.
 
-    ALL of the following must hold:
-      * wlan0's device state is ``connected`` (not merely non-transient);
-      * the active connection/SSID on wlan0 equals the requested ``ssid`` AND is not the
-        setup AP profile (``AP_CON_NAME``) — an SSID mismatch or the AP profile is
-        rejected, this is not a bare device-state check;
-      * ``is_connected()`` reports full or limited connectivity.
+    Association is judged by wlan0's OWN device state and active connection — NOT by
+    global NM connectivity. On an ethernet-equipped device the global CONNECTIVITY value
+    reflects eth0, so it is a false signal for "did wlan0 join?"; a freshly-joined wifi
+    network can also briefly report ``limited``/``none`` while association is already
+    correct. The real source of truth is:
+      * wlan0's device state is ``connected``;
+      * the active connection/profile on wlan0 equals the requested ``ssid`` AND is not the
+        setup AP profile (``AP_CON_NAME``) — an SSID mismatch or the AP profile is rejected.
+    ``is_connected()`` (global connectivity) is logged for context only; it is NOT a gate.
     """
     state, connection = _wlan0_device_status()
+    global_conn = is_connected()
+
     if state != "connected":
+        logger.info(
+            "verify: not yet connected — wlan0 state=%r connection=%r "
+            "(requested ssid=%r, global_connectivity=%s)",
+            state,
+            connection,
+            ssid,
+            global_conn,
+        )
         return False
     if not connection or connection == AP_CON_NAME:
+        logger.info(
+            "verify: wlan0 connected but on AP/empty profile — connection=%r "
+            "(requested ssid=%r)",
+            connection,
+            ssid,
+        )
         return False
     if connection != ssid:
+        # Do NOT loosen the check — just make an NM-named-profile mismatch visible.
+        logger.warning(
+            "verify: wlan0 connection name %r != requested ssid %r "
+            "(NM may have named the profile differently); rejecting",
+            connection,
+            ssid,
+        )
         return False
-    return is_connected()
+
+    logger.info(
+        "verify: associated — wlan0 state=connected connection=%r matches requested "
+        "ssid (global_connectivity=%s, informational only)",
+        connection,
+        global_conn,
+    )
+    return True
 
 
 def _poll_verify(ssid: str, timeout_s: float) -> bool:
-    """Poll ``_verify_association(ssid)`` up to ``timeout_s``; True on first success."""
+    """Poll ``_verify_association(ssid)`` up to ``timeout_s``; True on first success.
+
+    Logs the observed wlan0 (state, connection) and global connectivity roughly once per
+    second so the grace-period handover is fully traceable in the journal. Each underlying
+    ``_verify_association`` call also logs the specific reason it is not yet verified.
+    """
+    logger.info("verify poll: starting up to %.0fs for ssid=%r", timeout_s, ssid)
     deadline = time.monotonic() + timeout_s
+    attempt = 0
     while True:
+        attempt += 1
+        state, connection = _wlan0_device_status()
+        logger.info(
+            "verify poll #%d: observed wlan0 state=%r connection=%r "
+            "global_connectivity=%s (requested ssid=%r)",
+            attempt,
+            state,
+            connection,
+            is_connected(),
+            ssid,
+        )
         if _verify_association(ssid):
+            logger.info("verify poll: verified on attempt #%d", attempt)
             return True
         if time.monotonic() >= deadline:
+            logger.warning(
+                "verify poll: grace period elapsed after %d attempts without "
+                "verifying association to ssid=%r",
+                attempt,
+                ssid,
+            )
             return False
         time.sleep(_HANDOVER_POLL_INTERVAL_S)
 
@@ -253,6 +335,67 @@ def _wait_for_wlan0_disconnected(timeout_s: float) -> bool:
         if _wlan0_state() == "disconnected":
             return True
         if time.monotonic() >= deadline:
+            return False
+        time.sleep(_HANDOVER_POLL_INTERVAL_S)
+
+
+def _wait_for_ssid_visible(ssid: str, timeout_s: float) -> bool:
+    """Poll NM's scan list until ``ssid`` is visible, bounded by ``timeout_s``.
+
+    Read-only. Lists SSIDs with ``nmcli --escape no -t -f SSID device wifi list --rescan no``
+    (no colon-splitting needed for a plain membership check — each line IS the SSID) and
+    compares each line exactly to ``ssid``. Returns True on the first sighting, False if the
+    deadline passes. Logs found/not-found so the handover is traceable.
+    """
+    deadline = time.monotonic() + timeout_s
+    attempt = 0
+    while True:
+        attempt += 1
+        found = False
+        try:
+            result = subprocess.run(
+                [
+                    "nmcli",
+                    "--escape",
+                    "no",
+                    "-t",
+                    "-f",
+                    "SSID",
+                    "device",
+                    "wifi",
+                    "list",
+                    "--rescan",
+                    "no",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            for line in result.stdout.splitlines():
+                if line == ssid:
+                    found = True
+                    break
+        except Exception as exc:
+            logger.warning(
+                "connect_to_network: ssid-visibility list raised %r (attempt #%d)",
+                exc,
+                attempt,
+            )
+        if found:
+            logger.info(
+                "connect_to_network: target ssid=%r visible in scan list (attempt #%d)",
+                ssid,
+                attempt,
+            )
+            return True
+        if time.monotonic() >= deadline:
+            logger.warning(
+                "connect_to_network: target ssid=%r NOT visible in scan list after "
+                "%d attempts / %.0fs (attempting connect anyway)",
+                ssid,
+                attempt,
+                timeout_s,
+            )
             return False
         time.sleep(_HANDOVER_POLL_INTERVAL_S)
 
@@ -279,6 +422,196 @@ def _demote_hotspot_profile() -> None:
         )
     except Exception:
         pass
+
+
+def _profile_exists(ssid: str) -> bool:
+    """True when a saved NM connection profile named EXACTLY ``ssid`` exists.
+
+    Lists profile names with ``nmcli -t -f NAME connection show`` and compares each line
+    exactly to ``ssid`` (profile names may contain colons, but the ``-t -f NAME`` output is
+    a single field per line, so no splitting is needed). Read-only; tolerant of failure —
+    returns False if nmcli is unavailable, which routes callers to the explicit create path.
+    """
+    try:
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "NAME", "connection", "show"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception as exc:
+        logger.warning("_activate_network: listing profiles raised %r", exc)
+        return False
+    for line in result.stdout.splitlines():
+        if line == ssid:
+            return True
+    return False
+
+
+def _activate_network(ssid: str, password: str | None) -> tuple[int, str, str]:
+    """Deterministically associate wlan0 with ``ssid`` and return (rc, stdout, stderr).
+
+    Replaces the flaky ``nmcli device wifi connect <ssid> [password <pw>]`` path, which
+    collided with a pre-existing saved profile and built an incomplete security config,
+    failing with ``802-11-wireless-security.key-mgmt: property is missing``. Instead we drive
+    NetworkManager profiles explicitly so the security type is never left to inference:
+
+      * If a profile named exactly ``ssid`` EXISTS:
+          - secured (password truthy): update its stored secret first with
+            ``connection modify <ssid> wifi-sec.key-mgmt wpa-psk wifi-sec.psk <password>`` so
+            the saved PSK matches what the user just typed (harmless if unchanged), then
+            ``connection up <ssid>``.
+          - open (no password): just ``connection up <ssid>`` — leave security untouched.
+      * If NO profile exists, create one named exactly ``ssid`` (so ``_verify_association``'s
+        wlan0-active-connection == ssid check keeps working):
+          - secured: ``connection add type wifi con-name <ssid> ifname wlan0 ssid <ssid> --
+            wifi-sec.key-mgmt wpa-psk wifi-sec.psk <password>``; on add failure return its
+            rc/err, otherwise ``connection up <ssid>``.
+          - open: ``connection add type wifi con-name <ssid> ifname wlan0 ssid <ssid>`` then
+            ``connection up <ssid>``.
+
+    The final ``connection up`` result (or an earlier add/modify failure) is returned as
+    (rc, stdout, stderr). ``subprocess.TimeoutExpired`` is allowed to propagate so the caller
+    handles timeout vs. clear_error exactly as before. The password VALUE is never logged —
+    argv is logged with the psk masked as ``***`` and only ``bool(password)`` is reported.
+    """
+    exists = _profile_exists(ssid)
+    logger.info(
+        "_activate_network: ssid=%r password_provided=%s profile_exists=%s",
+        ssid,
+        bool(password),
+        exists,
+    )
+
+    if exists:
+        if password:
+            modify_cmd = [
+                "nmcli",
+                "connection",
+                "modify",
+                ssid,
+                "wifi-sec.key-mgmt",
+                "wpa-psk",
+                "wifi-sec.psk",
+                password,
+            ]
+            logged_modify = [
+                "nmcli",
+                "connection",
+                "modify",
+                ssid,
+                "wifi-sec.key-mgmt",
+                "wpa-psk",
+                "wifi-sec.psk",
+                "***",
+            ]
+            logger.info(
+                "_activate_network: updating existing profile secret argv=%r "
+                "(password_provided=%s)",
+                logged_modify,
+                bool(password),
+            )
+            modify = subprocess.run(
+                modify_cmd, capture_output=True, text=True, timeout=15
+            )
+            logger.info(
+                "_activate_network: modify rc=%s stdout=%r stderr=%r",
+                modify.returncode,
+                (modify.stdout or "").strip(),
+                (modify.stderr or "").strip(),
+            )
+            if modify.returncode != 0:
+                return (
+                    modify.returncode,
+                    modify.stdout or "",
+                    modify.stderr or "",
+                )
+        else:
+            logger.info(
+                "_activate_network: existing OPEN profile — bringing up without "
+                "modifying security (ssid=%r)",
+                ssid,
+            )
+    else:
+        if password:
+            add_cmd = [
+                "nmcli",
+                "connection",
+                "add",
+                "type",
+                "wifi",
+                "con-name",
+                ssid,
+                "ifname",
+                _WLAN_IFACE,
+                "ssid",
+                ssid,
+                "--",
+                "wifi-sec.key-mgmt",
+                "wpa-psk",
+                "wifi-sec.psk",
+                password,
+            ]
+            logged_add = [
+                "nmcli",
+                "connection",
+                "add",
+                "type",
+                "wifi",
+                "con-name",
+                ssid,
+                "ifname",
+                _WLAN_IFACE,
+                "ssid",
+                ssid,
+                "--",
+                "wifi-sec.key-mgmt",
+                "wpa-psk",
+                "wifi-sec.psk",
+                "***",
+            ]
+        else:
+            add_cmd = [
+                "nmcli",
+                "connection",
+                "add",
+                "type",
+                "wifi",
+                "con-name",
+                ssid,
+                "ifname",
+                _WLAN_IFACE,
+                "ssid",
+                ssid,
+            ]
+            logged_add = list(add_cmd)
+        logger.info(
+            "_activate_network: creating profile argv=%r (password_provided=%s)",
+            logged_add,
+            bool(password),
+        )
+        add = subprocess.run(add_cmd, capture_output=True, text=True, timeout=15)
+        logger.info(
+            "_activate_network: add rc=%s stdout=%r stderr=%r",
+            add.returncode,
+            (add.stdout or "").strip(),
+            (add.stderr or "").strip(),
+        )
+        if add.returncode != 0:
+            return (add.returncode, add.stdout or "", add.stderr or "")
+
+    up_cmd = ["nmcli", "connection", "up", ssid]
+    logger.info("_activate_network: activating argv=%r", up_cmd)
+    up = subprocess.run(
+        up_cmd, capture_output=True, text=True, timeout=CONNECT_TIMEOUT_S
+    )
+    logger.info(
+        "_activate_network: up rc=%s stdout=%r stderr=%r",
+        up.returncode,
+        (up.stdout or "").strip(),
+        (up.stderr or "").strip(),
+    )
+    return (up.returncode, up.stdout or "", up.stderr or "")
 
 
 def connect_to_network(ssid: str, password: str | None) -> dict:
@@ -312,51 +645,114 @@ def connect_to_network(ssid: str, password: str | None) -> dict:
         unknown, not collapsed into success or failure.
     """
     ap_was_active = _wlan0_active_connection() == AP_CON_NAME
+    # NEVER log the password value — only whether one was provided.
+    logger.info(
+        "connect_to_network: requested ssid=%r password_provided=%s ap_was_active=%s",
+        ssid,
+        bool(password),
+        ap_was_active,
+    )
 
     # (2) Tear down the setup AP profile so it cannot contend for wlan0 or reappear.
     stop_hotspot()
+    logger.info("connect_to_network: stopped hotspot")
 
     # (3) Release wlan0 and wait for it to actually reach `disconnected` before associating.
     try:
-        subprocess.run(
+        disconnect_result = subprocess.run(
             ["nmcli", "device", "disconnect", _WLAN_IFACE],
             capture_output=True,
             text=True,
             timeout=15,
         )
-    except Exception:
+        logger.info(
+            "connect_to_network: disconnect wlan0 rc=%s stderr=%r",
+            disconnect_result.returncode,
+            (disconnect_result.stderr or "").strip(),
+        )
+    except Exception as exc:
         # A disconnect failure is not fatal on its own — wlan0 may already be free (e.g. the
         # AP teardown released it). Fall through to the bounded poll, which is the real gate.
-        pass
-    _wait_for_wlan0_disconnected(_DISCONNECT_TIMEOUT_S)
+        logger.warning("connect_to_network: disconnect wlan0 raised %r", exc)
+    disconnected = _wait_for_wlan0_disconnected(_DISCONNECT_TIMEOUT_S)
+    logger.info(
+        "connect_to_network: wlan0 reached disconnected in time=%s", disconnected
+    )
 
-    # (4) Only now attempt the client association against a free radio.
-    cmd = ["nmcli", "device", "wifi", "connect", ssid]
-    if password:
-        cmd += ["password", password]
+    # (3b) Rescan the freed radio so NM has a fresh scan entry for the target network.
+    # After releasing wlan0 from AP mode, NM needs a current scan of the target network to
+    # infer its security type (WPA-PSK); without it, `device wifi connect` fails with
+    # "802-11-wireless-security.key-mgmt: property is missing" even when a password is
+    # supplied. This is additive — we proceed to connect regardless of the rescan result.
+    try:
+        rescan_result = subprocess.run(
+            ["nmcli", "device", "wifi", "rescan", "ifname", _WLAN_IFACE],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if rescan_result.returncode == 0:
+            logger.info("connect_to_network: pre-connect rescan rc=0")
+        else:
+            logger.warning(
+                "connect_to_network: pre-connect rescan rc=%s stderr=%r "
+                "(continuing — a stale scan may still let NM infer security)",
+                rescan_result.returncode,
+                (rescan_result.stderr or rescan_result.stdout or "").strip(),
+            )
+    except Exception as exc:
+        logger.warning(
+            "connect_to_network: pre-connect rescan raised %r (continuing)", exc
+        )
+    # Give the target a chance to appear in NM's scan list before we attempt to join it.
+    _wait_for_ssid_visible(ssid, 10)
+
+    # (4) Only now attempt the client association against a free radio, using a
+    # deterministic profile-based helper instead of the flaky `device wifi connect` path
+    # that collided with a pre-existing profile and left the security config incomplete.
+    logger.info(
+        "connect_to_network: associating via _activate_network (password_provided=%s)",
+        bool(password),
+    )
 
     timed_out = False
     clear_error: str | None = None
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=CONNECT_TIMEOUT_S
+        rc, out, err = _activate_network(ssid, password)
+        logger.info(
+            "connect_to_network: association rc=%s stdout=%r stderr=%r",
+            rc,
+            (out or "").strip(),
+            (err or "").strip(),
         )
-        if result.returncode != 0:
-            clear_error = (result.stderr or result.stdout).strip() or "Connection failed."
+        if rc != 0:
+            clear_error = (err or out).strip() or "Connection failed."
     except subprocess.TimeoutExpired:
         # The association may still be completing — do NOT call this a failure yet.
         timed_out = True
+        logger.warning(
+            "connect_to_network: association subprocess timed out after %ss "
+            "(association may still be completing)",
+            CONNECT_TIMEOUT_S,
+        )
     except Exception as exc:
         clear_error = str(exc)
+        logger.warning("connect_to_network: association subprocess raised %r", exc)
 
     # (5) Grace-period verification poll — the single arbiter of the outcome.
     verified = _poll_verify(ssid, _VERIFY_GRACE_S)
+    logger.info("connect_to_network: final verified=%s", verified)
 
     if verified:
         # (7) Only after successful verification: write the marker and re-assert the AP is
         # gone (non-autoconnecting), so the joined network is the only wlan0 candidate.
         mark_configured()
         _demote_hotspot_profile()
+        logger.info(
+            "connect_to_network: decision=connected_verified ssid=%r "
+            "(marker written, hotspot profile demoted)",
+            ssid,
+        )
         return {
             "state": "connected_verified",
             "ssid": ssid,
@@ -366,6 +762,12 @@ def connect_to_network(ssid: str, password: str | None) -> dict:
     if clear_error is not None:
         # (8) Observable, negative outcome: restore the portal so the user can retry.
         start_hotspot()
+        logger.warning(
+            "connect_to_network: decision=failed ssid=%r message=%r "
+            "(portal restored for retry)",
+            ssid,
+            clear_error,
+        )
         return {
             "state": "failed",
             "ssid": ssid,
@@ -375,20 +777,29 @@ def connect_to_network(ssid: str, password: str | None) -> dict:
     # Timed out (or otherwise no clear error) and verification could neither confirm nor
     # refute — we genuinely cannot observe the result. Report unknown; leave the radio as
     # NM left it (the association may yet land) and do not write the marker.
-    _ = (timed_out, ap_was_active)  # documented signals; behaviour above does not branch on them
+    _ = (
+        timed_out,
+        ap_was_active,
+    )  # documented signals; behaviour above does not branch on them
+    unknown_message = (
+        "Connection outcome could not be confirmed — please re-check whether the "
+        "device joined the network."
+    )
+    logger.warning(
+        "connect_to_network: decision=unknown_verify ssid=%r timed_out=%s "
+        "(marker NOT written, portal left as-is) message=%r",
+        ssid,
+        timed_out,
+        unknown_message,
+    )
     return {
         "state": "unknown_verify",
         "ssid": ssid,
-        "message": (
-            "Connection outcome could not be confirmed — please re-check whether the "
-            "device joined the network."
-        ),
+        "message": unknown_message,
     }
 
 
-def hotspot_argv(
-    password: str = AP_PASSWORD, band: str = AP_BAND
-) -> list[str]:
+def hotspot_argv(password: str = AP_PASSWORD, band: str = AP_BAND) -> list[str]:
     """Build the nmcli argv that starts the setup AP.
 
     This is the single source of truth for the hotspot invocation, shared by both the

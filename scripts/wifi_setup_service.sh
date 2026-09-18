@@ -10,7 +10,22 @@ LOG="/var/log/nuggies/wifi_setup.log"
 NM_DNSMASQ_DIR="/etc/NetworkManager/dnsmasq-shared.d"
 
 _AP_CFG="$PROJECT_DIR/wifi_ap.yaml"
-AP_SSID=$(grep '^ssid:'            "$_AP_CFG" | sed 's/^ssid:[[:space:]]*//')
+# Derive the visible setup-AP SSID from the hostname — never hardcoded — using the SAME
+# rule as wifi_setup/ap_config.py: uppercase the first character, keep the rest unchanged,
+# then append "Display" (stonks -> StonksDisplay). The Python derivation in ap_config.AP_SSID
+# is what actually names the AP (python3 -m wifi_setup.wifi_manager --start-hotspot); this
+# bash value is used only for logging and the stale-connection cleanup message, so we derive
+# it identically to keep logs in agreement. Guard every step so it can never fail under
+# `set -euo pipefail`: an empty hostname falls back to the yaml ssid, then literal NuggiesDisplay.
+_HOSTNAME=$(hostname 2>/dev/null || true)
+if [[ -n "$_HOSTNAME" ]]; then
+    _SSID_FIRST=$(printf '%s' "$_HOSTNAME" | cut -c1 | tr '[:lower:]' '[:upper:]')
+    _SSID_REST=$(printf '%s' "$_HOSTNAME" | cut -c2-)
+    AP_SSID="${_SSID_FIRST}${_SSID_REST}Display"
+else
+    AP_SSID=$(grep '^ssid:' "$_AP_CFG" | sed 's/^ssid:[[:space:]]*//' || true)
+    [[ -n "$AP_SSID" ]] || AP_SSID="NuggiesDisplay"
+fi
 AP_PASSWORD=$(grep '^password:'    "$_AP_CFG" | sed 's/^password:[[:space:]]*//')
 AP_CON_NAME=$(grep '^connection_name:' "$_AP_CFG" | sed 's/^connection_name:[[:space:]]*//')
 AP_IP=$(grep '^ap_ip:'            "$_AP_CFG" | sed 's/^ap_ip:[[:space:]]*//')

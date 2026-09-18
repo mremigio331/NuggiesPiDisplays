@@ -36,6 +36,10 @@ from helpers.wifi_state import WIFI_FLAG, FORCE_PORTAL
 from wifi_setup import wifi_manager
 from wifi_setup.wifi_state import _wlan_status
 
+# The visible setup-AP SSID, derived at runtime from the hostname in ap_config. Surfaced in
+# the status response so the frontend can name the setup network correctly (never hardcoded).
+from wifi_setup.ap_config import AP_SSID
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/wifi", tags=["wifi"])
 
@@ -103,6 +107,7 @@ async def wifi_status():
         "connected": connected,
         "ssid": ssid,
         "portal_active": portal_active,
+        "setup_ssid": AP_SSID,
     }
     body.update(_derive_address())
     return JSONResponse(body)

@@ -92,6 +92,10 @@ export default function WifiSetup() {
   // Manual "network not listed?" SSID entry — feeds the same connect path.
   const [manualSsid, setManualSsid] = useState("");
   const [manualPassword, setManualPassword] = useState("");
+  // Manual entry is opt-in: nothing renders a text input until the user taps
+  // the "Network not listed?" button. This also avoids the browser
+  // autofocusing an SSID box on page load.
+  const [showManual, setShowManual] = useState(false);
   // "select" | "connecting" | "verified" | "unknown" | "failed"
   const [phase, setPhase] = useState("select");
   const [errorMsg, setErrorMsg] = useState("");
@@ -103,7 +107,11 @@ export default function WifiSetup() {
   // that cannot resolve .local. NOTHING here is hardcoded to nuggies.
   const [mdnsName, setMdnsName] = useState(null);
   const [deviceIp, setDeviceIp] = useState(null);
+  // Visible setup-AP SSID, derived server-side from the hostname. Defaults to the
+  // documented fallback until the status fetch resolves so instructions read sensibly.
+  const [setupSsid, setSetupSsid] = useState("NuggiesDisplay");
   const passwordRef = useRef(null);
+  const manualSsidRef = useRef(null);
   const pollRef = useRef(null);
 
   // Fetch the derived device address once, for the post-reboot instructions.
@@ -117,6 +125,7 @@ export default function WifiSetup() {
         if (cancelled) return;
         setMdnsName(data.mdns_name || null);
         setDeviceIp(data.ip || null);
+        setSetupSsid(data.setup_ssid || "NuggiesDisplay");
       } catch {
         // Non-fatal: the instruction screens fall back to generic wording.
       }
@@ -132,6 +141,27 @@ export default function WifiSetup() {
       if (pollRef.current) clearTimeout(pollRef.current);
     };
   }, []);
+
+  // Move focus to the manual SSID input once the user opts into manual entry.
+  // Runs after the DOM updates so the just-mounted input exists to focus.
+  useEffect(() => {
+    if (!showManual) return;
+    const id = requestAnimationFrame(() => manualSsidRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [showManual]);
+
+  // Move focus to the password input when a secured network is selected. Runs
+  // after the DOM updates (so the just-expanded input is mounted), which the
+  // old setTimeout-in-selectNetwork raced against. Open networks have no
+  // password field, so there's nothing to focus.
+  useEffect(() => {
+    if (!selectedSsid) return;
+    const net = networks.find((n) => n.ssid === selectedSsid);
+    if (net && net.secured) {
+      const id = requestAnimationFrame(() => passwordRef.current?.focus());
+      return () => cancelAnimationFrame(id);
+    }
+  }, [selectedSsid, networks]);
 
   // Force the setup portal to come up. This writes the .force_portal marker and
   // restarts the wifi service detached (task 5.1), so the setup AP reappears in
@@ -160,7 +190,6 @@ export default function WifiSetup() {
       setSelectedSsid(net.ssid);
       setPassword("");
       setPhase("select");
-      setTimeout(() => passwordRef.current?.focus(), 50);
     }
   }
 
@@ -311,7 +340,7 @@ export default function WifiSetup() {
           }}
         >
           <li>
-            The <strong style={{ color: "#fff" }}>NuggiesDisplay</strong> WiFi network will appear
+            The <strong style={{ color: "#fff" }}>{setupSsid}</strong> WiFi network will appear
             within about 30 seconds.
           </li>
           <li>
@@ -456,7 +485,7 @@ export default function WifiSetup() {
           <div style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>🤷</div>
           <div className="m-card-title">We couldn&apos;t confirm the result</div>
           <div style={{ color: "#aaa", fontSize: "0.9rem", marginBottom: "1.5rem" }}>
-            The connection to <strong>NuggiesDisplay</strong> dropped before we heard back, so we
+            The connection to <strong>{setupSsid}</strong> dropped before we heard back, so we
             can&apos;t be sure whether the Pi joined{" "}
             <strong style={{ color: "#fff" }}>{selectedSsid}</strong>. Here&apos;s how to check.
           </div>
@@ -481,7 +510,7 @@ export default function WifiSetup() {
                 Visit <DerivedAddress /> in your browser. If it loads, the Pi is connected.
               </li>
               <li>
-                If it doesn&apos;t load, rejoin <strong>NuggiesDisplay</strong> and open{" "}
+                If it doesn&apos;t load, rejoin <strong>{setupSsid}</strong> and open{" "}
                 <strong style={{ color: "#5b9bd5" }}>http://10.42.0.1</strong> — if the setup page is
                 still there, the join didn&apos;t take and you can try again.
               </li>
@@ -513,7 +542,7 @@ export default function WifiSetup() {
             This takes up to 30 seconds.
             <br />
             <strong style={{ color: "#f0a800" }}>
-              You&apos;ll lose connection to NuggiesDisplay — that&apos;s normal.
+              You&apos;ll lose connection to {setupSsid} — that&apos;s normal.
             </strong>
           </div>
           <div
@@ -525,7 +554,7 @@ export default function WifiSetup() {
               recover on its own:
               <ol style={{ margin: "0.4rem 0 0", paddingLeft: "1.2rem" }}>
                 <li>
-                  Rejoin <strong style={{ color: "#fff" }}>NuggiesDisplay</strong> and open{" "}
+                  Rejoin <strong style={{ color: "#fff" }}>{setupSsid}</strong> and open{" "}
                   <strong style={{ color: "#5b9bd5" }}>http://10.42.0.1</strong> to try again, or
                 </li>
                 <li>
@@ -568,6 +597,19 @@ export default function WifiSetup() {
           </button>
         </div>
 
+        {loading && (
+          <div
+            style={{
+              color: "#aaa",
+              fontSize: "0.9rem",
+              textAlign: "center",
+              padding: "0.75rem 0",
+            }}
+          >
+            🔍 Searching for WiFi networks…
+          </div>
+        )}
+
         {!loading && stale && (
           <div style={{ color: "#f0a800", fontSize: "0.8rem", marginBottom: "0.5rem" }}>
             Showing cached results from {formatAge(ageSeconds)}.
@@ -580,7 +622,7 @@ export default function WifiSetup() {
           </div>
         )}
 
-        {networks.map((net) => {
+        {!loading && networks.map((net) => {
           const isSelected = selectedSsid === net.ssid;
           return (
             <div key={net.ssid}>
@@ -646,7 +688,7 @@ export default function WifiSetup() {
                     className="m-btn m-btn-primary"
                     style={{ width: "100%" }}
                     disabled={net.secured && !password}
-                    onClick={handleConnect}
+                    onClick={() => handleConnect()}
                   >
                     Join
                   </button>
@@ -660,6 +702,7 @@ export default function WifiSetup() {
             a scan that missed it). Feeds the typed values straight into
             handleConnect(ssid, password) to avoid stale-state issues. A blank
             password means an open network. */}
+        {!loading && (
         <div
           style={{
             marginTop: "0.8rem",
@@ -667,55 +710,80 @@ export default function WifiSetup() {
             borderTop: "1px solid #333",
           }}
         >
-          <div style={{ color: "#ccc", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
-            Network not listed?
-          </div>
-          <input
-            type="text"
-            value={manualSsid}
-            onChange={(e) => setManualSsid(e.target.value)}
-            placeholder="Network name (SSID)"
-            style={{
-              width: "100%",
-              padding: "0.5rem 0.6rem",
-              background: "#111",
-              border: "1px solid #555",
-              borderRadius: "6px",
-              color: "#fff",
-              fontSize: "1rem",
-              boxSizing: "border-box",
-              marginBottom: "0.5rem",
-            }}
-          />
-          <input
-            type="password"
-            value={manualPassword}
-            onChange={(e) => setManualPassword(e.target.value)}
-            onKeyDown={(e) =>
-              e.key === "Enter" && manualSsid && handleConnect(manualSsid, manualPassword)
-            }
-            placeholder="Password (leave blank for open network)"
-            style={{
-              width: "100%",
-              padding: "0.5rem 0.6rem",
-              background: "#111",
-              border: "1px solid #555",
-              borderRadius: "6px",
-              color: "#fff",
-              fontSize: "1rem",
-              boxSizing: "border-box",
-              marginBottom: "0.6rem",
-            }}
-          />
-          <button
-            className="m-btn m-btn-primary"
-            style={{ width: "100%" }}
-            disabled={!manualSsid}
-            onClick={() => handleConnect(manualSsid, manualPassword)}
-          >
-            Join
-          </button>
+          {!showManual ? (
+            <button
+              className="m-btn m-btn-neutral"
+              style={{ width: "100%" }}
+              onClick={() => setShowManual(true)}
+            >
+              Network not listed?
+            </button>
+          ) : (
+            <>
+              <div style={{ color: "#ccc", fontSize: "0.85rem", marginBottom: "0.5rem" }}>
+                Network not listed?
+              </div>
+              <input
+                ref={manualSsidRef}
+                type="text"
+                value={manualSsid}
+                onChange={(e) => setManualSsid(e.target.value)}
+                placeholder="Network name (SSID)"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem 0.6rem",
+                  background: "#111",
+                  border: "1px solid #555",
+                  borderRadius: "6px",
+                  color: "#fff",
+                  fontSize: "1rem",
+                  boxSizing: "border-box",
+                  marginBottom: "0.5rem",
+                }}
+              />
+              <input
+                type="password"
+                value={manualPassword}
+                onChange={(e) => setManualPassword(e.target.value)}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && manualSsid && handleConnect(manualSsid, manualPassword)
+                }
+                placeholder="Password (leave blank for open network)"
+                style={{
+                  width: "100%",
+                  padding: "0.5rem 0.6rem",
+                  background: "#111",
+                  border: "1px solid #555",
+                  borderRadius: "6px",
+                  color: "#fff",
+                  fontSize: "1rem",
+                  boxSizing: "border-box",
+                  marginBottom: "0.6rem",
+                }}
+              />
+              <button
+                className="m-btn m-btn-primary"
+                style={{ width: "100%", marginBottom: "0.4rem" }}
+                disabled={!manualSsid}
+                onClick={() => handleConnect(manualSsid, manualPassword)}
+              >
+                Join
+              </button>
+              <button
+                className="m-btn m-btn-neutral"
+                style={{ width: "100%", fontSize: "0.8rem" }}
+                onClick={() => {
+                  setShowManual(false);
+                  setManualSsid("");
+                  setManualPassword("");
+                }}
+              >
+                Cancel
+              </button>
+            </>
+          )}
         </div>
+        )}
       </div>
     </div>
   );

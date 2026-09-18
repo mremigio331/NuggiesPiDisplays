@@ -187,37 +187,111 @@ def _connectivity() -> str:
         return "unknown"
 
 
+def _has_saved_client_profile() -> bool:
+    """True if a saved, autoconnect-eligible client wifi profile exists.
+
+    "Client wifi profile" = a saved NM connection whose TYPE is wireless
+    (``802-11-wireless``), whose NAME is not the setup AP (``AP_CON_NAME``), and whose
+    AUTOCONNECT is ``yes``. Such a profile is exactly what NetworkManager auto-activates a
+    few seconds into boot, so its presence is the signal that the settle loop has
+    "something worth waiting for".
+
+    Read-only. On any nmcli failure this returns ``True`` (err on the side of waiting): a
+    false "wait" costs at most SETTLE_TIMEOUT_S, whereas a false "don't wait" would
+    reintroduce the boot race this module guards against.
+    """
+    try:
+        result = subprocess.run(
+            ["nmcli", "-t", "-f", "NAME,TYPE,AUTOCONNECT", "connection", "show"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return True
+
+    if result.returncode != 0:
+        return True
+
+    for line in result.stdout.strip().splitlines():
+        # NAME:TYPE:AUTOCONNECT — NAME may contain colons, so split the two trailing
+        # fields off from the right and keep the name intact.
+        parts = line.rsplit(":", 2)
+        if len(parts) != 3:
+            continue
+        name, ctype, autoconnect = parts
+        name = name.strip()
+        ctype = ctype.strip().lower()
+        autoconnect = autoconnect.strip().lower()
+        if "wireless" not in ctype:
+            continue
+        if name == AP_CON_NAME:
+            continue
+        if autoconnect == "yes":
+            return True
+    return False
+
+
 # --------------------------------------------------------------------------- #
 # Verdict resolution
 # --------------------------------------------------------------------------- #
 def _resolve_settle() -> Verdict:
-    """Poll wlan0 until it settles (or the window elapses) and classify the result.
+    """Poll wlan0 until it settles on a client network (or the window elapses).
 
-    Never returns early while wlan0 is still transient — a still-transient state at the
-    timeout is treated as ``unconfigured`` only after the full window.
+    Fixes a boot race: at T=0 the wifi-setup service runs this resolver while wlan0 is
+    still ``disconnected`` — NetworkManager has not yet begun auto-activating the saved
+    network. ``disconnected`` is not a transient NM state, so a naive "break as soon as
+    the state is non-transient" check would return ``no_association`` instantly, and the
+    boot script would tear down the good connection NM brings up ~3s later and boot into
+    setup-AP mode despite a valid saved profile.
+
+    To close that race the loop keeps waiting through BOTH transient states and plain
+    not-yet-connected states (``disconnected``, ``unavailable``, empty) UNTIL the deadline
+    — but only when there is something worth waiting for, i.e. a saved, non-AP,
+    autoconnect-eligible client wifi profile exists (``_has_saved_client_profile``). A
+    genuinely unconfigured device with no saved client profile is not made to sit through
+    the full window every boot; it returns ``no_association`` promptly.
+
+    Outcomes:
+        - wlan0 ``connected`` on a profile other than AP_CON_NAME, corroborated by NM
+          connectivity (full/limited/portal/unknown) -> configured / client_associated
+        - wlan0 ``connected`` on AP_CON_NAME (the setup AP) is NOT a client association;
+          keep waiting for autoconnect while a saved profile exists
+        - deadline reached, or nothing worth waiting for -> unconfigured / no_association
     """
     deadline = time.monotonic() + SETTLE_TIMEOUT_S
-    state, connection = _wlan_status()
+    wait_for_autoconnect = _has_saved_client_profile()
 
     while True:
-        if not _is_transient(state):
-            break
-        if time.monotonic() >= deadline:
-            # Full window elapsed and wlan0 is still associating -> unconfigured.
-            return Verdict("unconfigured", "no_association")
-        time.sleep(_POLL_INTERVAL_S)
         state, connection = _wlan_status()
+        s = (state or "").strip().lower()
 
-    s = (state or "").strip().lower()
-    if s == "connected" and connection and connection != AP_CON_NAME:
-        # Corroborate with NM's own connectivity view; treat full/limited as associated.
-        # A "none"/"portal" connectivity on a settled, non-AP connection is uncommon, but
-        # if NM reports no connectivity at all we do not claim configured.
-        conn = _connectivity()
-        if conn in ("full", "limited", "portal", "unknown"):
-            return Verdict("configured", "client_associated", ssid=connection)
+        # Settled on a real (non-AP) client network?
+        if s == "connected" and connection and connection != AP_CON_NAME:
+            # Corroborate with NM's own connectivity view; treat full/limited as
+            # associated. If NM reports no connectivity at all we do not claim configured.
+            conn = _connectivity()
+            if conn in ("full", "limited", "portal", "unknown"):
+                return Verdict("configured", "client_associated", ssid=connection)
 
-    return Verdict("unconfigured", "no_association")
+        # Not associated to a client network (yet). Decide whether to keep waiting.
+        #   - transient states always keep waiting until the deadline
+        #   - plain not-yet-connected states keep waiting only while a saved autoconnect
+        #     profile exists (NM is likely about to bring it up)
+        #   - connected-on-AP is not a client association; keep waiting for autoconnect
+        #     while a saved profile exists
+        still_waiting = _is_transient(state) or (
+            wait_for_autoconnect and s != "connected"
+        )
+        if s == "connected" and connection == AP_CON_NAME and wait_for_autoconnect:
+            still_waiting = True
+
+        if not still_waiting:
+            return Verdict("unconfigured", "no_association")
+        if time.monotonic() >= deadline:
+            return Verdict("unconfigured", "no_association")
+
+        time.sleep(_POLL_INTERVAL_S)
 
 
 def resolve_verdict() -> Verdict:
