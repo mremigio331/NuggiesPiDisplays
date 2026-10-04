@@ -18,7 +18,7 @@ async def update_app(req: UpdateRequest, background_tasks: BackgroundTasks):
     """Pull latest code, optionally re-run setup, then reboot."""
     mode = "--dev" if is_dev_mode() else "--prod"
     logger.info(f"App update requested (run_setup={req.run_setup}, mode={mode})")
-    background_tasks.add_task(SystemManager().update_app, req.run_setup)
+    background_tasks.add_task(SystemManager().update_app, req.run_setup, mode)
     return JSONResponse(
         {
             "message": "Update started. Pi will reboot shortly.",

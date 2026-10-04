@@ -161,27 +161,102 @@ class SystemManager:
             start_new_session=True,
         )
 
-    async def update_app(self, run_setup: bool = True) -> None:
-        """Pull latest code, optionally re-run setup, then reboot."""
-        await asyncio.sleep(1)  # let HTTP response flush before blocking
+    def _pull_latest_code(self) -> bool:
+        """Fast-forward the working tree to the tracked remote branch.
 
-        logger.info("Running git pull...")
-        pull = subprocess.run(
-            ["git", "-C", str(_PROJECT_ROOT), "pull"],
+        A plain `git pull` fails on an appliance whose tree has drifted: setup.sh
+        rewrites tracked file modes (chmod/chown) and a prior root-level pull can
+        leave a dirty or diverged tree, either of which aborts `pull` with a
+        non-zero exit. We instead fetch, resolve the upstream ref, and hard-reset
+        onto it so the update lands regardless of local mode/content drift.
+
+        Returns True on success, False otherwise (caller decides whether to abort).
+        """
+        fetch = subprocess.run(
+            ["git", "-C", str(_PROJECT_ROOT), "fetch", "origin", "--prune"],
             capture_output=True,
             text=True,
         )
-        logger.info(f"git pull stdout: {pull.stdout.strip()}")
-        if pull.returncode != 0:
-            logger.warning(f"git pull stderr: {pull.stderr.strip()}")
+        if fetch.returncode != 0:
+            logger.error(
+                f"git fetch failed (rc={fetch.returncode}): {fetch.stderr.strip()}"
+            )
+            return False
+
+        # Resolve the upstream tracking ref (e.g. origin/main); fall back to
+        # origin/<current-branch> if no upstream is configured.
+        upstream = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(_PROJECT_ROOT),
+                "rev-parse",
+                "--abbrev-ref",
+                "--symbolic-full-name",
+                "@{u}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if upstream.returncode == 0 and upstream.stdout.strip():
+            target = upstream.stdout.strip()
+        else:
+            branch = subprocess.run(
+                ["git", "-C", str(_PROJECT_ROOT), "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True,
+                text=True,
+            )
+            current = branch.stdout.strip() or "main"
+            target = f"origin/{current}"
+            logger.warning(f"No upstream configured; falling back to {target}")
+
+        reset = subprocess.run(
+            ["git", "-C", str(_PROJECT_ROOT), "reset", "--hard", target],
+            capture_output=True,
+            text=True,
+        )
+        if reset.returncode != 0:
+            logger.error(
+                f"git reset --hard {target} failed (rc={reset.returncode}): {reset.stderr.strip()}"
+            )
+            return False
+
+        logger.info(f"Updated working tree to {target}: {reset.stdout.strip()}")
+        return True
+
+    async def update_app(self, run_setup: bool = True, mode: str | None = None) -> None:
+        """Pull latest code, optionally re-run setup, then reboot.
+
+        *mode* is the setup.sh flag ("--dev"/"--prod"). When the caller resolves it
+        (the /update-app endpoint does, so the reported mode matches the executed
+        one), it is passed through here; otherwise it is resolved from dev_config.
+        """
+        await asyncio.sleep(1)  # let HTTP response flush before blocking
+
+        logger.info("Updating to latest code...")
+        if not self._pull_latest_code():
+            logger.error("Aborting update: could not update code. NOT rebooting.")
+            return
 
         if run_setup:
-            mode = "--dev" if is_dev_mode() else "--prod"
+            if mode is None:
+                mode = "--dev" if is_dev_mode() else "--prod"
             logger.info(f"Running setup.sh {mode}...")
-            subprocess.run(
+            result = subprocess.run(
                 _privileged_command("bash", str(_PROJECT_ROOT / "setup.sh"), mode),
                 cwd=str(_PROJECT_ROOT),
+                capture_output=True,
+                text=True,
             )
+            if result.returncode != 0:
+                # setup.sh exits non-zero when sudo -n is refused (no NOPASSWD
+                # grant) or when verify_permissions finds a gap. Rebooting here
+                # would boot half-applied code while reporting success, so stop.
+                logger.error(
+                    f"setup.sh {mode} failed (rc={result.returncode}); NOT rebooting. "
+                    f"stderr: {result.stderr.strip()}"
+                )
+                return
 
         logger.info("Rebooting Pi after update...")
         self.reboot()

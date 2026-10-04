@@ -568,14 +568,20 @@ verify_permissions() {
         fi
     }
 
-    # -- helper: probe `bash setup.sh` with no args. The grant is argument-free,
-    # so it covers this invocation; the script prints its usage banner and exits
-    # 1 without doing any work. Distinguish that legitimate exit-1 from a genuine
-    # sudo refusal purely by whether stderr carries the password message.
+    # -- helper: probe `bash setup.sh <arg>` with a sentinel argument. The runtime
+    # never invokes setup.sh bare — it always passes --update/--dev/--prod — so the
+    # probe must carry an argument to exercise the same match the grant needs to
+    # cover. A sentinel like --verify-noop matches neither MODE nor SUBCOMMAND, so
+    # the script prints its usage banner and exits 1 without doing any work (running
+    # a real --update here would trigger an actual update). This still proves the
+    # grant authorises the argument-bearing form: an argument-free NOPASSWD grant
+    # matches any args, so if a future edit tightens it to zero args (trailing ""),
+    # this probe starts failing exactly as the real invocations would. Distinguish
+    # the legitimate exit-1 from a sudo refusal purely by the password message.
     _probe_setup_sh() {
-        local label="bash setup.sh (no args, usage-banner exit)"
+        local label="bash setup.sh <arg> (argument-bearing form, usage-banner exit)"
         local err
-        err=$(sudo -u "$USER" sudo -n "$BASH" "$SCRIPT_DIR/setup.sh" 2>&1 >/dev/null)
+        err=$(sudo -u "$USER" sudo -n "$BASH" "$SCRIPT_DIR/setup.sh" --verify-noop 2>&1 >/dev/null)
         if printf '%s' "$err" | grep -q "a password is required"; then
             echo "    [PROBED ] FAIL  $label — sudo refused (no matching NOPASSWD grant)"
             failures=$((failures + 1))
@@ -691,9 +697,29 @@ run_update() {
     echo "========================================="
 
     echo "--- Pulling latest code..."
-    git -C "$SCRIPT_DIR" pull
+    # A plain `git pull` aborts if the tree has drifted — setup.sh itself
+    # rewrites tracked file modes (chmod/chown) and a prior root-level pull can
+    # leave a dirty/diverged tree. Fetch + hard-reset onto the tracked remote
+    # branch so the update lands regardless of local mode/content drift.
+    if ! git -C "$SCRIPT_DIR" fetch origin --prune; then
+        echo "!!! git fetch failed. Aborting update." >&2
+        exit 1
+    fi
+    # Resolve upstream (e.g. origin/main), falling back to origin/<branch>.
+    if UPSTREAM=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null) && [[ -n "$UPSTREAM" ]]; then
+        TARGET="$UPSTREAM"
+    else
+        BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
+        TARGET="origin/$BRANCH"
+        echo "No upstream configured; falling back to $TARGET"
+    fi
+    if ! git -C "$SCRIPT_DIR" reset --hard "$TARGET"; then
+        echo "!!! git reset --hard $TARGET failed. Aborting update." >&2
+        exit 1
+    fi
+    echo "Updated working tree to $TARGET."
 
-    # The pull just ran as root; hand the tree back before anything else so the
+    # The reset just ran as root; hand the tree back before anything else so the
     # $USER-level `git fetch origin` in api/helpers/update_check.py keeps working.
     restore_tree_ownership
 
