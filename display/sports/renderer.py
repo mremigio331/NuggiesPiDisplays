@@ -175,6 +175,44 @@ def _center_x(text: str, start_x: int, width: int) -> int:
     return start_x + max(0, (width - len(text) * _CW) // 2)
 
 
+def _short_player_name(name: str, last_chars: int = 3) -> str:
+    """Compact a full name to '{first initial}.{first few of last name}'.
+
+    Shared across all sports views so player labels read the same everywhere.
+      'Judd Caulfield'  → 'J.Cau'
+      'Connor McDavid'  → 'C.McD'   (last_chars=3)
+      'Cutter Gauthier' → 'C.Gaut'  (last_chars=4)
+
+    One-word names (or already-short tokens) fall back to the first part
+    truncated. Multi-part surnames keep the final token ('J.T. Miller' →
+    'J.Mil'); a trailing suffix like 'Jr' is dropped so the real surname shows.
+    """
+    name = (name or "").strip()
+    if not name:
+        return ""
+    parts = name.split()
+    if len(parts) == 1:
+        return parts[0][: last_chars + 2]
+
+    first_initial = parts[0][0]
+    # Drop a generational suffix so 'Oliver Ekman-Larsson Jr' → surname, not 'Jr'.
+    _SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v"}
+    surname_parts = [p for p in parts[1:] if p.lower().strip(".") not in _SUFFIXES]
+    surname = (surname_parts or parts[1:])[-1]
+    return f"{first_initial}.{surname[:last_chars]}"
+
+
+def _draw_player_name(
+    canvas, name: str, x: int, baseline_y: int, color, last_chars: int = 3
+) -> None:
+    """Draw a player's compacted name (see _short_player_name) at (x, baseline_y).
+
+    Shared entry point so every mode renders names identically — call this
+    instead of formatting + _draw_text at each site.
+    """
+    _draw_text(canvas, _short_player_name(name, last_chars), x, baseline_y, color)
+
+
 def _format_game_time(game_date: str) -> str:
     """Convert UTC ISO game_date to local 12-hour time string, e.g. '7:30p'."""
     if not game_date:
@@ -354,9 +392,9 @@ def _sorted_leaders(details: dict, stat_key: str) -> list[dict]:
 
 # Maps panel_view key -> (header label, stat dict key)
 _STAT_VIEWS: dict[str, tuple[str, str]] = {
-    "pts": ("PTS", "points"),
-    "ast": ("AST", "assists"),
-    "reb": ("REB", "rebounds"),
+    "pts": ("POINTS", "points"),
+    "ast": ("ASSISTS", "assists"),
+    "reb": ("REBOUNDS", "rebounds"),
     "fouls": ("FOULS", "fouls"),
 }
 
@@ -385,8 +423,8 @@ def _render_right_stat(
     gray = _color(80, 80, 80)
     white = _color(210, 210, 210)
 
-    # Header + separator
-    _draw_text(canvas, label, _center_x(label, RIGHT_X, RIGHT_W), 5, white)
+    # Header + separator — title baseline y=6 leaves a 1px gap at the very top
+    _draw_text(canvas, label, _center_x(label, RIGHT_X, RIGHT_W), 6, white)
     for x in range(RIGHT_X, MATRIX_W - 1):  # leave x=63 for possession
         canvas.SetPixel(x, 7, 55, 55, 55)
 
@@ -825,7 +863,7 @@ def _render_baseball_right_post(
 
     label_map = {"decisions": "PITCH", "hits": "HITS", "rbi": "RBI"}
     label = label_map.get(panel_view, "")
-    _draw_text(canvas, label, _center_x(label, RIGHT_X, RIGHT_W), 5, white)
+    _draw_text(canvas, label, _center_x(label, RIGHT_X, RIGHT_W), 6, white)
     for x in range(RIGHT_X, MATRIX_W):
         canvas.SetPixel(x, 7, 40, 40, 40)
 
@@ -920,6 +958,28 @@ def _nhl_period_label(period: int) -> str:
     return "SO"
 
 
+def _draw_pp_marker(canvas, game: dict, side: str, baseline_y: int) -> None:
+    """Draw a yellow 'PP' on a team's score row, just left of its score.
+
+    The score is right-aligned to the panel edge, so the marker sits in the gap
+    between the team abbreviation and the score. If that gap is too tight (long
+    abbreviation + 2-digit score), the marker is skipped rather than overlapping
+    either one.
+    """
+    yellow = _color(255, 220, 0)
+    score = str(game.get(f"{side}_score", 0))
+    abbr = str(game.get(f"{side}_team", "???"))[:4]
+
+    score_x = (LEFT_W - 1) - len(score) * _CW + 1  # mirrors header's right-align
+    pp_w = 2 * _CW  # "PP" = 8px
+    pp_x = score_x - pp_w - 1  # 1px gap before the score
+    abbr_end = 1 + len(abbr) * _CW  # abbr starts at x=1 in the header
+
+    if pp_x < abbr_end:
+        return  # no room between abbreviation and score
+    _draw_text(canvas, "PP", pp_x, baseline_y, yellow)
+
+
 def _render_hockey_left_panel(canvas, game: dict, details: dict | None = None) -> None:
     state = _render_focus_left_header(canvas, game)
     period = game.get("period", 0)
@@ -935,14 +995,14 @@ def _render_hockey_left_panel(canvas, game: dict, details: dict | None = None) -
             full_status = full_status.rsplit(" ", 1)[0]
         _draw_text(canvas, full_status, _center_x(full_status, 0, LEFT_W), 28, yellow)
 
-        # Power play indicator — show "PP" in the PP team's color at y=22
+        # Power play indicator — "PP" in yellow on the PP team's score row,
+        # tucked just left of the (right-aligned) score instead of floating in
+        # the middle of the status zone.
         d = details or {}
         if d.get("away", {}).get("on_power_play"):
-            pp_col = _team_color(game.get("away_alt_color", "ffffff"))
-            _draw_text(canvas, "PP", _center_x("PP", 0, LEFT_W), 22, pp_col)
+            _draw_pp_marker(canvas, game, "away", 7)
         elif d.get("home", {}).get("on_power_play"):
-            pp_col = _team_color(game.get("home_alt_color", "ffffff"))
-            _draw_text(canvas, "PP", _center_x("PP", 0, LEFT_W), 22, pp_col)
+            _draw_pp_marker(canvas, game, "home", 17)
     elif state == "post":
         _draw_text(canvas, "Final", _center_x("Final", 0, LEFT_W), 28, gray)
     else:
@@ -963,15 +1023,21 @@ def _render_hockey_right_stats(canvas, game: dict, details: dict | None) -> None
     away_col = _team_color(game.get("away_color", "ffffff"))
     home_col = _team_color(game.get("home_color", "ffffff"))
     gray = _color(100, 100, 100)
+    white = _color(210, 210, 210)
+
+    # Header + separator — matches the other hockey right-panel views.
+    _draw_text(canvas, "STATS", _center_x("STATS", RIGHT_X, RIGHT_W), 6, white)
+    for x in range(RIGHT_X, MATRIX_W):
+        canvas.SetPixel(x, 7, 40, 40, 40)
 
     d = details or {}
     away_s = d.get("away", {}).get("stats", {})
     home_s = d.get("home", {}).get("stats", {})
 
     for label, key, y in [
-        ("SOG", "shots", 12),
-        ("HIT", "hits", 20),
-        ("BLK", "blocks", 28),
+        ("SOG", "shots", 14),
+        ("HIT", "hits", 22),
+        ("BLK", "blocks", 30),
     ]:
         aval = str(away_s.get(key, 0))
         hval = str(home_s.get(key, 0))
@@ -980,88 +1046,132 @@ def _render_hockey_right_stats(canvas, game: dict, details: dict | None) -> None
         _draw_text(canvas, hval, MATRIX_W - len(hval) * _CW, y, home_col)
 
 
-def _render_hockey_right_goals(canvas, game: dict, details: dict | None) -> None:
-    """Right panel — goal scorers, most recent first, 4 per page.
+def _all_skaters(details: dict) -> list[dict]:
+    """All skaters from both teams, tagged with 'side'."""
+    players: list[dict] = []
+    for side in ("away", "home"):
+        for p in details.get(side, {}).get("skaters", []):
+            players.append({**p, "side": side})
+    return players
 
-    Paginates every 15 s when there are more than 4 goals.
+
+# Maps NHL leader-board view key → (header label, skater stat key).
+# Mirrors baseball's hits/rbi board: compacted player name + stat total.
+_NHL_LEADER_VIEWS: dict[str, tuple[str, str]] = {
+    "goals": ("GOALS", "goals"),
+    "assists": ("ASSISTS", "assists"),
+    "hits": ("HITS", "hits"),
+}
+
+
+def _render_hockey_right_leaders(
+    canvas, game: dict, details: dict | None, header: str, stat_key: str
+) -> None:
+    """Right panel — top skaters for one stat, baseball-leaderboard style.
+
+    Layout (x=29..63):
+      y=5          header, centred
+      y=7          separator
+      y=14,21,28   top 3 skaters: '{F}.{Lll}' name (team color) left,
+                   stat total right-aligned (white)
+    Players with a zero total are skipped so the board only shows real
+    contributors (e.g. no 0-goal scorers under GOALS).
     """
     away_col = _team_color(game.get("away_color", "ffffff"))
     home_col = _team_color(game.get("home_color", "ffffff"))
     white = _color(210, 210, 210)
     gray = _color(100, 100, 100)
 
-    # Reverse so most recent goal is first
-    goals = list(reversed((details or {}).get("goals", [])))
-
-    _draw_text(canvas, "GOAL", _center_x("GOAL", RIGHT_X, RIGHT_W), 5, white)
+    _draw_text(canvas, header, _center_x(header, RIGHT_X, RIGHT_W), 6, white)
     for x in range(RIGHT_X, MATRIX_W):
         canvas.SetPixel(x, 7, 40, 40, 40)
 
-    if not goals:
-        _draw_text(
-            canvas, "No Goals", _center_x("No Goals", RIGHT_X, RIGHT_W), 20, gray
-        )
-        return
-
-    if len(goals) > 4:
-        page = (int(time.time()) // 15) % 2
-        page_goals = goals[page * 4 : page * 4 + 4]
-    else:
-        page_goals = goals[:4]
-
-    for goal, y in zip(page_goals, [13, 19, 25, 31]):
-        jersey = str(goal.get("jersey", "?"))[:2]
-        period = goal.get("period", 0)
-        side = goal.get("side", "away")
-        p_label = _nhl_period_label(period) if period else "?"
-        col = away_col if side == "away" else home_col
-
-        _draw_text(canvas, jersey, RIGHT_X + 1, y, col)
-        _draw_text(canvas, p_label, MATRIX_W - len(p_label) * _CW, y, gray)
-
-
-def _render_hockey_right_on_ice(
-    canvas, game: dict, details: dict | None, side: str
-) -> None:
-    """Right panel — jersey numbers of players on ice (3×2 grid)."""
-    team_col = _team_color(game.get(f"{side}_color", "ffffff"))
-    white = _color(200, 200, 200)
-    gray = _color(80, 80, 80)
-
-    d = details or {}
-    abbr = d.get(side, {}).get("abbreviation", side.upper()[:4])
-    jerseys = d.get(side, {}).get("on_ice", [])
-
-    _draw_text(canvas, abbr, _center_x(abbr, RIGHT_X, RIGHT_W), 6, white)
-    for x in range(RIGHT_X, MATRIX_W):
-        canvas.SetPixel(x, 8, 40, 40, 40)
-
-    if not jerseys:
+    if not details:
         _draw_text(canvas, "No Data", _center_x("No Data", RIGHT_X, RIGHT_W), 20, gray)
         return
 
-    # 3 columns at x=30, 42, 54 · 2 rows at y=17, 27
-    col_x = [RIGHT_X + 1, RIGHT_X + 13, RIGHT_X + 25]
-    for row_idx, y in enumerate([17, 27]):
-        for col_idx, x in enumerate(col_x):
-            i = row_idx * 3 + col_idx
-            if i < len(jerseys):
-                _draw_text(canvas, str(jerseys[i])[:2], x, y, team_col)
+    leaders = [p for p in _all_skaters(details) if p.get(stat_key, 0) > 0]
+    leaders.sort(key=lambda p: p.get(stat_key, 0), reverse=True)
+    leaders = leaders[:3]
+
+    if not leaders:
+        _draw_text(canvas, "None", _center_x("None", RIGHT_X, RIGHT_W), 20, gray)
+        return
+
+    for player, y in zip(leaders, [14, 21, 28]):
+        col = away_col if player.get("side") == "away" else home_col
+        val = str(player.get(stat_key, 0))
+        _draw_player_name(canvas, player.get("name", ""), RIGHT_X + 1, y, col)
+        _draw_text(canvas, val, MATRIX_W - len(val) * _CW, y, white)
+
+
+def _render_hockey_right_event_list(
+    canvas,
+    game: dict,
+    details: dict | None,
+    header: str,
+    key: str,
+    empty_label: str,
+) -> None:
+    """Right panel — chronological event list (scoring or penalties).
+
+    Each row: '{F}.{Lll}' player name (team color) left + period right (gray).
+    Most recent first; paginates 4 per page every 15 s when there are more.
+    Shared by the scoring and penalties views — they differ only in which
+    details list they read.
+    """
+    away_col = _team_color(game.get("away_color", "ffffff"))
+    home_col = _team_color(game.get("home_color", "ffffff"))
+    white = _color(210, 210, 210)
+    gray = _color(100, 100, 100)
+
+    _draw_text(canvas, header, _center_x(header, RIGHT_X, RIGHT_W), 6, white)
+    for x in range(RIGHT_X, MATRIX_W):
+        canvas.SetPixel(x, 7, 40, 40, 40)
+
+    # Reverse so the most recent event is first.
+    events = list(reversed((details or {}).get(key, [])))
+
+    if not events:
+        _draw_text(
+            canvas, empty_label, _center_x(empty_label, RIGHT_X, RIGHT_W), 20, gray
+        )
+        return
+
+    pages = (len(events) - 1) // 4 + 1
+    page = (int(time.time()) // 15) % pages if pages > 1 else 0
+    page_events = events[page * 4 : page * 4 + 4]
+
+    for ev, y in zip(page_events, [13, 19, 25, 31]):
+        period = ev.get("period", 0)
+        p_label = _nhl_period_label(period) if period else "?"
+        col = away_col if ev.get("side") == "away" else home_col
+        _draw_player_name(canvas, ev.get("name", ""), RIGHT_X + 1, y, col)
+        _draw_text(canvas, p_label, MATRIX_W - len(p_label) * _CW, y, gray)
 
 
 def render_hockey_game(
     canvas, game: dict, details: dict | None, panel_view: str
 ) -> None:
-    """Render a full hockey focus frame."""
+    """Render a full hockey focus frame.
+
+    panel_view: "stats" (SOG/HIT/BLK team compare) | "goals"/"assists"/"hits"
+    (skater leader boards) | "scoring" (goals in order) | "penalties".
+    """
     canvas.Clear()
     _draw_divider(canvas)
     _render_hockey_left_panel(canvas, game, details)
-    if panel_view == "goals":
-        _render_hockey_right_goals(canvas, game, details)
-    elif panel_view == "away_ice":
-        _render_hockey_right_on_ice(canvas, game, details, "away")
-    elif panel_view == "home_ice":
-        _render_hockey_right_on_ice(canvas, game, details, "home")
+    if panel_view in _NHL_LEADER_VIEWS:
+        header, stat_key = _NHL_LEADER_VIEWS[panel_view]
+        _render_hockey_right_leaders(canvas, game, details, header, stat_key)
+    elif panel_view == "scoring":
+        _render_hockey_right_event_list(
+            canvas, game, details, "SCORING", "scoring", "No Goals"
+        )
+    elif panel_view == "penalties":
+        _render_hockey_right_event_list(
+            canvas, game, details, "PENALTY", "penalties", "No Pens"
+        )
     else:  # "stats" or fallback
         _render_hockey_right_stats(canvas, game, details)
 
@@ -1158,7 +1268,7 @@ def _render_soccer_right_stats(canvas, game: dict, details: dict | None) -> None
     gray = _color(100, 100, 100)
     white = _color(210, 210, 210)
 
-    _draw_text(canvas, "Stats", _center_x("Stats", RIGHT_X, RIGHT_W), 5, white)
+    _draw_text(canvas, "Stats", _center_x("Stats", RIGHT_X, RIGHT_W), 6, white)
     for x in range(RIGHT_X, MATRIX_W):
         canvas.SetPixel(x, 7, 40, 40, 40)
 
@@ -1189,7 +1299,7 @@ def _render_soccer_right_goals(canvas, game: dict, details: dict | None) -> None
     white = _color(210, 210, 210)
     gray = _color(100, 100, 100)
 
-    _draw_text(canvas, "Goals", _center_x("Goals", RIGHT_X, RIGHT_W), 5, white)
+    _draw_text(canvas, "Goals", _center_x("Goals", RIGHT_X, RIGHT_W), 6, white)
     for x in range(RIGHT_X, MATRIX_W):
         canvas.SetPixel(x, 7, 40, 40, 40)
 
@@ -1310,8 +1420,8 @@ _FOOTBALL_STAT_ROWS: tuple[tuple[str, str], ...] = (
 
 # panel_view → (header, details leaders key)
 _FOOTBALL_LEADER_VIEWS: dict[str, tuple[str, str]] = {
-    "pass": ("PASS", "passing"),
-    "rush": ("RUSH", "rushing"),
+    "pass": ("PASSING", "passing"),
+    "rush": ("RUSHING", "rushing"),
     "recv": ("RECV", "receiving"),
 }
 
@@ -1542,7 +1652,7 @@ def _render_football_right_scoring(canvas, game: dict, details: dict | None) -> 
     white = _color(210, 210, 210)
     gray = _color(100, 100, 100)
 
-    _draw_text(canvas, "SCORE", _center_x("SCORE", RIGHT_X, RIGHT_W), 5, white)
+    _draw_text(canvas, "SCORING", _center_x("SCORING", RIGHT_X, RIGHT_W), 6, white)
     for x in range(RIGHT_X, MATRIX_W):
         canvas.SetPixel(x, 7, 40, 40, 40)
 
@@ -1599,7 +1709,7 @@ def _render_football_right_leader(
     white = _color(210, 210, 210)
     gray = _color(100, 100, 100)
 
-    _draw_text(canvas, header, _center_x(header, RIGHT_X, RIGHT_W), 5, white)
+    _draw_text(canvas, header, _center_x(header, RIGHT_X, RIGHT_W), 6, white)
     for x in range(RIGHT_X, MATRIX_W):
         canvas.SetPixel(x, 7, 40, 40, 40)
 

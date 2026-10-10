@@ -36,7 +36,7 @@ _CYCLES_PER_GAME = 2  # full stat cycles before advancing to next game (focus mo
 
 _NBA_PANEL_VIEWS = ["pts", "ast", "reb", "fouls"]
 _MLB_POST_VIEWS = ["hits", "rbi"]
-_NHL_PANEL_VIEWS = ["stats", "goals", "away_ice", "home_ice"]
+_NHL_PANEL_VIEWS = ["stats", "goals", "assists", "hits", "scoring", "penalties"]
 _SOCCER_PANEL_VIEWS = ["stats", "goals"]
 _FOOTBALL_PANEL_VIEWS = ["stats", "scoring", "pass", "rush", "recv"]
 

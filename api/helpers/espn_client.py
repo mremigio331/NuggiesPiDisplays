@@ -22,6 +22,31 @@ ESPN_LEAGUE_PATHS: dict[str, str] = {
     "nwsl": "soccer/usa.nwsl",
 }
 
+# NHL penalty play detection. ESPN's play-by-play has no single "Penalty"
+# type.text — each infraction gets its own label ("Tripping", "Fighting",
+# "Unsportsmanlike Conduct", …). Rather than enumerate every penalty name
+# (there are dozens and ESPN adds new ones), we match on the shared signature
+# of every penalty play's text: "<player> <infraction> against <opponent>".
+# Goals, hits, shots, etc. never use that "against" phrasing, so this reliably
+# isolates penalties without a brittle name list.
+_NHL_PENALTY_RE = re.compile(r"\bagainst\b", re.IGNORECASE)
+# Play type ids that use "against" but are NOT penalties (none today, but
+# Hit text can read "... hit against ..."). Hits carry their own type id 503,
+# so we exclude known non-penalty gameplay type ids explicitly.
+_NHL_NON_PENALTY_TYPE_IDS = {
+    "502",  # Face Off
+    "503",  # Hit
+    "505",  # Goal
+    "506",  # Shot
+    "507",  # Missed
+    "508",  # Blocked
+    "516",  # Stoppage
+    "518",  # Period Start
+    "519",  # Period End
+    "1401",  # Takeaway
+    "1402",  # Giveaway
+}
+
 
 def _parse_int(val: str) -> int:
     try:
@@ -519,7 +544,9 @@ class ESPNClient:
         return games
 
     def get_nhl_game_details(self, event_id: str) -> dict | None:
-        """Return team stats (SOG/hits/blocks), goal scorers, and on-ice players."""
+        """Return team stats (SOG/hits/blocks), goal scorers, on-ice players,
+        per-side skater stat lines (goals/assists/hits), and ordered scoring
+        and penalty lists (player name + period)."""
         url = f"{_ESPN_BASE}/hockey/nhl/summary?event={event_id}"
         try:
             raw = self._get(url)
@@ -529,22 +556,64 @@ class ESPNClient:
 
         try:
             home_away_map = _build_home_away_map(raw)
-            result: dict = {"home": {}, "away": {}, "goals": []}
+            result: dict = {
+                "home": {},
+                "away": {},
+                "goals": [],
+                "scoring": [],
+                "penalties": [],
+            }
 
-            # Build player_map: athlete_id str → {jersey, team_id}
+            # Build player_map: athlete_id str → {jersey, name, team_id} and
+            # collect per-side skater stat lines (name + goals/assists/hits) for
+            # the leader-board panels. Skaters appear in the "forwards" and
+            # "defenses" statistic groups; goalies are a separate group we skip.
             player_map: dict[str, dict] = {}
+            skaters: dict[str, list[dict]] = {"home": [], "away": []}
             for team_data in raw.get("boxscore", {}).get("players") or []:
                 team = team_data.get("team", {})
                 tid = str(team.get("id", ""))
+                side = home_away_map.get(tid, "away")
                 for stats_group in team_data.get("statistics", []):
+                    group = (stats_group.get("name") or "").lower()
+                    labels = stats_group.get("labels") or []
+                    is_skater_group = group in ("forwards", "defenses", "skaters")
+
+                    def _col(label: str) -> int:
+                        return labels.index(label) if label in labels else -1
+
+                    g_idx = _col("G")
+                    a_idx = _col("A")
+                    h_idx = _col("HT")
+
                     for entry in stats_group.get("athletes", []):
                         athlete = entry.get("athlete", {})
                         aid = str(athlete.get("id", ""))
+                        name = athlete.get("displayName", "")
                         if aid:
                             player_map[aid] = {
                                 "jersey": athlete.get("jersey", "?"),
+                                "name": name,
                                 "team_id": tid,
                             }
+                        if not is_skater_group:
+                            continue
+                        stats = entry.get("stats", [])
+
+                        def _val(idx: int) -> int:
+                            if 0 <= idx < len(stats):
+                                return _parse_int(stats[idx])
+                            return 0
+
+                        skaters[side].append(
+                            {
+                                "jersey": athlete.get("jersey", "?"),
+                                "name": name,
+                                "goals": _val(g_idx),
+                                "assists": _val(a_idx),
+                                "hits": _val(h_idx),
+                            }
+                        )
 
             # Team stats from boxscore.teams
             # ESPN NHL uses "shotsTotal" (not "shotsOnGoal")
@@ -574,31 +643,79 @@ class ESPNClient:
                             pass
                 result[side]["stats"] = stats
 
-            # Goals from plays array — ESPN NHL has no top-level "scoring" key;
-            # goals appear as plays with type.text == "Goal"
+            # Save per-side skater lines for the leader-board panels.
+            result["home"]["skaters"] = skaters["home"]
+            result["away"]["skaters"] = skaters["away"]
+
+            # Goals, scoring list, and penalties all come from the plays array —
+            # ESPN NHL has no top-level "scoring" key. Goals are plays with
+            # type.text == "Goal"; penalties are plays whose text uses the
+            # "<player> <infraction> against <opponent>" phrasing (see
+            # _NHL_PENALTY_RE). We walk plays once, in chronological order, so
+            # "goals"/"scoring"/"penalties" are all oldest-first.
             for play in raw.get("plays") or []:
-                if (play.get("type") or {}).get("text", "") != "Goal":
-                    continue
+                ptype = play.get("type") or {}
+                ptype_text = ptype.get("text", "")
+                ptype_id = str(ptype.get("id", ""))
                 team = play.get("team") or {}
                 tid = str(team.get("id", ""))
                 side = home_away_map.get(tid, "away")
                 period_num = (play.get("period") or {}).get("number", 0)
                 clock = (play.get("clock") or {}).get("displayValue", "")
-                scorer_jersey = "?"
-                for participant in play.get("participants") or []:
-                    aid = str((participant.get("athlete") or {}).get("id", ""))
-                    if aid:
-                        scorer_jersey = player_map.get(aid, {}).get("jersey", "?")
-                        break
-                result["goals"].append(
-                    {
-                        "period": period_num,
-                        "time": clock,
-                        "jersey": scorer_jersey,
-                        "team": tid_to_abbr.get(tid, ""),
-                        "side": side,
-                    }
-                )
+
+                # Scorer / primary participant name + jersey from participants.
+                def _primary(role: str | None = None) -> dict:
+                    for participant in play.get("participants") or []:
+                        if role and participant.get("type") != role:
+                            continue
+                        aid = str((participant.get("athlete") or {}).get("id", ""))
+                        info = player_map.get(aid)
+                        if info:
+                            return info
+                        # Fall back to the inline athlete displayName (penalty
+                        # participants sometimes lack a boxscore stat line).
+                        name = (participant.get("athlete") or {}).get("displayName")
+                        if name:
+                            return {"jersey": "?", "name": name}
+                    return {}
+
+                if ptype_text == "Goal":
+                    scorer = _primary("scorer") or _primary()
+                    result["goals"].append(
+                        {
+                            "period": period_num,
+                            "time": clock,
+                            "jersey": scorer.get("jersey", "?"),
+                            "name": scorer.get("name", ""),
+                            "team": tid_to_abbr.get(tid, ""),
+                            "side": side,
+                        }
+                    )
+                    result["scoring"].append(
+                        {
+                            "period": period_num,
+                            "time": clock,
+                            "name": scorer.get("name", ""),
+                            "team": tid_to_abbr.get(tid, ""),
+                            "side": side,
+                        }
+                    )
+                elif (
+                    ptype_id not in _NHL_NON_PENALTY_TYPE_IDS
+                    and _NHL_PENALTY_RE.search(play.get("text") or "")
+                ):
+                    # First participant is the penalized player.
+                    offender = _primary()
+                    result["penalties"].append(
+                        {
+                            "period": period_num,
+                            "time": clock,
+                            "name": offender.get("name", ""),
+                            "type": ptype_text,
+                            "team": tid_to_abbr.get(tid, ""),
+                            "side": side,
+                        }
+                    )
 
             # On-ice players — top-level "onIce" list (NOT inside situation).
             # Each item has "entries" with "athleteid" strings. We determine
