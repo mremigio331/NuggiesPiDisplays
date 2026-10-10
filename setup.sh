@@ -152,6 +152,7 @@ $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/setup/main.py
 $USER ALL=(ALL) NOPASSWD: $BASH $SCRIPT_DIR/setup.sh
 $USER ALL=(ALL) NOPASSWD: $REBOOT
 $USER ALL=(ALL) NOPASSWD: $SYSTEMCTL restart nuggies-wifi-setup.service
+$USER ALL=(ALL) NOPASSWD: $SYSTEMCTL restart nuggies-api.service
 # Kill/sweep display processes (which run as root via sudo)
 $USER ALL=(ALL) NOPASSWD: /bin/kill
 $USER ALL=(ALL) NOPASSWD: /usr/bin/kill
@@ -640,6 +641,10 @@ verify_permissions() {
     # the .service suffix is load-bearing — the bare form does not match:
     _assert_sudoers_line "grant: systemctl restart nuggies-wifi-setup.service" \
         "$USER ALL=(ALL) NOPASSWD: $SYSTEMCTL restart nuggies-wifi-setup.service"
+    # systemctl restart of the API service (the /system/restart-api endpoint);
+    # asserted rather than probed because restarting mid-provision would kill setup:
+    _assert_sudoers_line "grant: systemctl restart nuggies-api.service" \
+        "$USER ALL=(ALL) NOPASSWD: $SYSTEMCTL restart nuggies-api.service"
 
     # === WRITABILITY: markers openable/creatable by $USER, plus .git ownership ===
     local rel path dir
@@ -758,21 +763,26 @@ run_update() {
     normalize_marker_ownership
     init_settings
 
-    # Restart the API service so the new code takes effect (production only).
-    # In dev mode (--reload), uvicorn picks up changes automatically.
-    if systemctl is-active --quiet nuggies-api.service 2>/dev/null; then
-        echo "--- Restarting API service..."
-        systemctl restart nuggies-api.service
-    fi
-
     # Verify the grants and ownership this update just (re)applied, and fail
-    # loudly if any of it is missing — this is the last step of the update path.
+    # loudly if any of it is missing. Done BEFORE restart/reboot so a gap is
+    # surfaced in the update log rather than lost to the restart.
     verify_permissions
 
     echo ""
     echo "Update complete."
-    echo "The API will reload automatically if running with --reload."
-    echo "If running as a systemd service, it has been restarted."
+
+    # Apply the new code to the running processes.
+    # In dev mode the API runs with --reload and the webpack dev server rebuilds
+    # on its own, so no restart is needed. In prod, reboot so the API, display,
+    # and freshly-built bundle all come up on the new code in one clean step.
+    # (The API invokes this script detached via start_new_session, so this
+    # reboot does not race the caller.)
+    if systemctl is-enabled --quiet nuggies-api.service 2>/dev/null; then
+        echo "--- Rebooting to apply update (prod)..."
+        reboot
+    else
+        echo "Dev mode: API reloads automatically; webpack dev server rebuilds. No reboot."
+    fi
 }
 
 if [[ "$SUBCOMMAND" == "update" ]]; then

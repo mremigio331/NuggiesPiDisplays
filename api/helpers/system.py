@@ -3,9 +3,14 @@ import logging
 import os
 import subprocess
 
-from helpers.config import reset_settings as _reset_settings
+from helpers.config import read_settings as _read_settings, reset_settings as _reset_settings
 from helpers.dev_config import is_dev_mode
-from helpers.process import _PROJECT_ROOT, stop_display as _stop_display
+from helpers.logger import LOG_DIR
+from helpers.process import (
+    _PROJECT_ROOT,
+    start_display as _start_display,
+    stop_display as _stop_display,
+)
 from helpers.wifi_state import FORCE_PORTAL, WIFI_FLAG
 
 # Importing `helpers.wifi_state` above inserts the project root onto sys.path, so the
@@ -52,6 +57,103 @@ class SystemManager:
         _reset_settings()
         logger.info("Settings reset to defaults")
 
+    # ------------------------------------------------------------------ #
+    # setup.sh runner
+    # ------------------------------------------------------------------ #
+    def _run_setup_detached(self, *flags: str) -> None:
+        """Run setup.sh DETACHED from the API's process group, logging to a file.
+
+        setup.sh (both --update and the full installer) restarts
+        nuggies-api.service. When setup.sh runs as a *child* of the API, systemd
+        kills the whole service cgroup on restart — including this child — so the
+        update dies half-applied. Running it in a new session (setsid) detaches it
+        from that cgroup so it survives the restart and runs to completion.
+
+        Output can't be captured (we return immediately), so it is redirected to
+        {LOG_DIR}/update.log for inspection.
+        """
+        update_log = LOG_DIR / "update.log"
+        update_log.parent.mkdir(parents=True, exist_ok=True)
+        log_file = open(update_log, "a")
+        cmd = _privileged_command("bash", str(_PROJECT_ROOT / "setup.sh"), *flags)
+        logger.info(f"Launching detached: {' '.join(cmd)} (output -> {update_log})")
+        subprocess.Popen(
+            cmd,
+            cwd=str(_PROJECT_ROOT),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Process restarts (exposed via /system/restart-{api,display,website})
+    # ------------------------------------------------------------------ #
+    def restart_api(self) -> None:
+        """Restart the API process.
+
+        Prod: restart the systemd unit, DETACHED so the restart (which kills this
+        cgroup) can't kill the command issuing it. Dev: uvicorn runs with --reload
+        in a screen session, so there is nothing to restart here.
+        """
+        if is_dev_mode():
+            logger.info("restart_api: dev mode (uvicorn --reload) — no action needed")
+            return
+        logger.info("Restarting nuggies-api.service (detached)")
+        subprocess.Popen(
+            _privileged_command("systemctl", "restart", "nuggies-api.service"),
+            start_new_session=True,
+        )
+
+    def restart_display(self) -> str:
+        """Stop and restart the active display process. Returns the mode started."""
+        mode = _read_settings().get("active_display", "mta")
+        logger.info(f"Restarting display (mode={mode})")
+        _stop_display()
+        _start_display(mode)
+        return mode
+
+    def restart_website(self) -> str:
+        """Restart the website.
+
+        Prod: the API serves website/dist, so a 'restart' means rebuilding the
+        bundle (detached, via setup.sh's build path is overkill — build directly).
+        Dev: the webpack dev server runs in the 'nuggies-web' screen session;
+        restart that session. Returns which action was taken.
+        """
+        if is_dev_mode():
+            logger.info("Restarting dev website (nuggies-web screen session)")
+            # Kill any existing session, then start a fresh one detached.
+            subprocess.run(
+                ["screen", "-S", "nuggies-web", "-X", "quit"],
+                capture_output=True,
+            )
+            subprocess.Popen(
+                [
+                    "screen",
+                    "-dmS",
+                    "nuggies-web",
+                    "bash",
+                    "-c",
+                    f"cd {_PROJECT_ROOT / 'website'} && npm start",
+                ],
+                start_new_session=True,
+            )
+            return "dev-server-restarted"
+
+        logger.info("Rebuilding website bundle (prod)")
+        website_dir = _PROJECT_ROOT / "website"
+        build_log = LOG_DIR / "update.log"
+        build_log.parent.mkdir(parents=True, exist_ok=True)
+        log_file = open(build_log, "a")
+        subprocess.Popen(
+            ["npm", "run", "build"],
+            cwd=str(website_dir),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        return "bundle-rebuilding"
+
     def factory_reset(self) -> None:
         """Reset settings to defaults, pull latest code, reapply setup, restart service."""
         logger.info("Factory reset: restoring default settings + full re-setup")
@@ -70,18 +172,11 @@ class SystemManager:
 
         self.reset_settings()
 
-        # Run setup.sh --update to pull latest code, reapply permissions, restart service
-        logger.info("Running setup.sh --update for full re-setup...")
-        result = subprocess.run(
-            _privileged_command("bash", str(_PROJECT_ROOT / "setup.sh"), "--update"),
-            cwd=str(_PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            logger.error(f"setup.sh --update failed: {result.stderr}")
-        else:
-            logger.info("Factory reset complete — setup reapplied")
+        # Run setup.sh --update DETACHED to pull latest code, reapply permissions,
+        # and restart/reboot. It restarts the API service, which would kill this
+        # process if setup.sh were a child — so detach it (see _run_setup_detached).
+        logger.info("Launching setup.sh --update (detached) for full re-setup...")
+        self._run_setup_detached("--update")
 
     def factory_reset_wifi(self) -> None:
         """Reset settings, pull latest code, reapply setup, mark WiFi for wipe, then restart captive-portal."""
@@ -103,19 +198,10 @@ class SystemManager:
 
         self.reset_settings()
 
-        # Run setup.sh --update to pull latest code, reapply permissions
-        logger.info("Running setup.sh --update for full re-setup...")
-        result = subprocess.run(
-            _privileged_command("bash", str(_PROJECT_ROOT / "setup.sh"), "--update"),
-            cwd=str(_PROJECT_ROOT),
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            logger.error(f"setup.sh --update failed: {result.stderr}")
-        else:
-            logger.info("Setup reapplied successfully")
-
+        # Write the WiFi-wipe markers BEFORE launching setup.sh. setup.sh --update
+        # ends by rebooting (prod); on reboot the captive-portal boot service reads
+        # these markers and comes up in setup mode. Writing them first guarantees
+        # they're in place when the reboot happens.
         try:
             if WIFI_FLAG.exists():
                 WIFI_FLAG.unlink()
@@ -128,12 +214,12 @@ class SystemManager:
         except Exception as e:
             logger.error(f"Failed to write reset marker: {e}")
             raise
-        # Detach so the HTTP response flushes before the service restart
-        # wipes the WiFi connection and disrupts the network.
-        subprocess.Popen(
-            _privileged_command("systemctl", "restart", "nuggies-wifi-setup.service"),
-            start_new_session=True,
-        )
+
+        # Run setup.sh --update DETACHED (pull code, reapply permissions, reboot).
+        # The reboot brings the device up into the setup portal via the markers
+        # written above. Detached so the service restart/reboot can't kill it.
+        logger.info("Launching setup.sh --update (detached) for full re-setup...")
+        self._run_setup_detached("--update")
 
     def force_wifi_portal(self) -> None:
         """Force the captive-setup portal to come up on the next boot of the service.
@@ -239,24 +325,17 @@ class SystemManager:
             return
 
         if run_setup:
-            if mode is None:
-                mode = "--dev" if is_dev_mode() else "--prod"
-            logger.info(f"Running setup.sh {mode}...")
-            result = subprocess.run(
-                _privileged_command("bash", str(_PROJECT_ROOT / "setup.sh"), mode),
-                cwd=str(_PROJECT_ROOT),
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                # setup.sh exits non-zero when sudo -n is refused (no NOPASSWD
-                # grant) or when verify_permissions finds a gap. Rebooting here
-                # would boot half-applied code while reporting success, so stop.
-                logger.error(
-                    f"setup.sh {mode} failed (rc={result.returncode}); NOT rebooting. "
-                    f"stderr: {result.stderr.strip()}"
-                )
-                return
+            # Always use the lightweight updater. The full --dev/--prod installer
+            # re-runs apt upgrades / node install / display verification and
+            # self-reboots — too heavy and failure-prone for an in-field update.
+            # Run it DETACHED: setup.sh --update restarts the API service, which
+            # would kill this process (and setup.sh with it) if run as a child.
+            # Because it's detached, we hand reboot/restart duty to setup.sh and
+            # do NOT reboot here (the old reboot would race the detached update).
+            flag = mode or "--update"
+            logger.info(f"Launching setup.sh {flag} (detached) to apply update")
+            self._run_setup_detached(flag)
+            return
 
-        logger.info("Rebooting Pi after update...")
+        logger.info("Rebooting Pi after update (no setup requested)...")
         self.reboot()

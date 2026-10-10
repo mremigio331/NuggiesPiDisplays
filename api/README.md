@@ -19,6 +19,9 @@ FastAPI backend serving the RGB LED matrix display system. Manages display proce
 | `POST` | `/system/display/start` | Start the active display |
 | `POST` | `/system/display/stop` | Stop the active display |
 | `POST` | `/system/restart` | Reboot the Pi |
+| `POST` | `/system/restart-api` | Restart the API process |
+| `POST` | `/system/restart-display` | Restart the active display process |
+| `POST` | `/system/restart-website` | Rebuild (prod) or restart (dev) the website |
 | `POST` | `/system/update-app` | Pull latest code, re-run setup, reboot |
 | `WS` | `/system/update` | Stream setup.sh --update output |
 | `GET` | `/system/update-status` | Check if update is available |
@@ -32,6 +35,7 @@ FastAPI backend serving the RGB LED matrix display system. Manages display proce
 | `GET` | `/system/logs` | List available log files |
 | `GET` | `/system/logs/{log_key}` | Tail a log file (query: `?lines=100`) |
 | `GET` | `/system/dev-mode` | Check if dev mode is active |
+| `GET` | `/system/geolocate` | Suggest location + timezone from IP |
 
 ### MTA Subway
 
