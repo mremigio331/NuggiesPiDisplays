@@ -113,9 +113,7 @@ def _fetch_and_compare() -> UpdateStatus:
         )
 
     commits_behind = _count(f"HEAD..origin/{branch}")
-    commits = (
-        _commit_subjects(f"HEAD..origin/{branch}") if commits_behind > 0 else []
-    )
+    commits = _commit_subjects(f"HEAD..origin/{branch}") if commits_behind > 0 else []
     logger.info(f"Update check: branch={branch} behind={commits_behind}")
     return UpdateStatus(
         update_available=commits_behind > 0,

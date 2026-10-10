@@ -33,6 +33,8 @@ export const getLogLevel = () => handle(api.get("/system/log-level"));
 export const setLogLevel = (log_level) => handle(api.put("/system/log-level", { log_level }));
 export const getUpdateStatus = () => handle(api.get("/system/update-status"));
 export const checkUpdate = () => handle(api.post("/system/check-update"));
+export const getUpdateLog = (offset = 0) =>
+  handle(api.get("/system/update-log", { params: { offset } }));
 export const getLogsList = () => handle(api.get("/system/logs"));
 // IP-based geolocation suggestion: { latitude, longitude, city_label, timezone }
 export const getGeolocation = () => handle(api.get("/system/geolocate"));

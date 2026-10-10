@@ -27,6 +27,11 @@ logger = logging.getLogger(__name__)
 
 _FACTORY_WIFI_RESET = _PROJECT_ROOT / ".factory_wifi_reset"
 
+# Sentinel written as the first line of update.log at the start of each setup.sh
+# run. The /system/update-log endpoint and the UI use it to recognise a fresh
+# run. Keep in sync with any client-side check.
+_UPDATE_LOG_START = "=== NUGGIES UPDATE START ==="
+
 
 def _privileged_command(*args: str) -> list[str]:
     # If already root (e.g., service user), run command directly.
@@ -92,7 +97,13 @@ class SystemManager:
         """
         update_log = LOG_DIR / "update.log"
         update_log.parent.mkdir(parents=True, exist_ok=True)
-        log_file = open(update_log, "a")
+        # Truncate (mode "w") so each run starts with a clean log — the UI tails
+        # this file for live progress, and a start sentinel on the first line
+        # lets the client detect a fresh run and distinguish it from stale output
+        # (e.g. a prior run's "a password is required" refusal).
+        log_file = open(update_log, "w")
+        log_file.write(f"{_UPDATE_LOG_START} {' '.join(flags)}\n")
+        log_file.flush()
         # _privileged_command resolves `bash` to its absolute path so the
         # `sudo -n` invocation matches the absolute-path setup.sh grant.
         cmd = _privileged_command("bash", str(_PROJECT_ROOT / "setup.sh"), *flags)

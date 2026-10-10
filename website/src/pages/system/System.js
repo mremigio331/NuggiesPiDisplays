@@ -8,6 +8,9 @@ import {
   stopDisplay,
   switchDisplay,
   restartPi,
+  restartApi,
+  restartDisplay,
+  restartWebsite,
   factoryReset,
   factoryResetWifi,
   getDevMode,
@@ -17,6 +20,7 @@ import {
   setLogLevel,
   getUpdateStatus,
   checkUpdate,
+  getUpdateLog,
   getWifiStatus,
 } from "../../services/API";
 import Modal from "../../components/shared/Modal";
@@ -36,6 +40,9 @@ function useSystem() {
   const stopMut = useMutation({ mutationFn: stopDisplay, onSuccess: invalidate });
   const switchMut = useMutation({ mutationFn: (m) => switchDisplay(m), onSuccess: invalidate });
   const restartMut = useMutation({ mutationFn: restartPi });
+  const restartApiMut = useMutation({ mutationFn: restartApi });
+  const restartDisplayMut = useMutation({ mutationFn: restartDisplay, onSuccess: invalidate });
+  const restartWebsiteMut = useMutation({ mutationFn: restartWebsite });
   const factoryResetMut = useMutation({ mutationFn: factoryReset, onSuccess: invalidate });
   const factoryResetWifiMut = useMutation({ mutationFn: factoryResetWifi });
   const forgetWifiMut = useMutation({ mutationFn: forgetWifi });
@@ -79,6 +86,9 @@ function useSystem() {
     stopMut,
     switchMut,
     restartMut,
+    restartApiMut,
+    restartDisplayMut,
+    restartWebsiteMut,
     factoryResetMut,
     factoryResetWifiMut,
     forgetWifiMut,
@@ -253,6 +263,125 @@ function UpdateSection({
   );
 }
 
+const UPDATE_LOG_START = "=== NUGGIES UPDATE START ===";
+
+// Live progress view for an in-flight update. Polls /system/update-log on an
+// interval, appending each new chunk. It is reconnect-safe by design: the update
+// restarts the API and reboots the Pi mid-run, so poll failures are expected —
+// they are shown as "reconnecting" rather than errors, and polling continues
+// until the content indicates completion/failure or the user closes the modal.
+function UpdateProgressModal({ visible, onClose }) {
+  const [lines, setLines] = React.useState("");
+  const [phase, setPhase] = React.useState("starting"); // starting | running | reconnecting | failed | rebooting
+  const offsetRef = React.useRef(0);
+  const preRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!visible) {
+      // Reset for the next run.
+      setLines("");
+      setPhase("starting");
+      offsetRef.current = 0;
+      return undefined;
+    }
+
+    let cancelled = false;
+    let timer = null;
+
+    const poll = async () => {
+      try {
+        const res = await getUpdateLog(offsetRef.current);
+        if (cancelled) return;
+
+        if (res.exists && res.content) {
+          offsetRef.current = res.offset;
+          setLines((prev) => prev + res.content);
+        } else if (res.exists) {
+          offsetRef.current = res.offset;
+        }
+
+        // Classify progress from the accumulated content.
+        setLines((prev) => {
+          const all = prev;
+          if (all.includes("a password is required")) {
+            setPhase("failed");
+          } else if (/Rebooting to apply update|Rebooting Pi/i.test(all)) {
+            setPhase("rebooting");
+          } else if (res.started || all.includes(UPDATE_LOG_START)) {
+            setPhase((p) => (p === "reconnecting" ? "running" : p === "starting" ? "running" : p));
+          }
+          return prev;
+        });
+      } catch (e) {
+        // Poll failed — the API is almost certainly restarting/rebooting as part
+        // of the update. Treat as "reconnecting", keep trying.
+        if (!cancelled) setPhase((p) => (p === "failed" ? p : "reconnecting"));
+      } finally {
+        if (!cancelled) timer = setTimeout(poll, 1200);
+      }
+    };
+
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [visible]);
+
+  // Keep the log scrolled to the bottom as new lines arrive.
+  React.useEffect(() => {
+    if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight;
+  }, [lines]);
+
+  const statusLine = {
+    starting: { text: "Starting update…", color: "#f0a800" },
+    running: { text: "Updating…", color: "#f0a800" },
+    reconnecting: { text: "Pi is restarting — reconnecting…", color: "#f0a800" },
+    rebooting: {
+      text: "Update applied — Pi is rebooting. This page will reconnect shortly.",
+      color: "#5cb85c",
+    },
+    failed: { text: "Update failed to start. See the log below.", color: "#e05050" },
+  }[phase];
+
+  return (
+    <Modal
+      visible={visible}
+      onDismiss={onClose}
+      header="Updating"
+      footer={
+        <div className="m-btn-row">
+          <button className="m-btn m-btn-neutral" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      }
+    >
+      <div style={{ color: statusLine.color, fontSize: "0.9rem", marginBottom: 8 }}>
+        {statusLine.text}
+      </div>
+      <pre
+        ref={preRef}
+        style={{
+          background: "#0e0e0e",
+          color: "#cfe3cf",
+          fontSize: "0.75rem",
+          lineHeight: 1.5,
+          padding: "0.6rem",
+          borderRadius: 6,
+          maxHeight: 300,
+          overflowY: "auto",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          margin: 0,
+        }}
+      >
+        {lines || "Waiting for output…"}
+      </pre>
+    </Modal>
+  );
+}
+
 export default function System() {
   const {
     running,
@@ -263,6 +392,9 @@ export default function System() {
     stopMut,
     switchMut,
     restartMut,
+    restartApiMut,
+    restartDisplayMut,
+    restartWebsiteMut,
     factoryResetMut,
     factoryResetWifiMut,
     forgetWifiMut,
@@ -283,6 +415,7 @@ export default function System() {
   const [confirmResetWifi, setConfirmResetWifi] = React.useState(false);
   const [confirmForgetWifi, setConfirmForgetWifi] = React.useState(false);
   const [confirmUpdate, setConfirmUpdate] = React.useState(false);
+  const [showUpdateProgress, setShowUpdateProgress] = React.useState(false);
   const [showResetWifiInstructions, setShowResetWifiInstructions] = React.useState(false);
 
   return (
@@ -362,6 +495,49 @@ export default function System() {
         >
           🔄 Restart Pi
         </button>
+      </div>
+
+      <div className="m-card">
+        <div className="m-card-title">Restart Services</div>
+        <div className="m-form-desc" style={{ marginBottom: "0.75rem" }}>
+          Restart an individual service without rebooting the whole Pi.
+        </div>
+        <button
+          className="m-btn m-btn-neutral"
+          style={{ width: "100%" }}
+          disabled={restartApiMut.isPending}
+          onClick={() => restartApiMut.mutate()}
+        >
+          {restartApiMut.isPending ? "Restarting…" : "Restart API Service"}
+        </button>
+        <button
+          className="m-btn m-btn-neutral"
+          style={{ width: "100%", marginTop: 8 }}
+          disabled={restartDisplayMut.isPending}
+          onClick={() => restartDisplayMut.mutate()}
+        >
+          {restartDisplayMut.isPending ? "Restarting…" : "Restart Display Service"}
+        </button>
+        <button
+          className="m-btn m-btn-neutral"
+          style={{ width: "100%", marginTop: 8 }}
+          disabled={restartWebsiteMut.isPending}
+          onClick={() => restartWebsiteMut.mutate()}
+        >
+          {restartWebsiteMut.isPending ? "Restarting…" : "Restart Website Service"}
+        </button>
+        {(restartApiMut.isSuccess ||
+          restartDisplayMut.isSuccess ||
+          restartWebsiteMut.isSuccess) && (
+          <div style={{ color: "#5cb85c", fontSize: "0.8rem", marginTop: 8 }}>
+            Restart triggered.
+          </div>
+        )}
+        {(restartApiMut.isError || restartDisplayMut.isError || restartWebsiteMut.isError) && (
+          <div style={{ color: "#e05050", fontSize: "0.8rem", marginTop: 8 }}>
+            Restart failed. Check the service logs.
+          </div>
+        )}
       </div>
 
       <div className="m-card">
@@ -478,6 +654,7 @@ export default function System() {
               onClick={() => {
                 updateAppMut.mutate();
                 setConfirmUpdate(false);
+                setShowUpdateProgress(true);
               }}
             >
               Update & Reboot
@@ -491,6 +668,11 @@ export default function System() {
           ~60 seconds.
         </div>
       </Modal>
+
+      <UpdateProgressModal
+        visible={showUpdateProgress}
+        onClose={() => setShowUpdateProgress(false)}
+      />
 
       <Modal
         visible={confirmRestart}
