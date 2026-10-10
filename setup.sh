@@ -148,8 +148,14 @@ $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/sports/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/stocks/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/weather/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/setup/main.py
-# System commands called by the API
-$USER ALL=(ALL) NOPASSWD: $BASH $SCRIPT_DIR/setup.sh
+# System commands called by the API.
+# The trailing '' and '*' BOTH matter: a command listed with no argument spec
+# only matches an invocation with ZERO arguments, but the API always calls
+# `setup.sh --update` (and --dev/--prod). Without an argument wildcard, sudo
+# refuses the argument-bearing form with "a password is required" and the
+# detached update silently never runs. The '*' authorises the flag argument;
+# the script path is fixed so this does not broaden the grant to other scripts.
+$USER ALL=(ALL) NOPASSWD: $BASH $SCRIPT_DIR/setup.sh, $BASH $SCRIPT_DIR/setup.sh *
 $USER ALL=(ALL) NOPASSWD: $REBOOT
 $USER ALL=(ALL) NOPASSWD: $SYSTEMCTL restart nuggies-wifi-setup.service
 $USER ALL=(ALL) NOPASSWD: $SYSTEMCTL restart nuggies-api.service
