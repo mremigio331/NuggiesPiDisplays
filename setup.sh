@@ -730,6 +730,21 @@ run_update() {
     echo "--- Installing frontend dependencies..."
     cd "$SCRIPT_DIR/website"
     npm install
+    # Prod serves the built bundle from website/dist, so it must be rebuilt on
+    # update or the served UI stays stale. Dev serves from the webpack dev
+    # server (no dist to refresh), so skip the build there to save time on the Pi.
+    if systemctl list-unit-files nuggies-api.service &>/dev/null \
+       && systemctl is-enabled --quiet nuggies-api.service 2>/dev/null; then
+        echo "--- Building frontend (prod)..."
+        npm run build
+        # The build ran as root (setup.sh re-execs as root), so dist/ is now
+        # root-owned — but restore_tree_ownership already ran before this point.
+        # Hand the built bundle back to $USER so the tree stays consistently
+        # $USER-owned (webpack's clean:true and $USER-level git both need it).
+        chown -R "$USER":"$USER" "$SCRIPT_DIR/website/dist"
+    else
+        echo "--- Skipping frontend build (dev mode: served by webpack dev server)."
+    fi
     cd "$SCRIPT_DIR"
 
     echo "--- Reapplying sudoers..."
