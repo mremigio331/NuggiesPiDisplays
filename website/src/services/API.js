@@ -31,6 +31,8 @@ export const setLogLevel = (log_level) => handle(api.put("/system/log-level", { 
 export const getUpdateStatus = () => handle(api.get("/system/update-status"));
 export const checkUpdate = () => handle(api.post("/system/check-update"));
 export const getLogsList = () => handle(api.get("/system/logs"));
+// IP-based geolocation suggestion: { latitude, longitude, city_label, timezone }
+export const getGeolocation = () => handle(api.get("/system/geolocate"));
 
 // WiFi — derived device address for the post-reboot / reconnect instructions.
 // Returns { configured, connected, ssid, portal_active, hostname, mdns_name, ip }.

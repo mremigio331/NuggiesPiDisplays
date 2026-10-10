@@ -12,6 +12,7 @@ router = APIRouter()
 
 class ClockSettings(BaseModel):
     timezone: Optional[str] = None
+    timezone_auto: Optional[bool] = None
     color: Optional[List[int]] = None
     use_24h: Optional[bool] = None
 
@@ -37,11 +38,27 @@ async def update_settings(body: ClockSettings):
                 status_code=422, detail="color must be [r, g, b] with values 0-255"
             )
 
+    # A manual timezone pick turns auto-detect off, unless the caller is
+    # explicitly setting timezone_auto in the same request.
+    if "timezone" in updates and "timezone_auto" not in updates:
+        updates["timezone_auto"] = False
+
     settings = read_settings()
     clock = settings.get("clock", {})
     clock.update(updates)
     settings["clock"] = clock
     write_settings(settings)
     logger.info(f"Clock settings updated: {list(updates.keys())}")
+
+    # If the user just switched auto-detect on (without also setting a manual
+    # timezone), resolve the timezone from IP right away so the toggle takes
+    # effect immediately instead of waiting for the next boot.
+    if updates.get("timezone_auto") is True and "timezone" not in updates:
+        from .auto_timezone import auto_detect_timezone
+
+        await auto_detect_timezone()
+        clock = read_settings().get("clock", {})
+        return JSONResponse(clock)
+
     await manager.broadcast(clock)
     return JSONResponse(clock)

@@ -5,6 +5,7 @@ import requests
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from helpers.config import read_settings, write_settings
+from helpers.geolocation import get_ip_geolocation
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -45,17 +46,13 @@ def invalidate_cache() -> None:
 
 
 def _get_ip_location() -> dict | None:
-    try:
-        resp = requests.get("http://ip-api.com/json/", timeout=5)
-        resp.raise_for_status()
-        d = resp.json()
-        if d.get("status") == "success":
-            city = d.get("city", "")
-            region = d.get("regionName", "")
-            label = ", ".join(p for p in [city, region] if p)
-            return {"latitude": d["lat"], "longitude": d["lon"], "city_label": label}
-    except Exception as e:
-        logger.warning(f"IP geolocation failed: {e}")
+    loc = get_ip_geolocation()
+    if loc and loc.get("latitude") is not None and loc.get("longitude") is not None:
+        return {
+            "latitude": loc["latitude"],
+            "longitude": loc["longitude"],
+            "city_label": loc.get("city_label", ""),
+        }
     return None
 
 

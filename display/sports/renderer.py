@@ -175,17 +175,21 @@ def _center_x(text: str, start_x: int, width: int) -> int:
     return start_x + max(0, (width - len(text) * _CW) // 2)
 
 
-def _short_player_name(name: str, last_chars: int = 3) -> str:
+def _short_player_name(name: str, last_chars: int = 5) -> str:
     """Compact a full name to '{first initial}.{first few of last name}'.
 
     Shared across all sports views so player labels read the same everywhere.
-      'Judd Caulfield'  → 'J.Cau'
-      'Connor McDavid'  → 'C.McD'   (last_chars=3)
-      'Cutter Gauthier' → 'C.Gaut'  (last_chars=4)
+      'Judd Caulfield'  → 'J.Caulf'
+      'Connor McDavid'  → 'C.McDav' (last_chars=5)
+      'Cutter Gauthier' → 'C.Gauth' (last_chars=5)
+
+    ``last_chars`` is the maximum number of surname letters shown; callers that
+    know the available width pass a smaller value via _draw_player_name so the
+    label never overruns a neighbouring column.
 
     One-word names (or already-short tokens) fall back to the first part
     truncated. Multi-part surnames keep the final token ('J.T. Miller' →
-    'J.Mil'); a trailing suffix like 'Jr' is dropped so the real surname shows.
+    'J.Mille'); a trailing suffix like 'Jr' is dropped so the real surname shows.
     """
     name = (name or "").strip()
     if not name:
@@ -203,14 +207,33 @@ def _short_player_name(name: str, last_chars: int = 3) -> str:
 
 
 def _draw_player_name(
-    canvas, name: str, x: int, baseline_y: int, color, last_chars: int = 3
+    canvas,
+    name: str,
+    x: int,
+    baseline_y: int,
+    color,
+    last_chars: int = 5,
+    max_x: int | None = None,
 ) -> None:
     """Draw a player's compacted name (see _short_player_name) at (x, baseline_y).
 
     Shared entry point so every mode renders names identically — call this
     instead of formatting + _draw_text at each site.
+
+    When ``max_x`` is given (the x of the next column to the right, e.g. a
+    right-aligned stat value), the surname is shortened as needed so the label
+    stays strictly left of ``max_x``. It still aims for ``last_chars`` letters
+    and only trims when the full form wouldn't fit — so names get as long as
+    the row allows without ever overlapping the value.
     """
-    _draw_text(canvas, _short_player_name(name, last_chars), x, baseline_y, color)
+    fit_chars = last_chars
+    if max_x is not None:
+        # Available pixels for the label, converted to whole 4px glyphs. The
+        # "{initial}." prefix is always 2 chars, so cap surname letters at the
+        # remainder (never below 1).
+        avail_chars = max(0, (max_x - x) // _CW)
+        fit_chars = max(1, min(last_chars, avail_chars - 2))
+    _draw_text(canvas, _short_player_name(name, fit_chars), x, baseline_y, color)
 
 
 def _format_game_time(game_date: str) -> str:
@@ -1101,8 +1124,11 @@ def _render_hockey_right_leaders(
     for player, y in zip(leaders, [14, 21, 28]):
         col = away_col if player.get("side") == "away" else home_col
         val = str(player.get(stat_key, 0))
-        _draw_player_name(canvas, player.get("name", ""), RIGHT_X + 1, y, col)
-        _draw_text(canvas, val, MATRIX_W - len(val) * _CW, y, white)
+        val_x = MATRIX_W - len(val) * _CW
+        _draw_player_name(
+            canvas, player.get("name", ""), RIGHT_X + 1, y, col, max_x=val_x - 1
+        )
+        _draw_text(canvas, val, val_x, y, white)
 
 
 def _render_hockey_right_event_list(
@@ -1146,8 +1172,11 @@ def _render_hockey_right_event_list(
         period = ev.get("period", 0)
         p_label = _nhl_period_label(period) if period else "?"
         col = away_col if ev.get("side") == "away" else home_col
-        _draw_player_name(canvas, ev.get("name", ""), RIGHT_X + 1, y, col)
-        _draw_text(canvas, p_label, MATRIX_W - len(p_label) * _CW, y, gray)
+        label_x = MATRIX_W - len(p_label) * _CW
+        _draw_player_name(
+            canvas, ev.get("name", ""), RIGHT_X + 1, y, col, max_x=label_x - 1
+        )
+        _draw_text(canvas, p_label, label_x, y, gray)
 
 
 def render_hockey_game(

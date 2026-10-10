@@ -8,6 +8,7 @@ from .restart_wifi_service import router as restart_wifi_service_router
 from .update import router as update_router
 from .update_app import router as update_app_router
 from .factory_reset import router as factory_reset_router
+from .geolocate import router as geolocate_router
 from .factory_reset_wifi import router as factory_reset_wifi_router
 from .force_wifi_portal import router as force_wifi_portal_router
 from .dev_mode import router as dev_mode_router
@@ -30,6 +31,7 @@ router.include_router(update_app_router)
 router.include_router(check_update_router)
 router.include_router(update_status_router)
 router.include_router(factory_reset_router)
+router.include_router(geolocate_router)
 router.include_router(factory_reset_wifi_router)
 router.include_router(force_wifi_portal_router)
 router.include_router(dev_mode_router)

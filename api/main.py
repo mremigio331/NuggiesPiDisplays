@@ -21,6 +21,7 @@ from endpoints.system import router as system_router
 from endpoints.stonks import router as stonks_router
 from endpoints.mta import router as mta_router
 from endpoints.clock import router as clock_router
+from endpoints.clock.auto_timezone import auto_detect_timezone
 from endpoints.sports import router as sports_router
 from endpoints.weather import router as weather_router
 from endpoints.wifi import router as wifi_router
@@ -55,6 +56,12 @@ async def lifespan(app: FastAPI):
                     logger.warning(f"Auto-start display failed: {e}")
     else:
         logger.debug("Auto-start disabled")
+
+    # Auto-detect the clock timezone from IP when WiFi is up and the clock is
+    # in auto mode. Runs in the background so a slow/failed geo lookup never
+    # delays startup.
+    if WIFI_FLAG.exists():
+        asyncio.create_task(auto_detect_timezone())
 
     asyncio.create_task(poll_buttons())
     asyncio.create_task(run_background_checker())

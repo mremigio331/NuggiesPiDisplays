@@ -2,7 +2,12 @@ import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useDebounce } from "../../hooks/useDebounce";
-import { getWeatherSettings, updateWeatherSettings, geocodeLocation } from "../../services/API";
+import {
+  getWeatherSettings,
+  updateWeatherSettings,
+  geocodeLocation,
+  getGeolocation,
+} from "../../services/API";
 
 export default function WeatherSettings() {
   const navigate = useNavigate();
@@ -59,6 +64,34 @@ export default function WeatherSettings() {
     if (use) {
       setQuery("");
       setResults([]);
+    }
+  }
+
+  const [detecting, setDetecting] = useState(false);
+  const [detectError, setDetectError] = useState(null);
+  async function detectLocation() {
+    setDetecting(true);
+    setDetectError(null);
+    try {
+      const loc = await getGeolocation();
+      if (loc?.latitude != null && loc?.longitude != null) {
+        updateMut.mutate({
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          city_label: loc.city_label || "",
+          use_ip_location: false,
+        });
+        setResults([]);
+        setQuery("");
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2500);
+      } else {
+        setDetectError("Couldn't detect a location from your network");
+      }
+    } catch {
+      setDetectError("Couldn't detect a location from your network");
+    } finally {
+      setDetecting(false);
     }
   }
 
@@ -180,6 +213,20 @@ export default function WeatherSettings() {
                     ({s.latitude?.toFixed(2)}, {s.longitude?.toFixed(2)})
                   </span>
                 )}
+              </div>
+            )}
+
+            <button
+              className="m-btn m-btn-neutral"
+              style={{ width: "100%", marginBottom: "0.75rem", fontSize: "0.85rem" }}
+              onClick={detectLocation}
+              disabled={detecting}
+            >
+              {detecting ? "Detecting…" : "📍 Use my detected location"}
+            </button>
+            {detectError && (
+              <div style={{ color: "#d9534f", fontSize: "0.8rem", marginBottom: "0.75rem" }}>
+                {detectError}
               </div>
             )}
 

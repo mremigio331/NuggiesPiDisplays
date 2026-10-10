@@ -4,7 +4,7 @@ import { useClockSettings } from "../../hooks/useClockSettings";
 import { useClockTimezones } from "../../hooks/useClockTimezones";
 import { useDebounce } from "../../hooks/useDebounce";
 import { useNotify } from "../../hooks/useNotify";
-import { updateClockSettings } from "../../services/API";
+import { updateClockSettings, getGeolocation } from "../../services/API";
 import SettingsHeader from "../../components/shared/SettingsHeader";
 import LoadingSpinner from "../../components/shared/LoadingSpinner";
 
@@ -147,6 +147,7 @@ export default function ClockSettings() {
   const { data: settings, isLoading } = useClockSettings();
 
   const [timezone, setTimezone] = React.useState("");
+  const [timezoneAuto, setTimezoneAuto] = React.useState(true);
   const [colorPreset, setColorPreset] = React.useState(COLOR_PRESETS[0]);
   const [use24h, setUse24h] = React.useState(false);
   const [saveStatus, setSaveStatus] = React.useState(null); // null | "saving" | "saved"
@@ -155,7 +156,12 @@ export default function ClockSettings() {
   const tzRef = React.useRef(timezone);
   const colorRef = React.useRef(colorPreset);
   const use24hRef = React.useRef(use24h);
+  const autoRef = React.useRef(timezoneAuto);
   const timerRef = React.useRef(null);
+
+  React.useEffect(() => {
+    autoRef.current = timezoneAuto;
+  }, [timezoneAuto]);
 
   React.useEffect(() => {
     tzRef.current = timezone;
@@ -170,6 +176,7 @@ export default function ClockSettings() {
   React.useEffect(() => {
     if (settings) {
       setTimezone(settings.timezone ?? "America/New_York");
+      setTimezoneAuto(settings.timezone_auto ?? true);
       setColorPreset(findPreset(settings.color));
       setUse24h(settings.use_24h ?? false);
     }
@@ -193,11 +200,15 @@ export default function ClockSettings() {
     if (timerRef.current) clearTimeout(timerRef.current);
     setSaveStatus("saving");
     timerRef.current = setTimeout(() => {
-      saveMut.mutate({
-        timezone: tzRef.current,
+      const payload = {
         color: valueToRgb(colorRef.current.value),
         use_24h: use24hRef.current,
-      });
+      };
+      // Only send the timezone when the user is in manual mode. Sending it in
+      // auto mode would flip timezone_auto off on the server for any save
+      // (e.g. a color change).
+      if (!autoRef.current) payload.timezone = tzRef.current;
+      saveMut.mutate(payload);
     }, 500);
   }, []);
 
@@ -215,6 +226,52 @@ export default function ClockSettings() {
     setUse24h(checked);
     use24hRef.current = checked;
     scheduleSave();
+  };
+
+  const [detecting, setDetecting] = React.useState(false);
+
+  // Auto / Manual toggle. Switching to auto asks the server to re-detect from
+  // IP immediately and returns the resolved timezone.
+  const setAutoMode = (auto) => {
+    setTimezoneAuto(auto);
+    autoRef.current = auto;
+    if (auto) {
+      setSaveStatus("saving");
+      setDetecting(true);
+      saveMut.mutate(
+        { timezone_auto: true },
+        {
+          onSettled: () => setDetecting(false),
+          onSuccess: (clock) => {
+            if (clock?.timezone) {
+              setTimezone(clock.timezone);
+              tzRef.current = clock.timezone;
+            }
+          },
+        }
+      );
+    } else {
+      // Persist the current timezone as a manual pick (turns auto off server-side).
+      saveMut.mutate({ timezone: tzRef.current, timezone_auto: false });
+    }
+  };
+
+  // One-shot "detect now" used in manual mode: applies the detected zone as a
+  // manual selection without leaving manual mode.
+  const handleDetectTimezone = async () => {
+    setDetecting(true);
+    try {
+      const loc = await getGeolocation();
+      if (loc?.timezone) {
+        handleTimezone(loc.timezone);
+      } else {
+        notifyError(new Error("Couldn't detect a timezone from your network"));
+      }
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setDetecting(false);
+    }
   };
 
   const liveTime = useLiveClock(timezone || "UTC", use24h);
@@ -262,7 +319,50 @@ export default function ClockSettings() {
       {/* Timezone */}
       <div className="m-card">
         <div className="m-card-title">Timezone</div>
-        <TimezoneSelect value={timezone} onChange={handleTimezone} />
+
+        <div className="m-btn-row" style={{ marginBottom: "1rem" }}>
+          <button
+            className={`m-btn ${timezoneAuto ? "m-btn-active" : "m-btn-neutral"}`}
+            onClick={() => setAutoMode(true)}
+            disabled={detecting}
+          >
+            Auto-detect
+          </button>
+          <button
+            className={`m-btn ${!timezoneAuto ? "m-btn-active" : "m-btn-neutral"}`}
+            onClick={() => setAutoMode(false)}
+            disabled={detecting}
+          >
+            Manual
+          </button>
+        </div>
+
+        {timezoneAuto ? (
+          <div style={{ color: "#5a7a9a", fontSize: "0.85rem" }}>
+            {detecting ? (
+              "Detecting timezone from your network…"
+            ) : (
+              <>
+                Timezone is detected automatically from your network.
+                {timezone && <span style={{ color: "#29d66e" }}> Currently: {timezone}</span>}
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+              <button
+                className="m-btn m-btn-neutral"
+                style={{ fontSize: "0.75rem", padding: "4px 10px" }}
+                onClick={handleDetectTimezone}
+                disabled={detecting}
+              >
+                {detecting ? "Detecting…" : "Detect my timezone"}
+              </button>
+            </div>
+            <TimezoneSelect value={timezone} onChange={handleTimezone} />
+          </>
+        )}
       </div>
 
       {/* Color & format */}
