@@ -2,7 +2,7 @@ import asyncio
 import logging
 import subprocess
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from helpers.process import _PROJECT_ROOT
@@ -19,6 +19,9 @@ class UpdateStatus:
     current_sha: str = ""
     latest_sha: str = ""
     branch: str = ""
+    # Subject lines of the pending commits (newest first), so the UI can show
+    # the user what an update will actually change before they install it.
+    commits: list[str] = field(default_factory=list)
     last_checked: datetime | None = None
     error: str | None = None
 
@@ -29,6 +32,7 @@ class UpdateStatus:
             "current_sha": self.current_sha,
             "latest_sha": self.latest_sha,
             "branch": self.branch,
+            "commits": self.commits,
             "last_checked": (
                 self.last_checked.isoformat() if self.last_checked else None
             ),
@@ -76,6 +80,23 @@ def _fetch_and_compare() -> UpdateStatus:
         except ValueError:
             return 0
 
+    def _commit_subjects(range_: str, limit: int = 50) -> list[str]:
+        """Subject lines of commits in *range_*, newest first (capped at *limit*)."""
+        r = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(_PROJECT_ROOT),
+                "log",
+                range_,
+                f"--max-count={limit}",
+                "--pretty=format:%s",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        return [line for line in r.stdout.splitlines() if line.strip()]
+
     branch = subprocess.run(
         ["git", "-C", str(_PROJECT_ROOT), "rev-parse", "--abbrev-ref", "HEAD"],
         capture_output=True,
@@ -92,6 +113,9 @@ def _fetch_and_compare() -> UpdateStatus:
         )
 
     commits_behind = _count(f"HEAD..origin/{branch}")
+    commits = (
+        _commit_subjects(f"HEAD..origin/{branch}") if commits_behind > 0 else []
+    )
     logger.info(f"Update check: branch={branch} behind={commits_behind}")
     return UpdateStatus(
         update_available=commits_behind > 0,
@@ -99,6 +123,7 @@ def _fetch_and_compare() -> UpdateStatus:
         current_sha=local[:7],
         latest_sha=remote[:7],
         branch=branch,
+        commits=commits,
         last_checked=datetime.now(timezone.utc),
     )
 

@@ -132,8 +132,10 @@ function UpdateSection({
 }) {
   const updateAvailable = updateStatus?.update_available ?? false;
   const commitsBehind = updateStatus?.commits_behind ?? 0;
+  const commits = updateStatus?.commits ?? [];
   const lastChecked = formatChecked(updateStatus?.last_checked);
   const checking = updateChecking || checkUpdateMut.isPending;
+  const [showCommits, setShowCommits] = React.useState(false);
 
   return (
     <div>
@@ -156,6 +158,60 @@ function UpdateSection({
             {commitsBehind} commit{commitsBehind !== 1 ? "s" : ""} behind •{" "}
             {updateStatus?.current_sha} → {updateStatus?.latest_sha}
           </div>
+          {commits.length > 0 && (
+            <div style={{ marginBottom: "0.5rem" }}>
+              <button
+                type="button"
+                onClick={() => setShowCommits((v) => !v)}
+                aria-expanded={showCommits}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#f0a800",
+                  fontSize: "0.8rem",
+                  cursor: "pointer",
+                  padding: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-block",
+                    transform: showCommits ? "rotate(90deg)" : "rotate(0deg)",
+                    transition: "transform 0.15s ease",
+                  }}
+                >
+                  ▶
+                </span>
+                {showCommits ? "Hide" : "What's included"} ({commits.length})
+              </button>
+              {showCommits && (
+                <ul
+                  style={{
+                    listStyle: "disc",
+                    paddingLeft: 22,
+                    margin: "0.4rem 0 0",
+                    maxHeight: 180,
+                    overflowY: "auto",
+                    color: "#ddd",
+                    fontSize: "0.8rem",
+                    lineHeight: 1.6,
+                    background: "#1a1a1a",
+                    borderRadius: 6,
+                    padding: "0.5rem 0.5rem 0.5rem 1.4rem",
+                  }}
+                >
+                  {commits.map((msg, i) => (
+                    <li key={i} style={{ wordBreak: "break-word" }}>
+                      {msg}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </>
       ) : (
         <button
