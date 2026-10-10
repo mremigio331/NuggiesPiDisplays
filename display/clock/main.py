@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 import websockets
 import api_client
 import renderer
+import overlay as overlay_mod
 from matrix import build_matrix
 
 logging.basicConfig(
@@ -74,6 +75,13 @@ def run():
     threading.Thread(target=_ws_thread, daemon=True).start()
 
     while True:
+        # Full-screen overlay (factory-reset countdown / "Factory Reset") takes
+        # over the whole matrix regardless of display mode.
+        if overlay_mod.active(canvas):
+            canvas = matrix.SwapOnVSync(canvas)
+            time.sleep(0.25)
+            continue
+
         with _lock:
             tz_name = _settings.get("timezone", "UTC")
             color = tuple(_settings.get("color", [255, 255, 255]))

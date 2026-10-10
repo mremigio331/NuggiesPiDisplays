@@ -20,6 +20,7 @@ import time
 
 import api_client
 import renderer
+import overlay as overlay_mod
 from matrix import build_matrix
 
 logging.basicConfig(
@@ -27,6 +28,18 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def _overlay_sleep(matrix, canvas, seconds: float):
+    """Sleep up to *seconds*, but render the factory-reset overlay promptly if
+    it appears. Returns the (possibly new) canvas. Checks ~every 0.5s so the
+    banner shows without waiting out a long weather-screen duration."""
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        if overlay_mod.active(canvas):
+            canvas = matrix.SwapOnVSync(canvas)
+        time.sleep(0.5)
+    return canvas
 
 
 def _apply_log_level() -> None:
@@ -71,21 +84,21 @@ def run() -> None:
         logger.info(f"Showing current conditions ({t}s)")
         renderer.render_current(canvas, data)
         canvas = matrix.SwapOnVSync(canvas)
-        time.sleep(t)
+        canvas = _overlay_sleep(matrix, canvas, t)
 
         # ── Screen 2: hourly forecast ─────────────────────────────────────
         if data.get("hourly"):
             logger.info(f"Showing hourly forecast ({t}s)")
             renderer.render_hourly(canvas, data)
             canvas = matrix.SwapOnVSync(canvas)
-            time.sleep(t)
+            canvas = _overlay_sleep(matrix, canvas, t)
 
         # ── Screen 3: 5-day forecast ──────────────────────────────────────
         if data.get("daily"):
             logger.info(f"Showing 5-day forecast ({t}s)")
             renderer.render_forecast(canvas, data)
             canvas = matrix.SwapOnVSync(canvas)
-            time.sleep(t)
+            canvas = _overlay_sleep(matrix, canvas, t)
 
 
 if __name__ == "__main__":

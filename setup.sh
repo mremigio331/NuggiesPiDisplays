@@ -14,11 +14,13 @@ RGBMATRIX_REPO="/tmp/rpi-rgb-led-matrix"
 
 MODE=""
 SUBCOMMAND=""
+FORCE_REBOOT=""
 for arg in "$@"; do
   case "$arg" in
     --dev)   MODE="dev"  ;;
     --prod)  MODE="prod" ;;
     --update)  SUBCOMMAND="update" ;;
+    --reboot)  FORCE_REBOOT="1" ;;
   esac
 done
 
@@ -776,6 +778,16 @@ run_update() {
 
     echo ""
     echo "[$(date '+%H:%M:%S')] Update complete — applying to running processes."
+
+    # Forced reboot (passed by callers that MUST come up fresh regardless of
+    # environment — e.g. factory reset, which wiped settings/WiFi and needs to
+    # boot into the setup portal). This bypasses the dev/prod detection below so
+    # it reboots even on a dev device (where the plain update would not).
+    if [[ -n "$FORCE_REBOOT" ]]; then
+        echo "[$(date '+%H:%M:%S')] --reboot requested — rebooting now..."
+        reboot
+        exit 0
+    fi
 
     # Apply the new code to the running processes.
     #

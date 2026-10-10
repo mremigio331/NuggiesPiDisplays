@@ -215,7 +215,7 @@ def run() -> None:
 
         # Full-screen overlay (e.g. factory-reset countdown / "Factory Reset")
         # takes over the whole matrix and short-circuits normal rendering.
-        if overlay_mod.render_overlay(canvas, settings.get("overlay")):
+        if overlay_mod.active(canvas):
             canvas = matrix.SwapOnVSync(canvas)
             time.sleep(0.25)
             continue

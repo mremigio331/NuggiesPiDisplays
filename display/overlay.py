@@ -16,12 +16,22 @@ Font/graphics handling mirrors the sports renderer: use rgbmatrix.graphics on
 hardware, fall back to PIL for the headless mock so overlays show in dev too.
 """
 
+import logging
 from pathlib import Path
 
 try:
     from matrix import USING_HARDWARE
 except Exception:  # pragma: no cover - matrix always importable in a display
     USING_HARDWARE = False
+
+try:
+    import requests
+    from config import API_BASE as _API_BASE
+except Exception:  # pragma: no cover
+    requests = None
+    _API_BASE = "http://localhost:8000/api"
+
+_log = logging.getLogger(__name__)
 
 MATRIX_W = 64
 MATRIX_H = 32
@@ -101,3 +111,50 @@ def render_overlay(canvas, overlay) -> bool:
     # Unknown kind — treat as no overlay so we never wedge the display on a bad
     # value. Canvas was cleared; caller will render normally next frame.
     return False
+
+
+_FETCH_INTERVAL = 0.5  # min seconds between API polls (throttle fast loops)
+_last_fetch_time = 0.0
+_last_overlay = None
+
+
+def fetch_overlay():
+    """Fetch the current display overlay from the API, or None.
+
+    Throttled to at most one request per _FETCH_INTERVAL so fast render loops
+    (e.g. MTA at 20fps) don't hammer the API — the cached value is returned
+    between polls. A short timeout keeps the loop responsive if the API is
+    briefly unavailable (e.g. mid-restart); any error returns None.
+    """
+    global _last_fetch_time, _last_overlay
+    if requests is None:
+        return None
+    import time as _t
+
+    now = _t.monotonic()
+    if now - _last_fetch_time < _FETCH_INTERVAL:
+        return _last_overlay
+    _last_fetch_time = now
+    try:
+        resp = requests.get(f"{_API_BASE}/system/display-overlay", timeout=2)
+        resp.raise_for_status()
+        _last_overlay = (resp.json() or {}).get("overlay")
+    except Exception as e:
+        _log.debug(f"overlay fetch failed: {e}")
+        _last_overlay = None
+    return _last_overlay
+
+
+def active(canvas) -> bool:
+    """Fetch the overlay and render it onto *canvas* if present.
+
+    Returns True if an overlay was drawn (caller should swap the canvas and skip
+    its normal rendering this frame), False otherwise. The caller owns the swap
+    so double-buffered canvas reassignment stays in the caller's loop:
+
+        if overlay.active(canvas):
+            canvas = matrix.SwapOnVSync(canvas)
+            time.sleep(0.25)
+            continue
+    """
+    return render_overlay(canvas, fetch_overlay())

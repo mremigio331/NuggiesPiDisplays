@@ -12,6 +12,7 @@ import logging
 import time
 import api_client
 import renderer
+import overlay as overlay_mod
 from matrix import build_matrix
 
 logging.basicConfig(
@@ -41,6 +42,11 @@ def _display_item(matrix, canvas, data: dict, interval: int):
     start = time.time()
     show_pct = True
     while time.time() - start < interval:
+        # Factory-reset overlay takes over the whole matrix.
+        if overlay_mod.active(canvas):
+            canvas = matrix.SwapOnVSync(canvas)
+            time.sleep(0.5)
+            continue
         renderer.render(canvas, data, show_pct=show_pct)
         canvas = matrix.SwapOnVSync(canvas)
         time.sleep(CYCLE_SECONDS)

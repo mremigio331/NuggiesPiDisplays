@@ -13,6 +13,7 @@ import random
 import time
 import api_client
 import renderer
+import overlay as overlay_mod
 from matrix import build_matrix
 from renderer import WIN_ARRIVING, WIN_WAITING
 
@@ -148,6 +149,12 @@ def run():
 
     while True:
         now = time.time()
+
+        # Factory-reset overlay takes over the whole matrix (throttled fetch).
+        if overlay_mod.active(canvas):
+            canvas = matrix.SwapOnVSync(canvas)
+            time.sleep(0.25)
+            continue
 
         # Re-read cycle settings periodically
         if now - last_settings_read >= SETTINGS_INTERVAL:
