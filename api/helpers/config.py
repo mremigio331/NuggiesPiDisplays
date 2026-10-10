@@ -41,3 +41,27 @@ def write_section(key: str, section: dict) -> None:
     settings = read_settings()
     settings[key] = section
     write_settings(settings)
+
+
+# --- Display overlay -------------------------------------------------------- #
+# A transient full-screen message any display mode renders over its normal
+# content, driven entirely through settings so it uses the display's existing
+# ~1s settings poll (no new transport). Written by the button handler during a
+# both-button factory-reset hold; read by the display render loop.
+#   None                     -> no overlay (normal rendering)
+#   {"kind": "reset_prompt",      -> "Hold Ns for Factory Reset" countdown
+#    "seconds_left": int}
+#   {"kind": "reset_running"}     -> blanked screen + "Factory Reset"
+
+
+def read_overlay() -> dict | None:
+    return read_settings().get("overlay")
+
+
+def write_overlay(overlay: dict | None) -> None:
+    settings = read_settings()
+    if overlay is None:
+        settings.pop("overlay", None)
+    else:
+        settings["overlay"] = overlay
+    write_settings(settings)

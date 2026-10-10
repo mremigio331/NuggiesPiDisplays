@@ -1,5 +1,9 @@
 DISPLAY_MODES = ["clock", "mta", "sports", "stocks", "weather"]
 
+# Sport cycle order for the both-button short-hold (sports mode). Matches the
+# display's _SPORT_CONFIG registry and the web UI's alphabetical league order.
+SPORTS_CYCLE = ["mlb", "nba", "wnba", "nfl", "ncaaf", "nhl", "nwsl"]
+
 # Button wiring (Adafruit STEMMA tactile button, 3-wire: red/black/white)
 #
 # Button 1 — cycle left

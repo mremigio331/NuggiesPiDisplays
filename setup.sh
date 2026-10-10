@@ -698,7 +698,7 @@ verify_permissions() {
 # ---------------------------------------------------------------------------
 run_update() {
     echo "========================================="
-    echo " Nuggies Pi Displays — update"
+    echo " Nuggies Pi Displays — update [$(date '+%Y-%m-%d %H:%M:%S')]"
     echo "========================================="
 
     echo "--- Pulling latest code..."
@@ -769,19 +769,33 @@ run_update() {
     verify_permissions
 
     echo ""
-    echo "Update complete."
+    echo "[$(date '+%H:%M:%S')] Update complete — applying to running processes."
 
     # Apply the new code to the running processes.
-    # In dev mode the API runs with --reload and the webpack dev server rebuilds
-    # on its own, so no restart is needed. In prod, reboot so the API, display,
-    # and freshly-built bundle all come up on the new code in one clean step.
-    # (The API invokes this script detached via start_new_session, so this
-    # reboot does not race the caller.)
-    if systemctl is-enabled --quiet nuggies-api.service 2>/dev/null; then
-        echo "--- Rebooting to apply update (prod)..."
-        reboot
+    #
+    # Detect prod by whether the systemd unit FILE exists, NOT by
+    # `systemctl is-enabled --quiet`. The latter is unreliable: it exits non-zero
+    # for states like "enabled-runtime"/"alias" and during transient states mid
+    # update, which silently sent prod devices down the dev branch — leaving the
+    # API running stale in-memory code after a "successful" update (new code on
+    # disk, old process never restarted). Unit-file existence is unambiguous.
+    if systemctl list-unit-files nuggies-api.service >/dev/null 2>&1 && \
+       [[ -f /etc/systemd/system/nuggies-api.service ]]; then
+        echo "[$(date '+%H:%M:%S')] Prod detected — rebooting to apply update..."
+        # Reboot brings up API, display, and the freshly-built bundle on the new
+        # code in one clean step. The API invoked this script detached
+        # (start_new_session), so this reboot does not race the caller.
+        #
+        # Belt-and-suspenders: if `reboot` fails to take effect (returns), fall
+        # back to an explicit service restart so the new code still loads rather
+        # than leaving a stale process — the exact failure that made earlier
+        # web-UI updates appear to do nothing.
+        if ! reboot; then
+            echo "[$(date '+%H:%M:%S')] reboot failed — restarting services directly" >&2
+            systemctl restart nuggies-api.service || true
+        fi
     else
-        echo "Dev mode: API reloads automatically; webpack dev server rebuilds. No reboot."
+        echo "[$(date '+%H:%M:%S')] Dev mode: API runs --reload and webpack rebuilds; no restart."
     fi
 }
 

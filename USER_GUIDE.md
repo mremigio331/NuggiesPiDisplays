@@ -74,7 +74,22 @@ The device has two buttons on the side:
 | Press **Button 1** (left) | Cycle to the previous display mode |
 | Press **Button 2** (right) | Cycle to the next display mode |
 | Hold **Button 1** for 10 seconds | Restart the Pi |
-| Hold **both buttons** for 10 seconds | Factory reset + WiFi wipe (see below) |
+| Hold **both buttons** (see below) | Cycle sport / factory reset, with on-screen feedback |
+
+**Holding both buttons together** does different things depending on how long
+you hold, and the display tells you what's happening:
+
+| How long you hold | What happens |
+|-------------------|--------------|
+| Let go before ~3 seconds | Nothing — treated as an accidental press |
+| Let go between ~3 and 10 seconds | **In Sports mode:** switches to the next sport (MLB → NBA → WNBA → NFL → NCAAF → NHL → NWSL). In other modes, nothing happens. |
+| Keep holding past ~5 seconds | The screen shows **"FACTORY RESET — Hold Ns"** counting down |
+| Keep holding to 10 seconds | The screen shows **"FACTORY RESET"** and the device performs a full factory reset + WiFi wipe (see below) |
+
+So a quick both-button hold in Sports mode is a handy way to flip between
+leagues without opening the website — and if you keep holding, it becomes the
+factory reset, with a visible countdown so you can let go in time if you didn't
+mean to.
 
 > **Note:** The buttons are inactive while the device is in WiFi setup mode (showing the setup screen on the matrix).
 
@@ -101,6 +116,18 @@ If the display freezes or becomes unresponsive:
 3. Confirm in the dialog
 4. The Pi will reboot in ~30 seconds. The display will come back on automatically.
 
+### Restarting a single service
+
+If you'd rather not reboot the whole Pi, the **System → Restart Services** section
+lets you restart one piece at a time:
+
+- **Restart API Service** — the backend that the website and display talk to
+  (the website will briefly disconnect while it comes back)
+- **Restart Display Service** — just the LED matrix process
+- **Restart Website Service** — rebuilds / restarts the web UI
+
+This is quicker than a full reboot when only one part is misbehaving.
+
 ---
 
 ## Getting Updates
@@ -110,7 +137,16 @@ Software updates are pulled directly from the internet and applied without any m
 1. Go to **System** in the website
 2. Under **Pi Actions**, tap **Check for Update**
 3. If an update is available, an **Update Available — Install & Reboot** button will appear
-4. Tap it and confirm — the Pi will pull the latest code, re-run setup, and reboot (~60 seconds)
+4. (Optional) Expand **"What's included"** to see the list of changes that will be
+   installed before you commit to the update
+5. Tap the update button and confirm. A progress window opens and streams what the
+   Pi is doing — pulling code, installing dependencies, rebuilding, then rebooting.
+   The Pi goes offline for about a minute; the window shows a "reconnecting" message
+   while it reboots and clears once the device is back.
+
+> **If the update seems stuck:** the progress window shows the live log. If it
+> reports a failure instead of rebooting, note the last few lines — they say which
+> step failed.
 
 ---
 

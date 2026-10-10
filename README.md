@@ -24,6 +24,20 @@ Real-time departure times for your chosen NYC subway station, with station cycli
 |:---:|:---:|
 | ![Desktop](Images/website.png) | ![Mobile](Images/mobile_website.jpeg) |
 
+### System page
+
+The **System** page manages the device itself:
+
+- **Update & Reboot** — pulls the latest code, re-runs `setup.sh --update`, and
+  reboots. When an update is available, expand **"What's included"** to see the
+  commit messages that will be applied before you install. During the update a
+  modal streams live progress from the Pi (and detects the mid-update reboot,
+  showing a "reconnecting" state until the device returns).
+- **Restart Services** — restart the API, display, or website service
+  individually without rebooting the whole Pi.
+- **Restart Pi** — full reboot.
+- **Danger Zone** — reset settings, or a full factory reset + WiFi wipe.
+
 ---
 
 ## Hardware
@@ -40,6 +54,28 @@ Real-time departure times for your chosen NYC subway station, with station cycli
 | **White** (signal) | Pin 22 / GPIO 25 | Pin 35 / GPIO 19 |
 | **Red** (3.3V) | Pin 17 | Pin 1 |
 | **Black** (GND) | Pin 20 | Pin 34 |
+
+See [display/BUTTON_WIRING.md](display/BUTTON_WIRING.md) for the full header map.
+
+### Physical Controls
+
+**Single button (tap):**
+- **Button 1** — cycle to the previous display mode.
+- **Button 2** — cycle to the next display mode.
+
+**Button 1 held ~10s** — reboot the Pi.
+
+**Both buttons held together** — a timed action with on-screen feedback:
+
+| Hold duration | Action |
+|---|---|
+| Released < 3s | Nothing (treated as an accidental tap) |
+| Released 3–10s | **Sports mode only:** cycle to the next sport (MLB → NBA → WNBA → NFL → NCAAF → NHL → NWSL) |
+| Held ≥ 5s | Display shows a **"FACTORY RESET — Hold Ns"** countdown |
+| Held ≥ 10s | Display shows **"FACTORY RESET"** and performs a full factory reset (settings wiped, WiFi forgotten, reboot into setup) |
+
+While both buttons are held, single-button cycling is suppressed so the display
+doesn't change underneath you mid-hold.
 
 ---
 

@@ -11,6 +11,7 @@ from .restart_wifi_service import router as restart_wifi_service_router
 from .update import router as update_router
 from .update_app import router as update_app_router
 from .update_log import router as update_log_router
+from .display_overlay import router as display_overlay_router
 from .factory_reset import router as factory_reset_router
 from .geolocate import router as geolocate_router
 from .factory_reset_wifi import router as factory_reset_wifi_router
@@ -36,6 +37,7 @@ router.include_router(restart_wifi_service_router)
 router.include_router(update_router)
 router.include_router(update_app_router)
 router.include_router(update_log_router)
+router.include_router(display_overlay_router)
 router.include_router(check_update_router)
 router.include_router(update_status_router)
 router.include_router(factory_reset_router)

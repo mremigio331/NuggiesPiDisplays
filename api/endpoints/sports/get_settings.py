@@ -16,8 +16,12 @@ async def get_sports_settings():
     writing back keeps this a pure read — the display polls it every second.
     Both are persisted in normal form on the next settings write.
     """
-    sports = dict(read_settings().get("sports", {}))
+    all_settings = read_settings()
+    sports = dict(all_settings.get("sports", {}))
     sports["locked_games"] = _locks.read(sports)
     sports["favorite_teams"] = _favorites.read_all(sports)
     sports.pop("locked_event_id", None)  # superseded by locked_games
+    # Surface the global display overlay (factory-reset messaging) so the sports
+    # display — which polls only this endpoint — can render it over its content.
+    sports["overlay"] = all_settings.get("overlay")
     return JSONResponse(sports)

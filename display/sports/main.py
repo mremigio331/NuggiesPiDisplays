@@ -14,6 +14,7 @@ import time
 
 import api_client
 import renderer
+import overlay as overlay_mod
 from matrix import build_matrix
 
 _DEBUG_DIR = Path("/var/log/nuggies")
@@ -211,6 +212,14 @@ def run() -> None:
     while True:
         now = time.time()
         settings = api_client.get_settings() or {}
+
+        # Full-screen overlay (e.g. factory-reset countdown / "Factory Reset")
+        # takes over the whole matrix and short-circuits normal rendering.
+        if overlay_mod.render_overlay(canvas, settings.get("overlay")):
+            canvas = matrix.SwapOnVSync(canvas)
+            time.sleep(0.25)
+            continue
+
         sport = settings.get("sport", "nba")
         cfg = _SPORT_CONFIG.get(sport, _SPORT_CONFIG["nba"])
 

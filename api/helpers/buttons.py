@@ -3,8 +3,8 @@ import logging
 import threading
 import time
 
-from constants import DISPLAY_MODES, BUTTON_1_PIN, BUTTON_2_PIN
-from helpers.config import read_settings, write_settings
+from constants import DISPLAY_MODES, SPORTS_CYCLE, BUTTON_1_PIN, BUTTON_2_PIN
+from helpers.config import read_settings, write_settings, write_overlay
 from helpers.process import start_display
 from helpers.system import SystemManager
 from helpers.wifi_state import WIFI_FLAG
@@ -13,6 +13,13 @@ logger = logging.getLogger(__name__)
 
 RESTART_HOLD_SECONDS = 10
 FACTORY_RESET_HOLD_SECONDS = 10
+# Both-button hold bands:
+#   < CYCLE_MIN            -> ignored (accidental tap)
+#   CYCLE_MIN .. RESET     -> on release, cycle the inner item (sports: sport)
+#   PROMPT .. RESET        -> show "Hold Ns for Factory Reset" countdown overlay
+#   >= RESET               -> factory reset
+BOTH_CYCLE_MIN_SECONDS = 3
+BOTH_PROMPT_SECONDS = 5
 
 
 class ButtonManager:
@@ -133,57 +140,142 @@ class ButtonManager:
             if self._hold_start is not None:
                 return
             self._hold_start = time.monotonic()
-            logger.info("Both buttons held — starting factory reset countdown")
+            logger.info("Both buttons held — starting both-hold monitor")
         threading.Thread(target=self._monitor_both_hold, daemon=True).start()
 
     def _monitor_both_hold(self):
+        """State machine for a both-buttons hold.
+
+        Actions happen WHILE held (not on release) so the user gets immediate
+        feedback that a threshold was crossed:
+          at BOTH_CYCLE_MIN_SECONDS  cycle the inner item once (sports mode:
+                                     next sport). Fires at the 3s mark so the
+                                     display changes under your fingers — no need
+                                     to let go. Other modes do nothing.
+          >= BOTH_PROMPT_SECONDS     show the "Hold Ns for Factory Reset" overlay
+                                     countdown while still held
+          >= FACTORY_RESET_HOLD      blank the display ("Factory Reset") and fire
+                                     the reset
+        Released before BOTH_CYCLE_MIN_SECONDS does nothing (accidental tap).
+
+        Mechanical buttons chatter, so a single sampled HIGH is not treated as a
+        release — both must read released continuously for RELEASE_DEBOUNCE
+        before the hold is considered broken.
+        """
         GPIO = self._gpio
-        # Mechanical buttons chatter: a single sampled HIGH does not mean the
-        # user let go. Only treat the hold as broken once BOTH buttons have read
-        # released continuously for RELEASE_DEBOUNCE_SECONDS. Without this, any
-        # transient bounce (made worse by CPU contention from the display
-        # kill/relaunch cycle) aborts the 10 s countdown before it ever fires.
         RELEASE_DEBOUNCE_SECONDS = 0.3
         released_since: float | None = None
-        while True:
-            time.sleep(0.05)
+        last_progress_log = 0.0
+        prompt_shown_for = -1  # last whole-second value pushed to the overlay
+        cycled = False  # inner cycle already fired at the 3s mark
+        try:
+            while True:
+                time.sleep(0.05)
 
-            both_down = (
-                GPIO.input(BUTTON_1_PIN) == GPIO.LOW
-                and GPIO.input(BUTTON_2_PIN) == GPIO.LOW
-            )
+                b1 = GPIO.input(BUTTON_1_PIN) == GPIO.LOW
+                b2 = GPIO.input(BUTTON_2_PIN) == GPIO.LOW
+                both_down = b1 and b2
 
-            if both_down:
-                # Contact (re)established — clear any pending release window.
-                released_since = None
-            else:
-                # At least one button reads released. Start/continue the debounce
-                # window; only abort if it stays released long enough to be real.
-                now = time.monotonic()
-                if released_since is None:
-                    released_since = now
-                elif now - released_since >= RELEASE_DEBOUNCE_SECONDS:
+                if both_down:
+                    released_since = None
+                else:
+                    now = time.monotonic()
+                    if released_since is None:
+                        released_since = now
+                    elif now - released_since >= RELEASE_DEBOUNCE_SECONDS:
+                        with self._hold_lock:
+                            held = (
+                                time.monotonic() - self._hold_start
+                                if self._hold_start
+                                else 0.0
+                            )
+                            self._hold_start = None
+                        # Any countdown overlay we put up must be cleared on
+                        # release so the display resumes normal rendering.
+                        if prompt_shown_for >= 0:
+                            self._set_overlay(None)
+                        logger.info(
+                            f"Both-hold released after {held:.1f}s "
+                            f"(cycled={cycled})"
+                        )
+                        return
+                    continue
+
+                with self._hold_lock:
+                    if self._hold_start is None:
+                        return
+                    elapsed = time.monotonic() - self._hold_start
+
+                if elapsed - last_progress_log >= 1.0:
+                    logger.info(
+                        f"Both-hold: {elapsed:.0f}s / {FACTORY_RESET_HOLD_SECONDS}s"
+                    )
+                    last_progress_log = elapsed
+
+                # At the 3s mark, cycle the inner item once WHILE still held, so
+                # the change happens under the user's fingers (immediate feedback
+                # that 3s elapsed). Sports mode only; other modes reserved.
+                if not cycled and elapsed >= BOTH_CYCLE_MIN_SECONDS:
+                    cycled = True
+                    active = read_settings().get("active_display", DISPLAY_MODES[0])
+                    if active == "sports":
+                        self._cycle_sport()
+                    else:
+                        logger.info(
+                            f"Both-hold hit {BOTH_CYCLE_MIN_SECONDS}s in {active!r} "
+                            "— no inner cycle defined for this mode"
+                        )
+
+                # From PROMPT_SECONDS on, show a live countdown overlay so the
+                # user sees how long is left before the reset fires.
+                if elapsed >= BOTH_PROMPT_SECONDS:
+                    seconds_left = max(
+                        0, int(round(FACTORY_RESET_HOLD_SECONDS - elapsed))
+                    )
+                    if seconds_left != prompt_shown_for:
+                        prompt_shown_for = seconds_left
+                        self._set_overlay(
+                            {"kind": "reset_prompt", "seconds_left": seconds_left}
+                        )
+
+                if elapsed >= FACTORY_RESET_HOLD_SECONDS:
+                    logger.info("Both-hold reached factory-reset threshold — firing")
                     with self._hold_lock:
                         self._hold_start = None
+                    # Blank the display with the running banner, then reset.
+                    self._set_overlay({"kind": "reset_running"})
+                    self._factory_reset()
+                    while (
+                        GPIO.input(BUTTON_1_PIN) == GPIO.LOW
+                        or GPIO.input(BUTTON_2_PIN) == GPIO.LOW
+                    ):
+                        time.sleep(0.05)
                     return
-                continue
-
+        except Exception:
+            logger.exception("Both-hold monitor crashed")
             with self._hold_lock:
-                if self._hold_start is None:
-                    return
-                elapsed = time.monotonic() - self._hold_start
-            if elapsed >= FACTORY_RESET_HOLD_SECONDS:
-                with self._hold_lock:
-                    self._hold_start = None
-                self._factory_reset()
-                # Wait for genuine release so the edge callbacks don't immediately
-                # re-arm a second countdown on button chatter.
-                while (
-                    GPIO.input(BUTTON_1_PIN) == GPIO.LOW
-                    or GPIO.input(BUTTON_2_PIN) == GPIO.LOW
-                ):
-                    time.sleep(0.05)
-                return
+                self._hold_start = None
+            self._set_overlay(None)
+
+    def _cycle_sport(self) -> None:
+        """Advance sports mode to the next sport in SPORTS_CYCLE."""
+        settings = read_settings()
+        sports = settings.setdefault("sports", {})
+        current = sports.get("sport", SPORTS_CYCLE[0])
+        idx = SPORTS_CYCLE.index(current) if current in SPORTS_CYCLE else 0
+        nxt = SPORTS_CYCLE[(idx + 1) % len(SPORTS_CYCLE)]
+        sports["sport"] = nxt
+        # A pending one-shot jump belongs to the old league; clear it on switch.
+        if nxt != current:
+            sports["force_event_id"] = ""
+        write_settings(settings)
+        logger.info(f"Both-hold cycled sport: {current!r} → {nxt!r}")
+
+    def _set_overlay(self, overlay: dict | None) -> None:
+        try:
+            write_overlay(overlay)
+        except Exception as e:
+            logger.error(f"Failed to set display overlay: {e}")
 
     # --- Actions ---
 
