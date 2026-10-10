@@ -60,7 +60,14 @@ class ButtonManager:
     def _on_btn2(self, channel):
         if self._gpio.input(BUTTON_1_PIN) == self._gpio.LOW:
             self._start_both_hold()
-        elif WIFI_FLAG.exists():
+            return
+        # A both-buttons hold is already counting down — a re-fired btn2 edge from
+        # contact chatter must not be treated as a solo cycle (which would switch
+        # the display mid-hold and confuse the user).
+        with self._hold_lock:
+            if self._hold_start is not None:
+                return
+        if WIFI_FLAG.exists():
             logger.info("Button 2 pressed (cycle right)")
             current = read_settings().get("active_display", DISPLAY_MODES[0])
             idx = DISPLAY_MODES.index(current) if current in DISPLAY_MODES else 0
@@ -78,9 +85,13 @@ class ButtonManager:
             while True:
                 time.sleep(0.05)
 
-                # Button 2 also pressed — hand off to factory reset, skip cycle.
+                # Button 2 also pressed, or a both-buttons hold is already armed —
+                # hand off to the factory-reset monitor and skip the solo cycle.
                 if GPIO.input(BUTTON_2_PIN) == GPIO.LOW:
                     return
+                with self._hold_lock:
+                    if self._hold_start is not None:
+                        return
 
                 elapsed = time.monotonic() - press_time
 
@@ -127,15 +138,36 @@ class ButtonManager:
 
     def _monitor_both_hold(self):
         GPIO = self._gpio
+        # Mechanical buttons chatter: a single sampled HIGH does not mean the
+        # user let go. Only treat the hold as broken once BOTH buttons have read
+        # released continuously for RELEASE_DEBOUNCE_SECONDS. Without this, any
+        # transient bounce (made worse by CPU contention from the display
+        # kill/relaunch cycle) aborts the 10 s countdown before it ever fires.
+        RELEASE_DEBOUNCE_SECONDS = 0.3
+        released_since: float | None = None
         while True:
-            time.sleep(0.1)
-            if (
-                GPIO.input(BUTTON_1_PIN) != GPIO.LOW
-                or GPIO.input(BUTTON_2_PIN) != GPIO.LOW
-            ):
-                with self._hold_lock:
-                    self._hold_start = None
-                return
+            time.sleep(0.05)
+
+            both_down = (
+                GPIO.input(BUTTON_1_PIN) == GPIO.LOW
+                and GPIO.input(BUTTON_2_PIN) == GPIO.LOW
+            )
+
+            if both_down:
+                # Contact (re)established — clear any pending release window.
+                released_since = None
+            else:
+                # At least one button reads released. Start/continue the debounce
+                # window; only abort if it stays released long enough to be real.
+                now = time.monotonic()
+                if released_since is None:
+                    released_since = now
+                elif now - released_since >= RELEASE_DEBOUNCE_SECONDS:
+                    with self._hold_lock:
+                        self._hold_start = None
+                    return
+                continue
+
             with self._hold_lock:
                 if self._hold_start is None:
                     return
@@ -144,6 +176,13 @@ class ButtonManager:
                 with self._hold_lock:
                     self._hold_start = None
                 self._factory_reset()
+                # Wait for genuine release so the edge callbacks don't immediately
+                # re-arm a second countdown on button chatter.
+                while (
+                    GPIO.input(BUTTON_1_PIN) == GPIO.LOW
+                    or GPIO.input(BUTTON_2_PIN) == GPIO.LOW
+                ):
+                    time.sleep(0.05)
                 return
 
     # --- Actions ---

@@ -3,7 +3,10 @@ import logging
 import os
 import subprocess
 
-from helpers.config import read_settings as _read_settings, reset_settings as _reset_settings
+from helpers.config import (
+    read_settings as _read_settings,
+    reset_settings as _reset_settings,
+)
 from helpers.dev_config import is_dev_mode
 from helpers.logger import LOG_DIR
 from helpers.process import (
