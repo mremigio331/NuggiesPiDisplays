@@ -34,7 +34,7 @@ def _apply_log_level() -> None:
     logger.debug(f"Log level applied: {level}")
 
 
-WS_URL = "ws://localhost:8000/clock/ws"
+WS_URL = "ws://localhost:8000/api/clock/ws"
 
 _settings: dict = {}
 _lock = threading.Lock()
