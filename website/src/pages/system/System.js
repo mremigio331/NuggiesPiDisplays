@@ -566,6 +566,17 @@ export default function System() {
         </button>
       </div>
 
+      <div className="m-card">
+        <div className="m-card-title">Help</div>
+        <button
+          className="m-btn m-btn-neutral"
+          style={{ width: "100%" }}
+          onClick={() => navigate("/system/user-guide")}
+        >
+          📖 User Manual
+        </button>
+      </div>
+
       {devMode && (
         <div className="m-card" style={{ borderColor: "#4a3000" }}>
           <div className="m-card-title" style={{ color: "#f0a800" }}>
