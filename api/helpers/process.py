@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -26,8 +27,18 @@ def _privileged_command(*args: str) -> list[str]:
     # If the API itself is running as root, do not shell out through sudo.
     if os.geteuid() == 0:
         return list(args)
+    # Resolve the target binary to an absolute path so the `sudo -n` call
+    # matches the absolute-path sudoers grants from setup.sh. A bare command
+    # name (kill, pkill, python3) may not match the absolute-path grant in the
+    # API's non-interactive environment, causing sudo to refuse with
+    # "a password is required" and the privileged action to silently fail.
+    resolved = list(args)
+    if resolved:
+        abs_path = shutil.which(resolved[0])
+        if abs_path:
+            resolved[0] = abs_path
     # -n prevents sudo from prompting for a password in a non-interactive API context.
-    return ["sudo", "-n", *args]
+    return ["sudo", "-n", *resolved]
 
 
 def _wait_pid_exit(pid: int, timeout: float = 2.0) -> bool:

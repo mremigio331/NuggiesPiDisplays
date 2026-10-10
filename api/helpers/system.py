@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import shutil
 import subprocess
 
 from helpers.config import (
@@ -31,8 +32,22 @@ def _privileged_command(*args: str) -> list[str]:
     # If already root (e.g., service user), run command directly.
     if os.geteuid() == 0:
         return list(args)
+    # Resolve the target binary to an absolute path. The sudoers grants written
+    # by setup.sh (setup_sudoers) use absolute interpreter/command paths
+    # ($BASH, $PYTHON, $REBOOT, $SYSTEMCTL, $CHMOD, ...). sudo matches the
+    # invoked command against those exact paths, and in the API's
+    # non-interactive environment a BARE command name (e.g. `bash`) does NOT
+    # match the absolute-path grant — `sudo -n` is then refused with
+    # "a password is required" and the privileged action silently never runs
+    # (this is what broke web-UI updates). Resolving to the absolute path here
+    # makes every call match the grant regardless of sudo's secure_path.
+    resolved = list(args)
+    if resolved:
+        abs_path = shutil.which(resolved[0])
+        if abs_path:
+            resolved[0] = abs_path
     # -n prevents hanging on password prompts in HTTP request handlers.
-    return ["sudo", "-n", *args]
+    return ["sudo", "-n", *resolved]
 
 
 class SystemManager:
@@ -78,6 +93,8 @@ class SystemManager:
         update_log = LOG_DIR / "update.log"
         update_log.parent.mkdir(parents=True, exist_ok=True)
         log_file = open(update_log, "a")
+        # _privileged_command resolves `bash` to its absolute path so the
+        # `sudo -n` invocation matches the absolute-path setup.sh grant.
         cmd = _privileged_command("bash", str(_PROJECT_ROOT / "setup.sh"), *flags)
         logger.info(f"Launching detached: {' '.join(cmd)} (output -> {update_log})")
         subprocess.Popen(
