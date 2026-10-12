@@ -40,10 +40,10 @@ function WatchlistSection({ currentSymbols, onSave, saving }) {
   });
 
   const add = (symbol) => {
-    if (!symbols.includes(symbol) && symbols.length < 5) setSymbols((prev) => [...prev, symbol]);
+    if (!symbols.includes(symbol) && symbols.length < 10) setSymbols((prev) => [...prev, symbol]);
   };
   const remove = (symbol) => setSymbols((prev) => prev.filter((s) => s !== symbol));
-  const atLimit = symbols.length >= 5;
+  const atLimit = symbols.length >= 10;
   const isDirty = symbols.join(",") !== currentSymbols.join(",");
 
   return (
@@ -53,7 +53,7 @@ function WatchlistSection({ currentSymbols, onSave, saving }) {
       {/* Current symbols */}
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: "0.75rem", color: "#5a7a9a", marginBottom: 6 }}>
-          {symbols.length} / 5 stocks
+          {symbols.length} / 10 stocks
           {atLimit && <span style={{ color: "#e05050" }}> — limit reached</span>}
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>

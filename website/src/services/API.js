@@ -70,6 +70,9 @@ export const searchStocks = (q) => handle(api.get("/stonks/search", { params: { 
 export const getStockInfo = (symbol) => handle(api.get(`/stonks/${symbol}/info`));
 export const getStockChart = (symbol, cycleKey) => handle(api.get(`/stonks/${symbol}/${cycleKey}`));
 export const getStockNow = () => handle(api.get("/stonks/now"));
+// Jump the display to a specific ticker + chart view once, then resume rotation
+export const showStockView = (symbol, cycleKey) =>
+  updateStocksSettings({ force_view: `${symbol}:${cycleKey}` });
 
 // Sports
 export const getNBAScoreboard = () => handle(api.get("/sports/nba/scoreboard"));

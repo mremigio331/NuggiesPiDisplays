@@ -18,6 +18,7 @@ class StocksSettings(BaseModel):
     market_hours_only: Optional[bool] = None
     timezone: Optional[str] = None
     stock_cycles: Optional[list] = None
+    force_view: Optional[str] = None
 
 
 @router.put("/settings")
@@ -26,11 +27,11 @@ async def update_settings(body: StocksSettings):
 
     if "stock_abbrs" in updates:
         abbrs = updates["stock_abbrs"]
-        if not (1 <= len(abbrs) <= 5) or not all(
+        if not (1 <= len(abbrs) <= 10) or not all(
             isinstance(s, str) and s.strip() for s in abbrs
         ):
             raise HTTPException(
-                status_code=422, detail="stock_abbrs must be 1-5 non-empty strings"
+                status_code=422, detail="stock_abbrs must be 1-10 non-empty strings"
             )
         updates["stock_abbrs"] = [s.upper() for s in abbrs]
 
@@ -58,6 +59,17 @@ async def update_settings(body: StocksSettings):
                 raise HTTPException(
                     status_code=422, detail=f"Invalid cycle key: {cycle.get('key')}"
                 )
+
+    if "force_view" in updates:
+        fv = updates["force_view"]
+        if fv:  # empty string clears the force; otherwise "SYMBOL:cycle_key"
+            parts = fv.split(":")
+            if len(parts) != 2 or not parts[0].strip() or parts[1] not in VALID_CYCLE_KEYS:
+                raise HTTPException(
+                    status_code=422,
+                    detail="force_view must be 'SYMBOL:cycle_key' with a valid cycle key",
+                )
+            updates["force_view"] = f"{parts[0].strip().upper()}:{parts[1]}"
 
     settings = read_settings()
     stocks = settings.get("stocks", {})

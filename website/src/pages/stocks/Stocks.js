@@ -1,10 +1,13 @@
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
+import { useMutation } from "@tanstack/react-query";
 import { useStocksSettings } from "../../hooks/useStocksSettings";
 import { useStockChart } from "../../hooks/useStockChart";
 import { useStockInfo } from "../../hooks/useStockInfo";
 import { useStockNow } from "../../hooks/useStockNow";
 import { useSystemStatus } from "../../hooks/useSystemStatus";
+import { useNotify } from "../../hooks/useNotify";
+import { showStockView } from "../../services/API";
 import SwitchDisplayButton from "../../components/shared/SwitchDisplayButton";
 
 /* ── Sparkline ─────────────────────────────────────────────────── */
@@ -96,7 +99,7 @@ function Sparkline({ closes, timestamps = [], cycleKey, direction, height }) {
 }
 
 /* ── Stock card ────────────────────────────────────────────────── */
-function StockCard({ symbol, cycleKey, isOnDisplay }) {
+function StockCard({ symbol, cycleKey, isOnDisplay, onShowNow, showNowPending, canShowNow }) {
   const { data: chart, isLoading, isError } = useStockChart(symbol, cycleKey);
   const { data: info } = useStockInfo(symbol);
 
@@ -194,14 +197,38 @@ function StockCard({ symbol, cycleKey, isOnDisplay }) {
         )}
       </div>
 
-      <a
-        href={`https://finance.yahoo.com/quote/${symbol}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ fontSize: "0.75rem", color: "#5a7a9a", textDecoration: "none" }}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
       >
-        View on Yahoo Finance →
-      </a>
+        <a
+          href={`https://finance.yahoo.com/quote/${symbol}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ fontSize: "0.75rem", color: "#5a7a9a", textDecoration: "none" }}
+        >
+          View on Yahoo Finance →
+        </a>
+        {canShowNow && (
+          <button
+            className="m-btn m-btn-neutral"
+            style={{ fontSize: "0.75rem", padding: "4px 10px" }}
+            onClick={() => onShowNow(symbol, cycleKey)}
+            disabled={showNowPending || isOnDisplay}
+            title={
+              isOnDisplay
+                ? "Already on display"
+                : "Jump the display to this stock now"
+            }
+          >
+            {isOnDisplay ? "On display" : showNowPending ? "…" : "Show now"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -253,10 +280,23 @@ function CycleSelector({ cycles, selected, onSelect, displayCycle }) {
 /* ── Page ──────────────────────────────────────────────────────── */
 export default function Stocks() {
   const navigate = useNavigate();
+  const { error: notifyError } = useNotify();
   const { data: settings, isLoading } = useStocksSettings();
   const { data: now } = useStockNow();
   const { data: systemStatus } = useSystemStatus({ refetchInterval: 10000 });
   const stocksActive = systemStatus?.active_display === "stocks";
+
+  // "Show now": jump the display to a chosen ticker + the selected chart cycle.
+  const [pendingSymbol, setPendingSymbol] = React.useState(null);
+  const showNowMut = useMutation({
+    mutationFn: ({ symbol, cycleKey }) => showStockView(symbol, cycleKey),
+    onSettled: () => setPendingSymbol(null),
+    onError: (err) => notifyError(err),
+  });
+  const handleShowNow = (symbol, cycleKey) => {
+    setPendingSymbol(symbol);
+    showNowMut.mutate({ symbol, cycleKey });
+  };
 
   const { stock_abbrs = [], stock_cycles = [] } = settings || {};
   const enabledCycles = stock_cycles.filter((c) => c.enabled);
@@ -343,6 +383,9 @@ export default function Stocks() {
             symbol={symbol}
             cycleKey={selectedCycle}
             isOnDisplay={stocksActive && now?.symbol === symbol}
+            canShowNow={stocksActive && !!selectedCycle}
+            showNowPending={pendingSymbol === symbol}
+            onShowNow={handleShowNow}
           />
         ))
       )}
