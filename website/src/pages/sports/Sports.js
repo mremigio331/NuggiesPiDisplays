@@ -12,6 +12,7 @@ import {
   getEPLScoreboard,
   getLaLigaScoreboard,
   getBundesligaScoreboard,
+  getFavoritesScoreboard,
   getSportsSettings,
   updateSportsSettings,
   getSportsNow,
@@ -29,6 +30,7 @@ import SportsPageHeader from "../../components/sports/SportsPageHeader";
 import MatrixDisplayModeToggle from "../../components/sports/MatrixDisplayModeToggle";
 import LockedGamesBanner from "../../components/sports/LockedGamesBanner";
 import GameSection from "../../components/sports/GameSection";
+import FavoriteGameSection from "../../components/sports/FavoriteGameSection";
 
 export default function Sports() {
   const navigate = useNavigate();
@@ -67,8 +69,16 @@ export default function Sports() {
     onSuccess: onSettingsSaved,
   });
 
-  // Leagues listed alphabetically
+  // Leagues listed alphabetically. "favorites" is a cross-league feed, not a
+  // real league — it has no single GameCard (each game uses its own) and no
+  // locks, so it is handled specially below.
   const sportConfig = {
+    favorites: {
+      queryKey: ["favoritesScoreboard"],
+      queryFn: getFavoritesScoreboard,
+      label: "Favorites",
+      aggregated: true,
+    },
     mlb: {
       queryKey: ["mlbScoreboard"],
       queryFn: getMLBScoreboard,
@@ -133,12 +143,14 @@ export default function Sports() {
       label: "Bundesliga",
     },
   };
+  const activeConfig = sportConfig[sport] ?? sportConfig.nba;
   const {
     queryKey,
     queryFn,
     Card: GameCard,
     label: sportLabel,
-  } = sportConfig[sport] ?? sportConfig.nba;
+    aggregated,
+  } = activeConfig;
 
   const {
     data: scoreboardData,
@@ -180,6 +192,39 @@ export default function Sports() {
     ? new Date(dataUpdatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : null;
 
+  // Section renderer differs for the mixed-league favourites feed: each game is
+  // drawn with its own sport's card and highlighted with its league's
+  // favourites. Real leagues use the single-sport GameSection.
+  const renderSection = (title, sectionGames, showTopMargin = false) => {
+    if (aggregated) {
+      return (
+        <FavoriteGameSection
+          title={title}
+          showTopMargin={showTopMargin}
+          games={sectionGames}
+          settings={settings}
+          activeEventIds={activeEventIds}
+          lockedIds={lockedIds}
+          isPending={gameControls.isPending}
+          onShowGame={gameControls.onShowGame}
+          onLockGame={gameControls.onLockGame}
+          onUnlockGame={gameControls.onUnlockGame}
+        />
+      );
+    }
+    return (
+      <GameSection
+        title={title}
+        showTopMargin={showTopMargin}
+        games={sectionGames}
+        GameCard={GameCard}
+        favoriteTeams={favoriteTeams}
+        activeEventIds={activeEventIds}
+        {...gameControls}
+      />
+    );
+  };
+
   return (
     <div>
       <SportsPageHeader
@@ -189,19 +234,25 @@ export default function Sports() {
         onOpenSettings={() => navigate("/sports/settings")}
       />
 
-      <MatrixDisplayModeToggle
-        displayMode={displayMode}
-        isPending={modeMut.isPending}
-        onChangeMode={(nextMode) => modeMut.mutate({ display_mode: nextMode })}
-      />
+      {/* Overview/focus and locks apply to a single league's slate, not the
+          mixed favourites feed, so they are hidden for favourites. */}
+      {!aggregated && (
+        <>
+          <MatrixDisplayModeToggle
+            displayMode={displayMode}
+            isPending={modeMut.isPending}
+            onChangeMode={(nextMode) => modeMut.mutate({ display_mode: nextMode })}
+          />
 
-      <LockedGamesBanner
-        locks={lockedGames}
-        games={games}
-        isPending={gameControls.isPending}
-        onUnlock={gameControls.onUnlockGame}
-        onClearAll={() => lockMut.mutate({ action: "clear" })}
-      />
+          <LockedGamesBanner
+            locks={lockedGames}
+            games={games}
+            isPending={gameControls.isPending}
+            onUnlock={gameControls.onUnlockGame}
+            onClearAll={() => lockMut.mutate({ action: "clear" })}
+          />
+        </>
+      )}
 
       <div className="m-section-sub" style={{ marginBottom: 10 }}>
         {sportLabel} scoreboard{lastUpdated ? ` · updated ${lastUpdated}` : ""}
@@ -212,38 +263,19 @@ export default function Sports() {
 
       {!isLoading && !error && games.length === 0 && (
         <div className="m-card" style={{ color: "#888", textAlign: "center", padding: "1.5rem" }}>
-          No {sportLabel} games today
+          {aggregated
+            ? "No games today for your favorite teams. Pick teams in Settings."
+            : `No ${sportLabel} games today`}
         </div>
       )}
 
-      <GameSection
-        title="Live"
-        games={liveGames}
-        GameCard={GameCard}
-        favoriteTeams={favoriteTeams}
-        activeEventIds={activeEventIds}
-        {...gameControls}
-      />
-
-      <GameSection
-        title="Upcoming"
-        showTopMargin={liveGames.length > 0}
-        games={scheduledGames}
-        GameCard={GameCard}
-        favoriteTeams={favoriteTeams}
-        activeEventIds={activeEventIds}
-        {...gameControls}
-      />
-
-      <GameSection
-        title="Final"
-        showTopMargin={liveGames.length > 0 || scheduledGames.length > 0}
-        games={finalGames}
-        GameCard={GameCard}
-        favoriteTeams={favoriteTeams}
-        activeEventIds={activeEventIds}
-        {...gameControls}
-      />
+      {renderSection("Live", liveGames)}
+      {renderSection("Upcoming", scheduledGames, liveGames.length > 0)}
+      {renderSection(
+        "Final",
+        finalGames,
+        liveGames.length > 0 || scheduledGames.length > 0
+      )}
     </div>
   );
 }

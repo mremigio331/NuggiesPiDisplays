@@ -70,7 +70,7 @@ See [display/BUTTON_WIRING.md](display/BUTTON_WIRING.md) for the full header map
 | Hold duration | Action |
 |---|---|
 | Released < 3s | Nothing (treated as an accidental tap) |
-| Released 3–10s | **Sports mode only:** cycle to the next sport (MLB → NBA → WNBA → NFL → NCAAF → NHL → NWSL → Premier League → La Liga → Bundesliga) |
+| Released 3–10s | **Sports mode only:** cycle to the next sport (Favorites → MLB → NBA → WNBA → NFL → NCAAF → NHL → NWSL → Premier League → La Liga → Bundesliga) |
 | Held ≥ 5s | Display shows a **"FACTORY RESET — Hold Ns"** countdown |
 | Held ≥ 10s | Display shows **"FACTORY RESET"** and performs a full factory reset (settings wiped, WiFi forgotten, reboot into setup) |
 

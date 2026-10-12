@@ -130,6 +130,44 @@ _SPORT_CONFIG: dict[str, dict] = {
     # plus a matching entry in api/endpoints/sports/soccer.py SOCCER_SPORTS.
 }
 
+# The "favorites" feed is not a league: it merges games from every league the
+# user has favourites in. Its scoreboard fetch is the aggregated endpoint, and
+# each game carries its own `sport` tag, so rendering/detail/panel-view are
+# resolved per game via _cfg_for_game() rather than from this entry. The
+# fetch_details/render_* here are only safety fallbacks for an untagged game.
+_FAVORITES_CONFIG: dict = {
+    "label": "Favorites",
+    "fetch_scoreboard": lambda: api_client.get_favorites_scoreboard(),
+    "fetch_details": lambda eid: None,
+    "panel_views": _NBA_PANEL_VIEWS,
+    "live_details": True,
+    "render_focus": renderer.render_game,
+    "render_overview": renderer.render_game_overview,
+    "aggregated": True,  # games span leagues; route per game by its sport tag
+}
+
+
+def _cfg_for(sport: str) -> dict:
+    """Config for a sport key, including the aggregated favourites feed."""
+    if sport == "favorites":
+        return _FAVORITES_CONFIG
+    return _SPORT_CONFIG.get(sport, _SPORT_CONFIG["nba"])
+
+
+def _cfg_for_game(game: dict, fallback: dict) -> dict:
+    """Config for a single game.
+
+    In the favourites feed each game carries a `sport` tag naming its league, so
+    the matrix renders it with that league's renderer and fetches its details
+    from that league's endpoint — this is what makes favourites self aware. For
+    a normal single-league feed games have no tag and `fallback` (the loop's
+    sport config) is used unchanged.
+    """
+    game_sport = game.get("sport")
+    if game_sport and game_sport in _SPORT_CONFIG:
+        return _SPORT_CONFIG[game_sport]
+    return fallback
+
 
 def _write_state(
     sport: str,
@@ -224,7 +262,7 @@ def run() -> None:
             continue
 
         sport = settings.get("sport", "nba")
-        cfg = _SPORT_CONFIG.get(sport, _SPORT_CONFIG["nba"])
+        cfg = _cfg_for(sport)
 
         # Reset on sport change so we fetch the new league immediately
         if sport != active_sport:
@@ -307,6 +345,11 @@ def run() -> None:
         # leaving half the matrix blank.
         if len(rotation) < 2:
             display_mode = "focus"
+        # The favourites feed mixes leagues, and a split overview view can only
+        # use one renderer for its pair — forcing focus means every game is
+        # drawn by its own league's renderer, one at a time.
+        if cfg.get("aggregated"):
+            display_mode = "focus"
 
         state_locked = [i for i in locked_ids if _find_event(games, i) is not None]
 
@@ -338,11 +381,16 @@ def run() -> None:
             cfg["render_overview"](canvas, game_a, game_b)
 
         else:  # focus
-            panel_views = cfg["panel_views"]
+            # In the favourites feed each game may come from a different league,
+            # so resolve the config (panel views, detail fetcher, renderer) from
+            # the game's own `sport` tag. For a single-league feed this is just
+            # the loop's cfg.
+            game = rotation[game_idx % len(rotation)]
+            game_cfg = _cfg_for_game(game, cfg)
+            panel_views = game_cfg["panel_views"]
 
             # Sports without live detail endpoints (e.g. MLB) skip panel cycling when live
-            game = rotation[game_idx % len(rotation)]
-            skip_cycle = not cfg["live_details"] and game.get("state") == "in"
+            skip_cycle = not game_cfg["live_details"] and game.get("state") == "in"
 
             if not skip_cycle:
                 if (now - last_panel_flip) >= PANEL_CYCLE:
@@ -354,21 +402,26 @@ def run() -> None:
                             panel_flip_count = 0
                     last_panel_flip = now
 
+            # Advancing game_idx above may have moved us to a game from another
+            # league — re-resolve so the renderer and panels match this game.
             game = rotation[game_idx % len(rotation)]
+            game_cfg = _cfg_for_game(game, cfg)
+            panel_views = game_cfg["panel_views"]
+            skip_cycle = not game_cfg["live_details"] and game.get("state") == "in"
             event_id = game.get("event_id", "")
             state = game.get("state", "pre")
 
             details: dict | None = None
             should_fetch_details = event_id and (
-                state == "post" or (cfg["live_details"] and state == "in")
+                state == "post" or (game_cfg["live_details"] and state == "in")
             )
             if should_fetch_details:
                 cached = details_cache.get(event_id)
                 if not cached or (now - cached[0]) >= DETAILS_TTL:
                     logger.debug(
-                        f"Fetching {cfg['label']} game details for {event_id}…"
+                        f"Fetching {game_cfg['label']} game details for {event_id}…"
                     )
-                    details = fetch_details(event_id)
+                    details = game_cfg["fetch_details"](event_id)
                     details_cache[event_id] = (now, details)
                     # Dump raw data to file once per event for debugging
                     if event_id not in _debug_dumped:
@@ -398,7 +451,7 @@ def run() -> None:
                 f"[{state}] panel={panel_view}"
             )
             _write_state(sport, display_mode, [game.get("event_id", "")], state_locked)
-            cfg["render_focus"](canvas, game, details, panel_view)
+            game_cfg["render_focus"](canvas, game, details, panel_view)
 
         canvas = matrix.SwapOnVSync(canvas)
         time.sleep(1)

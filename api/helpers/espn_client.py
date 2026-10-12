@@ -280,7 +280,12 @@ class ESPNClient:
             logger.error(f"No ESPN league path for sport {sport!r}")
             return []
 
-        url = f"{_ESPN_BASE}/{league_path}/teams"
+        # ESPN defaults the teams list to 50 per page. Big leagues blow past
+        # that — college football alone returns ~760 teams across divisions —
+        # so request a large page to get the full roster in one call. Smaller
+        # leagues just return everything they have. The web picker then filters
+        # this list client-side (search), so there is no further paging.
+        url = f"{_ESPN_BASE}/{league_path}/teams?limit=1000"
         try:
             raw = self._get(url)
         except Exception as e:

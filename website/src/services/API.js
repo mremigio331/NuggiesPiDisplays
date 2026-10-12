@@ -93,6 +93,9 @@ export const getNWSLScoreboard = () => getSoccerScoreboard("nwsl");
 export const getEPLScoreboard = () => getSoccerScoreboard("epl");
 export const getLaLigaScoreboard = () => getSoccerScoreboard("laliga");
 export const getBundesligaScoreboard = () => getSoccerScoreboard("bundesliga");
+// Favourites feed — games involving favourited teams across every league.
+// Each game carries a `sport` key naming its league.
+export const getFavoritesScoreboard = () => handle(api.get("/sports/favorites/scoreboard"));
 export const getSportsSettings = () => handle(api.get("/sports/settings"));
 export const updateSportsSettings = (body) => handle(api.put("/sports/settings", body));
 export const getSportsNow = () => handle(api.get("/sports/now"));

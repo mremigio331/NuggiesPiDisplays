@@ -80,6 +80,7 @@ FastAPI backend serving the RGB LED matrix display system. Manages display proce
 | `GET` | `/sports/soccer/scoreboard` | Soccer matches (query: `?league=fifa.world`) |
 | `GET` | `/sports/soccer/game/{event_id}` | Soccer match details |
 | `GET` | `/sports/soccer/leagues` | Available soccer leagues |
+| `GET` | `/sports/favorites/scoreboard` | Games involving favourited teams across all leagues (each game tagged with its `sport`) |
 
 ### Stocks
 

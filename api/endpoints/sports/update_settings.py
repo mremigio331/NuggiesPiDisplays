@@ -11,10 +11,18 @@ from .soccer import SOCCER_SPORTS
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Extend this set when adding new sports. Football leagues (NFL, NCAAF, …) and
-# soccer leagues (NWSL, …) are each their own sport and come from
-# FOOTBALL_SPORTS / SOCCER_SPORTS.
+# Real leagues. Extend this set when adding new sports. Football leagues (NFL,
+# NCAAF, …) and soccer leagues (NWSL, …) are each their own sport and come from
+# FOOTBALL_SPORTS / SOCCER_SPORTS. This is also the set of leagues a team may be
+# favourited under — "favorites" is NOT a league, so it stays out of here.
 VALID_SPORTS = {"nba", "wnba", "mlb", "nhl", *FOOTBALL_SPORTS, *SOCCER_SPORTS}
+
+# The "favorites" pseudo-sport cycles games across every league that has
+# favourites; it is selectable as the active sport but is not a real league.
+FAVORITES_SPORT = "favorites"
+
+# Sports the display can be switched to — real leagues plus the favourites feed.
+SELECTABLE_SPORTS = VALID_SPORTS | {FAVORITES_SPORT}
 _VALID_DISPLAY_MODES = {"focus", "overview"}
 
 
@@ -38,9 +46,10 @@ async def update_sports_settings(body: SportsSettingsBody):
         return JSONResponse(
             {"error": "cycle_interval_seconds must be 5–120"}, status_code=422
         )
-    if body.sport is not None and body.sport not in VALID_SPORTS:
+    if body.sport is not None and body.sport not in SELECTABLE_SPORTS:
         return JSONResponse(
-            {"error": f"sport must be one of {sorted(VALID_SPORTS)}"}, status_code=422
+            {"error": f"sport must be one of {sorted(SELECTABLE_SPORTS)}"},
+            status_code=422,
         )
     if body.display_mode is not None and body.display_mode not in _VALID_DISPLAY_MODES:
         return JSONResponse(

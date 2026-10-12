@@ -40,6 +40,7 @@
 }
 
 .ml-settings-btn {
+  position: relative;
   background: none;
   border: none;
   color: #8da8c0;
@@ -80,6 +81,22 @@
 }
 .ml-dot.off {
   background: #666;
+}
+.ml-dot.update {
+  background: #f0a800;
+  box-shadow: 0 0 6px #f0a80088;
+}
+
+/* Amber "update available" badge pinned to the top-right of the ⚙ button. */
+.ml-update-badge {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f0a800;
+  box-shadow: 0 0 6px #f0a80088;
 }
 
 /* ── Scrollable content ────────────────────────────────────────── */

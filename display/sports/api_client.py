@@ -68,6 +68,15 @@ def get_soccer_game_details(event_id: str, sport: str = "nwsl") -> dict | None:
     return _get(f"/sports/{sport}/game/{event_id}")
 
 
+def get_favorites_scoreboard() -> dict | None:
+    """Aggregated scoreboard of games involving favourited teams.
+
+    Spans every league the user has favourites in; each game carries a `sport`
+    key naming its league so the display can route rendering per game.
+    """
+    return _get("/sports/favorites/scoreboard")
+
+
 def get_settings() -> dict | None:
     return _get("/sports/settings", timeout=5)
 

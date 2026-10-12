@@ -51,6 +51,29 @@ export default function SportsSettings() {
   });
   const teamOptions = teamsData?.teams ?? [];
 
+  // Team search — some leagues have hundreds of teams (college football returns
+  // ~760), so the picker is searchable. Reset the query when the league changes.
+  const [teamSearch, setTeamSearch] = React.useState("");
+  React.useEffect(() => setTeamSearch(""), [sport]);
+
+  // How many teams to show before asking the user to search. Favourites are
+  // always shown on top of this, so you can still unselect them.
+  const TEAM_LIST_CAP = 60;
+
+  const query = teamSearch.trim().toLowerCase();
+  const matchesQuery = (team) =>
+    !query ||
+    [team.name, team.short_name, team.abbreviation]
+      .filter(Boolean)
+      .some((v) => v.toLowerCase().includes(query));
+
+  const isFav = (team) => favTeams.includes(String(team.id));
+  // Favourites first (always visible), then everything matching the search.
+  const matchedTeams = teamOptions.filter((t) => matchesQuery(t) && !isFav(t));
+  const favoritedTeams = teamOptions.filter(isFav);
+  const shownTeams = [...favoritedTeams, ...matchedTeams.slice(0, TEAM_LIST_CAP)];
+  const hiddenCount = Math.max(matchedTeams.length - TEAM_LIST_CAP, 0);
+
   // Favourites are stored per sport, so toggling always writes into this league
   const favMut = useMutation({
     mutationFn: ({ teamId, favorited }) =>
@@ -89,23 +112,35 @@ export default function SportsSettings() {
         </button>
       </div>
 
-      {/* Sport selection */}
+      {/* Sport selection — a dropdown keeps all ten leagues from overflowing */}
       <div className="m-card">
         <div className="m-card-title">Sport</div>
-        <div className="m-btn-row" style={{ marginBottom: 8 }}>
+        <select
+          value={sport}
+          disabled={mut.isPending}
+          onChange={(e) => mut.mutate({ sport: e.target.value })}
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            background: "#1a1a1a",
+            color: "#fff",
+            border: "1px solid #444",
+            borderRadius: 6,
+            padding: "7px 10px",
+            fontSize: "0.9rem",
+            fontWeight: 700,
+            cursor: "pointer",
+            marginBottom: 8,
+          }}
+        >
           {[...SPORTS]
             .sort((a, b) => a.label.localeCompare(b.label))
             .map(({ key, label }) => (
-              <button
-                key={key}
-                className={`m-btn ${sport === key ? "m-btn-active" : "m-btn-neutral"}`}
-                disabled={mut.isPending}
-                onClick={() => mut.mutate({ sport: key })}
-              >
+              <option key={key} value={key}>
                 {label}
-              </button>
+              </option>
             ))}
-        </div>
+        </select>
         <div className="m-form-desc">
           Switches the matrix display and scoreboard between sports.
         </div>
@@ -165,27 +200,62 @@ export default function SportsSettings() {
           </div>
         )}
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {teamOptions.map((team) => (
-            <button
-              key={team.id}
-              className={`m-btn ${favTeams.includes(String(team.id)) ? "m-btn-active" : "m-btn-neutral"}`}
-              style={{ padding: "4px 8px", fontSize: "0.8rem", minWidth: 44 }}
-              disabled={favMut.isPending}
-              onClick={() => toggleTeam(team.id)}
-              title={team.name}
-            >
-              {team.abbreviation || team.short_name}
-            </button>
-          ))}
+        {!teamsLoading && teamOptions.length > 0 && (
+          <input
+            type="text"
+            value={teamSearch}
+            onChange={(e) => setTeamSearch(e.target.value)}
+            placeholder={`Search ${teamOptions.length} teams…`}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              background: "#1a1a1a",
+              color: "#fff",
+              border: "1px solid #444",
+              borderRadius: 6,
+              padding: "7px 10px",
+              fontSize: "0.85rem",
+              marginBottom: 8,
+            }}
+          />
+        )}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {shownTeams.map((team) => {
+            const selected = favTeams.includes(String(team.id));
+            return (
+              <button
+                key={team.id}
+                className={`m-btn ${selected ? "m-btn-active" : "m-btn-neutral"}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  textAlign: "left",
+                  padding: "8px 12px",
+                  fontSize: "0.85rem",
+                }}
+                disabled={favMut.isPending}
+                onClick={() => toggleTeam(team.id)}
+              >
+                <span>{team.name || team.short_name || team.abbreviation}</span>
+                <span style={{ opacity: 0.75, fontSize: "0.9em" }}>
+                  {selected ? "★" : team.abbreviation}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
-        {favTeams.length > 0 && (
-          <div style={{ marginTop: 8, color: "#aaa", fontSize: "0.75rem" }}>
-            Selected:{" "}
-            {favTeams
-              .map((id) => teamOptions.find((t) => String(t.id) === String(id))?.abbreviation ?? id)
-              .join(", ")}
+        {!teamsLoading && query && matchedTeams.length === 0 && favoritedTeams.length === 0 && (
+          <div style={{ color: "#888", fontSize: "0.8rem", marginTop: 6 }}>
+            No teams match “{teamSearch.trim()}”.
+          </div>
+        )}
+        {hiddenCount > 0 && (
+          <div style={{ color: "#888", fontSize: "0.75rem", marginTop: 6 }}>
+            {hiddenCount} more team{hiddenCount === 1 ? "" : "s"} — refine your search to narrow the
+            list.
           </div>
         )}
       </div>

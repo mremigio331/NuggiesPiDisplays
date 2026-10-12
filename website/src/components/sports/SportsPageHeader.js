@@ -40,6 +40,9 @@ export default function SportsPageHeader({ sport, isPending, onSportChange, onOp
           cursor: "pointer",
         }}
       >
+        {/* Favorites is a cross-league feed, pinned to the top; real leagues
+            follow alphabetically. */}
+        <option value="favorites">⭐ Favorites</option>
         {[...SPORT_OPTIONS]
           .sort((a, b) => a.label.localeCompare(b.label))
           .map(({ key, label }) => (
