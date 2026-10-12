@@ -17,8 +17,11 @@ from .common import _client, game_details_or_404, sort_games
 # sport key → {league: ESPN league slug, name: human label}
 SOCCER_SPORTS: dict[str, dict[str, str]] = {
     "nwsl": {"league": "usa.nwsl", "name": "NWSL"},
+    "epl": {"league": "eng.1", "name": "Premier League"},
+    "laliga": {"league": "esp.1", "name": "La Liga"},
+    "bundesliga": {"league": "ger.1", "name": "Bundesliga"},
     # Add more leagues here, e.g.:
-    # "epl": {"league": "eng.1", "name": "Premier League"},
+    # "seriea": {"league": "ita.1", "name": "Serie A"},
     # "wwc": {"league": "fifa.wwc", "name": "Women's World Cup"},
 }
 

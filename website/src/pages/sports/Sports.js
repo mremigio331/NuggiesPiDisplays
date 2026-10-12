@@ -9,6 +9,9 @@ import {
   getNFLScoreboard,
   getNCAAFScoreboard,
   getNWSLScoreboard,
+  getEPLScoreboard,
+  getLaLigaScoreboard,
+  getBundesligaScoreboard,
   getSportsSettings,
   updateSportsSettings,
   getSportsNow,
@@ -109,6 +112,25 @@ export default function Sports() {
       queryFn: getNWSLScoreboard,
       Card: SoccerGameCard,
       label: "NWSL",
+    },
+    // European soccer leagues all share SoccerGameCard — same payload shape
+    epl: {
+      queryKey: ["eplScoreboard"],
+      queryFn: getEPLScoreboard,
+      Card: SoccerGameCard,
+      label: "Premier League",
+    },
+    laliga: {
+      queryKey: ["laligaScoreboard"],
+      queryFn: getLaLigaScoreboard,
+      Card: SoccerGameCard,
+      label: "La Liga",
+    },
+    bundesliga: {
+      queryKey: ["bundesligaScoreboard"],
+      queryFn: getBundesligaScoreboard,
+      Card: SoccerGameCard,
+      label: "Bundesliga",
     },
   };
   const {

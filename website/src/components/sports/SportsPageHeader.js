@@ -10,6 +10,9 @@ const SPORT_OPTIONS = [
   { key: "ncaaf", label: "NCAA Football" },
   { key: "nhl", label: "NHL" },
   { key: "nwsl", label: "NWSL" },
+  { key: "epl", label: "Premier League" },
+  { key: "laliga", label: "La Liga" },
+  { key: "bundesliga", label: "Bundesliga" },
 ];
 
 export default function SportsPageHeader({ sport, isPending, onSportChange, onOpenSettings }) {

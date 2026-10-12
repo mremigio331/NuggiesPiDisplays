@@ -123,6 +123,9 @@ _SPORT_CONFIG: dict[str, dict] = {
         "render_overview": renderer.render_hockey_overview,
     },
     "nwsl": _soccer_config("NWSL", "nwsl"),
+    "epl": _soccer_config("EPL", "epl"),
+    "laliga": _soccer_config("La Liga", "laliga"),
+    "bundesliga": _soccer_config("Bundesliga", "bundesliga"),
     # More soccer leagues: add "<key>": _soccer_config("<Label>", "<key>") here
     # plus a matching entry in api/endpoints/sports/soccer.py SOCCER_SPORTS.
 }

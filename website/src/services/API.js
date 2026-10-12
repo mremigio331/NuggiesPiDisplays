@@ -90,6 +90,9 @@ export const getSoccerScoreboard = (sport = "nwsl") =>
   handle(api.get(`/sports/${sport}/scoreboard`));
 export const getSoccerLeagues = () => handle(api.get("/sports/soccer/leagues"));
 export const getNWSLScoreboard = () => getSoccerScoreboard("nwsl");
+export const getEPLScoreboard = () => getSoccerScoreboard("epl");
+export const getLaLigaScoreboard = () => getSoccerScoreboard("laliga");
+export const getBundesligaScoreboard = () => getSoccerScoreboard("bundesliga");
 export const getSportsSettings = () => handle(api.get("/sports/settings"));
 export const updateSportsSettings = (body) => handle(api.put("/sports/settings", body));
 export const getSportsNow = () => handle(api.get("/sports/now"));

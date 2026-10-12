@@ -82,7 +82,7 @@ you hold, and the display tells you what's happening:
 | How long you hold | What happens |
 |-------------------|--------------|
 | Let go before ~3 seconds | Nothing — treated as an accidental press |
-| Let go between ~3 and 10 seconds | **In Sports mode:** switches to the next sport (MLB → NBA → WNBA → NFL → NCAAF → NHL → NWSL). In other modes, nothing happens. |
+| Let go between ~3 and 10 seconds | **In Sports mode:** switches to the next sport (MLB → NBA → WNBA → NFL → NCAAF → NHL → NWSL → Premier League → La Liga → Bundesliga). In other modes, nothing happens. |
 | Keep holding past ~5 seconds | The screen shows **"FACTORY RESET — Hold Ns"** counting down |
 | Keep holding to 10 seconds | The screen shows **"FACTORY RESET"** and the device performs a full factory reset + WiFi wipe (see below) |
 

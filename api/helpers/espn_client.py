@@ -20,6 +20,9 @@ ESPN_LEAGUE_PATHS: dict[str, str] = {
     # Soccer leagues are each their own sport key → ESPN "soccer/<slug>" path.
     # Keep in sync with SOCCER_SPORTS in api/endpoints/sports/soccer.py.
     "nwsl": "soccer/usa.nwsl",
+    "epl": "soccer/eng.1",
+    "laliga": "soccer/esp.1",
+    "bundesliga": "soccer/ger.1",
 }
 
 # NHL penalty play detection. ESPN's play-by-play has no single "Penalty"
