@@ -14,6 +14,7 @@ _ALLOWED_LOGS = {
     "display": _LOG_DIR / "display.log",
     "service": _LOG_DIR / "service.log",
     "wifi": _LOG_DIR / "wifi_setup.log",
+    "update": _LOG_DIR / "update.log",
 }
 
 

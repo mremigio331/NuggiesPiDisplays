@@ -207,7 +207,9 @@ class SystemManager:
         # permissions, and ALWAYS reboot (a factory reset must come up fresh
         # regardless of dev/prod). It restarts the API service, which would kill
         # this process if setup.sh were a child — so detach it.
-        logger.info("Launching setup.sh --update --reboot (detached) for full re-setup...")
+        logger.info(
+            "Launching setup.sh --update --reboot (detached) for full re-setup..."
+        )
         self._run_setup_detached("--update", "--reboot")
 
     def factory_reset_wifi(self) -> None:
@@ -252,7 +254,9 @@ class SystemManager:
         # setup portal via the markers written above — and happens on dev too,
         # where a plain --update would not reboot and the reset would stall.
         # Detached so the service restart/reboot can't kill it.
-        logger.info("Launching setup.sh --update --reboot (detached) for full re-setup...")
+        logger.info(
+            "Launching setup.sh --update --reboot (detached) for full re-setup..."
+        )
         self._run_setup_detached("--update", "--reboot")
 
     def force_wifi_portal(self) -> None:

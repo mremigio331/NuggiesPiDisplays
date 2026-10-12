@@ -8,6 +8,7 @@ const LOG_LABELS = {
   display: "Display",
   service: "HTTP Access",
   wifi: "WiFi Setup",
+  update: "Update",
 };
 
 export default function Logs() {

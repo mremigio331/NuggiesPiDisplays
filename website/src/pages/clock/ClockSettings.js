@@ -4,7 +4,7 @@ import { useClockSettings } from "../../hooks/useClockSettings";
 import { useClockTimezones } from "../../hooks/useClockTimezones";
 import { useDebounce } from "../../hooks/useDebounce";
 import { useNotify } from "../../hooks/useNotify";
-import { updateClockSettings, getGeolocation } from "../../services/API";
+import { updateClockSettings } from "../../services/API";
 import SettingsHeader from "../../components/shared/SettingsHeader";
 import LoadingSpinner from "../../components/shared/LoadingSpinner";
 
@@ -18,6 +18,8 @@ const COLOR_PRESETS = [
   { label: "Magenta", value: "255,0,255", rgb: [255, 0, 255] },
   { label: "Orange", value: "255,165,0", rgb: [255, 165, 0] },
 ];
+
+const CYCLE_OPTIONS = [3, 5, 10, 15, 30, 60];
 
 function rgbToValue(rgb) {
   if (!Array.isArray(rgb)) return "255,255,255";
@@ -44,7 +46,6 @@ function useLiveClock(timezone, use24h = false) {
       timeZone: timezone,
       hour: "numeric",
       minute: "2-digit",
-      second: "2-digit",
       hour12: !use24h,
     });
   } catch {
@@ -52,7 +53,234 @@ function useLiveClock(timezone, use24h = false) {
   }
 }
 
-function TimezoneSelect({ value, onChange }) {
+function tzAbbr(date, timeZone) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour: "numeric",
+      timeZoneName: "short",
+    }).formatToParts(date);
+    const name = parts.find((p) => p.type === "timeZoneName")?.value;
+    // GMT+X style names aren't useful as a label; fall back to the city.
+    if (name && !/\d/.test(name)) return name;
+  } catch {
+    /* ignore */
+  }
+  return timeZone.split("/").pop().replace(/_/g, " ").slice(0, 4).toUpperCase();
+}
+
+// Preview of the physical display: focus = one zone (time / date / tz),
+// multi = up to three columns divided into thirds. Both follow list order.
+function ClockPreview({ timezones, mode, use24h, color }) {
+  const [now, setNow] = React.useState(() => new Date());
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!timezones || timezones.length === 0) {
+    return (
+      <div style={{ color: "#5a7a9a", fontSize: "0.85rem", padding: "12px 0" }}>
+        Add a timezone to preview.
+      </div>
+    );
+  }
+
+  const fmt = (tz) => {
+    try {
+      const s = now.toLocaleTimeString("en-US", {
+        timeZone: tz,
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: !use24h,
+      });
+      if (use24h) return { time: s, ampm: "" };
+      const [t, ap] = s.split(" ");
+      return { time: t, ampm: ap || "" };
+    } catch {
+      return { time: "--:--", ampm: "" };
+    }
+  };
+
+  if (mode === "multi") {
+    const page = timezones.slice(0, 3);
+    return (
+      <div style={{ display: "flex", width: "100%" }}>
+        {page.map((tz, i) => {
+          const { time, ampm } = fmt(tz);
+          return (
+            <div
+              key={tz}
+              style={{
+                flex: 1,
+                textAlign: "center",
+                borderLeft: i === 0 ? "none" : "1px solid #2a3a4a",
+                padding: "6px 2px",
+              }}
+            >
+              <div style={{ fontSize: "0.7rem", color: "#5a7a9a", textTransform: "uppercase" }}>
+                {tzAbbr(now, tz)}
+              </div>
+              <div
+                style={{
+                  fontSize: "1.3rem",
+                  fontWeight: 700,
+                  fontVariantNumeric: "tabular-nums",
+                  color,
+                  lineHeight: 1.1,
+                }}
+              >
+                {time}
+              </div>
+              {ampm && <div style={{ fontSize: "0.7rem", color }}>{ampm}</div>}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Focus: three stacked lines for the first zone (time / date / tz). Focus
+  // includes seconds (the board has room for them on the time line).
+  const tz = timezones[0];
+  const fmtFocus = (zone) => {
+    try {
+      const s = now.toLocaleTimeString("en-US", {
+        timeZone: zone,
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: !use24h,
+      });
+      if (use24h) return { time: s, ampm: "" };
+      const [t, ap] = s.split(" ");
+      return { time: t, ampm: ap || "" };
+    } catch {
+      return { time: "--:--:--", ampm: "" };
+    }
+  };
+  const { time, ampm } = fmtFocus(tz);
+  let dateStr = "";
+  try {
+    dateStr = now.toLocaleDateString("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      month: "short",
+      day: "2-digit",
+    });
+  } catch {
+    dateStr = "";
+  }
+  return (
+    <div style={{ textAlign: "center" }}>
+      <div
+        style={{
+          fontSize: "2rem",
+          fontWeight: 700,
+          fontVariantNumeric: "tabular-nums",
+          color,
+          letterSpacing: 2,
+        }}
+      >
+        {time}
+        {ampm && <span style={{ fontSize: "1rem", marginLeft: 4 }}>{ampm}</span>}
+      </div>
+      <div style={{ fontSize: "0.8rem", color: "#5a7a9a", marginTop: 2 }}>{dateStr}</div>
+      <div
+        style={{
+          fontSize: "0.85rem",
+          color: "#7eb8f7",
+          marginTop: 2,
+          textTransform: "uppercase",
+          letterSpacing: 1,
+        }}
+      >
+        {tzAbbr(now, tz)}
+      </div>
+    </div>
+  );
+}
+
+function TimezoneRow({ tz, index, total, use24h, onRemove, onMove }) {
+  const liveTime = useLiveClock(tz, use24h);
+  const label = tz.split("/").pop().replace(/_/g, " ");
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 8,
+        padding: "8px 12px",
+        background: "#0d1922",
+        border: "1px solid #2a3a4a",
+        borderRadius: 8,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <button
+            className="m-btn m-btn-neutral"
+            style={{ fontSize: "0.6rem", padding: "0 6px", height: 16, lineHeight: 1 }}
+            onClick={() => onMove(index, -1)}
+            disabled={index === 0}
+            aria-label={`Move ${label} up`}
+          >
+            ▲
+          </button>
+          <button
+            className="m-btn m-btn-neutral"
+            style={{ fontSize: "0.6rem", padding: "0 6px", height: 16, lineHeight: 1 }}
+            onClick={() => onMove(index, 1)}
+            disabled={index === total - 1}
+            aria-label={`Move ${label} down`}
+          >
+            ▼
+          </button>
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: "0.88rem",
+              color: "#e8f0f8",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {label}
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "#5a7a9a" }}>{tz}</div>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span
+          style={{
+            fontSize: "0.95rem",
+            fontWeight: 600,
+            fontVariantNumeric: "tabular-nums",
+            color: "#7eb8f7",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {liveTime}
+        </span>
+        <button
+          className="m-btn m-btn-neutral"
+          style={{ fontSize: "0.75rem", padding: "4px 10px" }}
+          onClick={onRemove}
+          disabled={total <= 1}
+          title={total <= 1 ? "Keep at least one timezone" : "Remove"}
+          aria-label={`Remove ${label}`}
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TimezoneSelect({ selected, onAdd }) {
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
   const debouncedSearch = useDebounce(search);
@@ -67,9 +295,6 @@ function TimezoneSelect({ value, onChange }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ fontSize: "0.8rem", color: "#5a7a9a" }}>
-        Current: <span style={{ fontWeight: 600, color: "#e8f0f8" }}>{value || "—"}</span>
-      </div>
       <input
         type="text"
         value={search}
@@ -98,23 +323,46 @@ function TimezoneSelect({ value, onChange }) {
           </div>
         )}
         {!isLoading &&
-          timezones.map((tz) => (
-            <div
-              key={tz}
-              onClick={() => onChange(tz)}
-              style={{
-                padding: "7px 12px",
-                cursor: "pointer",
-                fontSize: "0.88rem",
-                background: tz === value ? "#1a3a5a" : "transparent",
-                color: tz === value ? "#7eb8f7" : "#c8d8e8",
-                borderBottom: "1px solid #1a2a3a",
-                userSelect: "none",
-              }}
-            >
-              {tz}
-            </div>
-          ))}
+          timezones.map((tz) => {
+            const already = selected.includes(tz);
+            return (
+              <div
+                key={tz}
+                onClick={() => !already && onAdd(tz)}
+                style={{
+                  padding: "6px 8px 6px 12px",
+                  cursor: already ? "default" : "pointer",
+                  fontSize: "0.88rem",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                  background: already ? "#132231" : "transparent",
+                  color: already ? "#5a7a9a" : "#c8d8e8",
+                  borderBottom: "1px solid #1a2a3a",
+                  userSelect: "none",
+                }}
+              >
+                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {tz}
+                </span>
+                {already ? (
+                  <span style={{ fontSize: "0.75rem", whiteSpace: "nowrap" }}>✓ Added</span>
+                ) : (
+                  <button
+                    className="m-btn m-btn-neutral"
+                    style={{ fontSize: "0.75rem", padding: "3px 10px", whiteSpace: "nowrap" }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAdd(tz);
+                    }}
+                  >
+                    + Add
+                  </button>
+                )}
+              </div>
+            );
+          })}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <button
@@ -146,26 +394,17 @@ export default function ClockSettings() {
   const { error: notifyError } = useNotify();
   const { data: settings, isLoading } = useClockSettings();
 
-  const [timezone, setTimezone] = React.useState("");
-  const [timezoneAuto, setTimezoneAuto] = React.useState(true);
+  const [timezones, setTimezones] = React.useState([]);
+  const [displayMode, setDisplayMode] = React.useState("focus"); // "focus" | "multi"
+  const [cycleSeconds, setCycleSeconds] = React.useState(5);
   const [colorPreset, setColorPreset] = React.useState(COLOR_PRESETS[0]);
   const [use24h, setUse24h] = React.useState(false);
   const [saveStatus, setSaveStatus] = React.useState(null); // null | "saving" | "saved"
 
-  // Refs so the debounced callback always reads the latest values
-  const tzRef = React.useRef(timezone);
   const colorRef = React.useRef(colorPreset);
   const use24hRef = React.useRef(use24h);
-  const autoRef = React.useRef(timezoneAuto);
   const timerRef = React.useRef(null);
 
-  React.useEffect(() => {
-    autoRef.current = timezoneAuto;
-  }, [timezoneAuto]);
-
-  React.useEffect(() => {
-    tzRef.current = timezone;
-  }, [timezone]);
   React.useEffect(() => {
     colorRef.current = colorPreset;
   }, [colorPreset]);
@@ -175,8 +414,13 @@ export default function ClockSettings() {
 
   React.useEffect(() => {
     if (settings) {
-      setTimezone(settings.timezone ?? "America/New_York");
-      setTimezoneAuto(settings.timezone_auto ?? true);
+      setTimezones(
+        Array.isArray(settings.timezones) && settings.timezones.length
+          ? settings.timezones
+          : ["America/New_York"]
+      );
+      setDisplayMode(settings.display_mode === "multi" ? "multi" : "focus");
+      setCycleSeconds(settings.cycle_seconds ?? 5);
       setColorPreset(findPreset(settings.color));
       setUse24h(settings.use_24h ?? false);
     }
@@ -195,86 +439,68 @@ export default function ClockSettings() {
     },
   });
 
-  // Debounce saves: preview updates instantly, API call fires 500 ms after the last change
-  const scheduleSave = React.useCallback(() => {
+  const save = (payload) => {
+    setSaveStatus("saving");
+    saveMut.mutate(payload);
+  };
+
+  // Debounced save for the color/format controls so dragging a select doesn't
+  // fire a request per keystroke.
+  const scheduleDisplaySave = React.useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     setSaveStatus("saving");
     timerRef.current = setTimeout(() => {
-      const payload = {
+      saveMut.mutate({
         color: valueToRgb(colorRef.current.value),
         use_24h: use24hRef.current,
-      };
-      // Only send the timezone when the user is in manual mode. Sending it in
-      // auto mode would flip timezone_auto off on the server for any save
-      // (e.g. a color change).
-      if (!autoRef.current) payload.timezone = tzRef.current;
-      saveMut.mutate(payload);
+      });
     }, 500);
-  }, []);
+  }, [saveMut]);
 
-  const handleTimezone = (tz) => {
-    setTimezone(tz);
-    tzRef.current = tz;
-    scheduleSave();
+  const handleMode = (nextMode) => {
+    setDisplayMode(nextMode);
+    save({ display_mode: nextMode });
   };
+
+  const handleCycle = (secs) => {
+    setCycleSeconds(secs);
+    save({ cycle_seconds: secs });
+  };
+
+  const addTimezone = (tz) => {
+    if (!tz || timezones.includes(tz)) return;
+    const next = [...timezones, tz];
+    setTimezones(next);
+    save({ timezones: next });
+  };
+
+  const removeTimezone = (tz) => {
+    if (timezones.length <= 1) return; // keep at least one
+    const next = timezones.filter((z) => z !== tz);
+    setTimezones(next);
+    save({ timezones: next });
+  };
+
+  const moveTimezone = (index, delta) => {
+    const target = index + delta;
+    if (target < 0 || target >= timezones.length) return;
+    const next = [...timezones];
+    [next[index], next[target]] = [next[target], next[index]];
+    setTimezones(next);
+    save({ timezones: next });
+  };
+
   const handleColor = (preset) => {
     setColorPreset(preset);
     colorRef.current = preset;
-    scheduleSave();
+    scheduleDisplaySave();
   };
   const handle24h = (checked) => {
     setUse24h(checked);
     use24hRef.current = checked;
-    scheduleSave();
+    scheduleDisplaySave();
   };
 
-  const [detecting, setDetecting] = React.useState(false);
-
-  // Auto / Manual toggle. Switching to auto asks the server to re-detect from
-  // IP immediately and returns the resolved timezone.
-  const setAutoMode = (auto) => {
-    setTimezoneAuto(auto);
-    autoRef.current = auto;
-    if (auto) {
-      setSaveStatus("saving");
-      setDetecting(true);
-      saveMut.mutate(
-        { timezone_auto: true },
-        {
-          onSettled: () => setDetecting(false),
-          onSuccess: (clock) => {
-            if (clock?.timezone) {
-              setTimezone(clock.timezone);
-              tzRef.current = clock.timezone;
-            }
-          },
-        }
-      );
-    } else {
-      // Persist the current timezone as a manual pick (turns auto off server-side).
-      saveMut.mutate({ timezone: tzRef.current, timezone_auto: false });
-    }
-  };
-
-  // One-shot "detect now" used in manual mode: applies the detected zone as a
-  // manual selection without leaving manual mode.
-  const handleDetectTimezone = async () => {
-    setDetecting(true);
-    try {
-      const loc = await getGeolocation();
-      if (loc?.timezone) {
-        handleTimezone(loc.timezone);
-      } else {
-        notifyError(new Error("Couldn't detect a timezone from your network"));
-      }
-    } catch (err) {
-      notifyError(err);
-    } finally {
-      setDetecting(false);
-    }
-  };
-
-  const liveTime = useLiveClock(timezone || "UTC", use24h);
   const previewHex = "#" + colorPreset.rgb.map((v) => v.toString(16).padStart(2, "0")).join("");
 
   if (isLoading) return <LoadingSpinner />;
@@ -302,67 +528,81 @@ export default function ClockSettings() {
       {/* Live preview */}
       <div className="m-card" style={{ textAlign: "center" }}>
         <div className="m-card-title">Preview</div>
-        <div
-          style={{
-            fontSize: "2rem",
-            fontWeight: 700,
-            fontVariantNumeric: "tabular-nums",
-            color: previewHex,
-            letterSpacing: 2,
-          }}
-        >
-          {liveTime}
-        </div>
-        <div style={{ fontSize: "0.8rem", color: "#5a7a9a", marginTop: 4 }}>{timezone}</div>
+        <ClockPreview timezones={timezones} mode={displayMode} use24h={use24h} color={previewHex} />
+        {timezones.length > (displayMode === "multi" ? 3 : 1) && (
+          <div style={{ fontSize: "0.75rem", color: "#5a7a9a", marginTop: 8 }}>
+            Cycles through {timezones.length} timezones every {cycleSeconds}s
+          </div>
+        )}
       </div>
 
-      {/* Timezone */}
+      {/* View mode */}
       <div className="m-card">
-        <div className="m-card-title">Timezone</div>
-
-        <div className="m-btn-row" style={{ marginBottom: "1rem" }}>
+        <div className="m-card-title">View</div>
+        <div className="m-btn-row">
           <button
-            className={`m-btn ${timezoneAuto ? "m-btn-active" : "m-btn-neutral"}`}
-            onClick={() => setAutoMode(true)}
-            disabled={detecting}
+            className={`m-btn ${displayMode === "focus" ? "m-btn-active" : "m-btn-neutral"}`}
+            onClick={() => handleMode("focus")}
           >
-            Auto-detect
+            Focus
           </button>
           <button
-            className={`m-btn ${!timezoneAuto ? "m-btn-active" : "m-btn-neutral"}`}
-            onClick={() => setAutoMode(false)}
-            disabled={detecting}
+            className={`m-btn ${displayMode === "multi" ? "m-btn-active" : "m-btn-neutral"}`}
+            onClick={() => handleMode("multi")}
           >
-            Manual
+            Multi
           </button>
         </div>
+        <div style={{ color: "#5a7a9a", fontSize: "0.8rem", marginTop: 8 }}>
+          {displayMode === "multi"
+            ? "Shows up to three timezones at a time, divided into thirds, paging down your list."
+            : "Shows one timezone at a time, cycling down your list."}
+        </div>
+      </div>
 
-        {timezoneAuto ? (
-          <div style={{ color: "#5a7a9a", fontSize: "0.85rem" }}>
-            {detecting ? (
-              "Detecting timezone from your network…"
-            ) : (
-              <>
-                Timezone is detected automatically from your network.
-                {timezone && <span style={{ color: "#29d66e" }}> Currently: {timezone}</span>}
-              </>
-            )}
-          </div>
-        ) : (
-          <>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-              <button
-                className="m-btn m-btn-neutral"
-                style={{ fontSize: "0.75rem", padding: "4px 10px" }}
-                onClick={handleDetectTimezone}
-                disabled={detecting}
-              >
-                {detecting ? "Detecting…" : "Detect my timezone"}
-              </button>
-            </div>
-            <TimezoneSelect value={timezone} onChange={handleTimezone} />
-          </>
-        )}
+      {/* Timezones */}
+      <div className="m-card">
+        <div className="m-card-title">Timezones</div>
+        <div style={{ color: "#5a7a9a", fontSize: "0.8rem", marginBottom: 10 }}>
+          The display goes down this list in order. Use ▲▼ to reorder.
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+          {timezones.map((tz, i) => (
+            <TimezoneRow
+              key={tz}
+              tz={tz}
+              index={i}
+              total={timezones.length}
+              use24h={use24h}
+              onRemove={() => removeTimezone(tz)}
+              onMove={moveTimezone}
+            />
+          ))}
+        </div>
+
+        <div style={{ fontSize: "0.85rem", color: "#c8d8e8", marginBottom: 6 }}>Add a timezone</div>
+        <TimezoneSelect selected={timezones} onAdd={addTimezone} />
+      </div>
+
+      {/* Cycle interval */}
+      <div className="m-card">
+        <div className="m-card-title">Cycle</div>
+        <div className="m-toggle-row">
+          <span className="m-label">Seconds per screen</span>
+          <select
+            className="m-select"
+            style={{ width: "auto" }}
+            value={cycleSeconds}
+            onChange={(e) => handleCycle(Number(e.target.value))}
+          >
+            {CYCLE_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}s
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Color & format */}

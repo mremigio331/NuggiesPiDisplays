@@ -709,6 +709,14 @@ run_update() {
     echo " Nuggies Pi Displays — update [$(date '+%Y-%m-%d %H:%M:%S')]"
     echo "========================================="
 
+    # Failure sentinel via EXIT trap: if run_update exits before writing the
+    # COMPLETE sentinel (any `exit 1`, or a `set -e` abort on a failed step),
+    # emit a FAILED marker so the web UI's update modal can show "update failed"
+    # instead of spinning on "updating" forever. _UPDATE_DONE is set to 1 right
+    # after the COMPLETE sentinel so the trap stays quiet on the success path.
+    _UPDATE_DONE=0
+    trap '[[ "$_UPDATE_DONE" == "1" ]] || echo "=== NUGGIES UPDATE FAILED ==="' EXIT
+
     echo "--- Pulling latest code..."
     # A plain `git pull` aborts if the tree has drifted — setup.sh itself
     # rewrites tracked file modes (chmod/chown) and a prior root-level pull can
@@ -778,6 +786,13 @@ run_update() {
 
     echo ""
     echo "[$(date '+%H:%M:%S')] Update complete — applying to running processes."
+    # Completion sentinel: written BEFORE any reboot/restart so it is always in
+    # the log regardless of path. The web UI's update modal watches for this to
+    # tell the user the update finished and the modal is safe to close. If a
+    # reboot follows, the connection drops (which the modal already treats as
+    # "rebooting"); if not (dev / no-reboot), this is the clean "done" signal.
+    echo "=== NUGGIES UPDATE COMPLETE ==="
+    _UPDATE_DONE=1  # suppress the EXIT-trap failure sentinel on the success path
 
     # Forced reboot (passed by callers that MUST come up fresh regardless of
     # environment — e.g. factory reset, which wiped settings/WiFi and needs to

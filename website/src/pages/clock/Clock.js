@@ -44,14 +44,46 @@ function useLiveClock(timezone, use24h = false) {
   }
 }
 
+function ClockRow({ tz, use24h, color }) {
+  const liveTime = useLiveClock(tz, use24h);
+  const label = tz.split("/").pop().replace(/_/g, " ");
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
+      }}
+    >
+      <span style={{ fontSize: "0.9rem", color: "#5a7a9a" }}>{label}</span>
+      <span
+        style={{
+          fontSize: "1.4rem",
+          fontWeight: 700,
+          fontVariantNumeric: "tabular-nums",
+          color,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {liveTime}
+      </span>
+    </div>
+  );
+}
+
 export default function Clock() {
   const navigate = useNavigate();
   const { data: settings, isLoading } = useClockSettings();
 
-  const timezone = settings?.timezone ?? "America/New_York";
   const use24h = settings?.use_24h ?? false;
   const colorHex = settings ? findPresetHex(settings.color) : "#ffffff";
-  const liveTime = useLiveClock(timezone, use24h);
+  const timezones =
+    Array.isArray(settings?.timezones) && settings.timezones.length
+      ? settings.timezones
+      : ["America/New_York"];
+  const displayMode = settings?.display_mode === "multi" ? "multi" : "focus";
+  const primaryTime = useLiveClock(timezones[0], use24h);
 
   return (
     <div>
@@ -91,22 +123,38 @@ export default function Clock() {
         </div>
       ) : (
         <div className="m-card" style={{ textAlign: "center", padding: "32px 18px" }}>
-          <div
-            style={{
-              fontSize: "2.8rem",
-              fontWeight: 700,
-              fontVariantNumeric: "tabular-nums",
-              color: colorHex,
-              letterSpacing: 3,
-              lineHeight: 1,
-            }}
-          >
-            {liveTime}
+          {timezones.length > 1 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {timezones.map((tz) => (
+                <ClockRow key={tz} tz={tz} use24h={use24h} color={colorHex} />
+              ))}
+            </div>
+          ) : (
+            <>
+              <div
+                style={{
+                  fontSize: "2.8rem",
+                  fontWeight: 700,
+                  fontVariantNumeric: "tabular-nums",
+                  color: colorHex,
+                  letterSpacing: 3,
+                  lineHeight: 1,
+                }}
+              >
+                {primaryTime}
+              </div>
+              <div style={{ fontSize: "0.85rem", color: "#5a7a9a", marginTop: 10 }}>
+                {timezones[0]}
+              </div>
+            </>
+          )}
+          <div style={{ fontSize: "0.75rem", color: "#5a7a9a", marginTop: 12 }}>
+            {displayMode === "multi" ? "Multi view" : "Focus view"}
+            {timezones.length > 1 && ` · ${timezones.length} timezones`}
           </div>
-          <div style={{ fontSize: "0.85rem", color: "#5a7a9a", marginTop: 10 }}>{timezone}</div>
           <button
             className="m-btn m-btn-neutral"
-            style={{ marginTop: 20, width: "100%" }}
+            style={{ marginTop: 16, width: "100%" }}
             onClick={() => navigate("/clock/settings")}
           >
             ⚙️ Settings

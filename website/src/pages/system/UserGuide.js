@@ -8,10 +8,7 @@ import { getUserGuide } from "../../services/API";
 // bundle lean rather than pulling in a full markdown library that would need to
 // npm-install on every Pi update. HTML is still escaped defensively.
 function escapeHtml(s) {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 // Inline formatting: bold, inline code, links. Operates on already-escaped text.
@@ -42,7 +39,9 @@ function markdownToHtml(md) {
 
   const flushParagraph = (buf) => {
     if (buf.length) {
-      out.push(`<p style="line-height:1.7;margin:0.6em 0">${renderInline(escapeHtml(buf.join(" ")))}</p>`);
+      out.push(
+        `<p style="line-height:1.7;margin:0.6em 0">${renderInline(escapeHtml(buf.join(" ")))}</p>`
+      );
       buf.length = 0;
     }
   };
@@ -90,7 +89,11 @@ function markdownToHtml(md) {
     }
 
     // Table (header row | --- | rows)
-    if (/^\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+    if (
+      /^\|.*\|\s*$/.test(line) &&
+      i + 1 < lines.length &&
+      /^\|[\s:|-]+\|\s*$/.test(lines[i + 1])
+    ) {
       flushParagraph(para);
       const parseRow = (row) =>
         row
@@ -195,10 +198,7 @@ export default function UserGuide() {
     staleTime: 3600000,
   });
 
-  const html = React.useMemo(
-    () => (data?.markdown ? markdownToHtml(data.markdown) : ""),
-    [data]
-  );
+  const html = React.useMemo(() => (data?.markdown ? markdownToHtml(data.markdown) : ""), [data]);
 
   return (
     <div>

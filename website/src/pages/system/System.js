@@ -264,6 +264,8 @@ function UpdateSection({
 }
 
 const UPDATE_LOG_START = "=== NUGGIES UPDATE START ===";
+const UPDATE_LOG_COMPLETE = "=== NUGGIES UPDATE COMPLETE ===";
+const UPDATE_LOG_FAILED = "=== NUGGIES UPDATE FAILED ===";
 
 // Live progress view for an in-flight update. Polls /system/update-log on an
 // interval, appending each new chunk. It is reconnect-safe by design: the update
@@ -272,8 +274,10 @@ const UPDATE_LOG_START = "=== NUGGIES UPDATE START ===";
 // until the content indicates completion/failure or the user closes the modal.
 function UpdateProgressModal({ visible, onClose }) {
   const [lines, setLines] = React.useState("");
-  const [phase, setPhase] = React.useState("starting"); // starting | running | reconnecting | failed | rebooting
+  // starting | running | reconnecting | failed | rebooting | complete
+  const [phase, setPhase] = React.useState("starting");
   const offsetRef = React.useRef(0);
+  const textRef = React.useRef(""); // full accumulated log, for classification
   const preRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -282,11 +286,26 @@ function UpdateProgressModal({ visible, onClose }) {
       setLines("");
       setPhase("starting");
       offsetRef.current = 0;
+      textRef.current = "";
       return undefined;
     }
 
     let cancelled = false;
     let timer = null;
+
+    // Derive phase from the full accumulated log. A terminal phase
+    // (complete/failed) is sticky — once reached we stop polling.
+    const classify = (all) => {
+      if (all.includes(UPDATE_LOG_FAILED) || all.includes("a password is required")) {
+        return "failed";
+      }
+      if (all.includes(UPDATE_LOG_COMPLETE)) return "complete";
+      if (/--reboot requested|Rebooting to apply update|Rebooting Pi/i.test(all)) {
+        return "rebooting";
+      }
+      if (all.includes(UPDATE_LOG_START)) return "running";
+      return "starting";
+    };
 
     const poll = async () => {
       try {
@@ -295,30 +314,30 @@ function UpdateProgressModal({ visible, onClose }) {
 
         if (res.exists && res.content) {
           offsetRef.current = res.offset;
-          setLines((prev) => prev + res.content);
+          textRef.current += res.content;
+          setLines(textRef.current);
         } else if (res.exists) {
           offsetRef.current = res.offset;
         }
 
-        // Classify progress from the accumulated content.
-        setLines((prev) => {
-          const all = prev;
-          if (all.includes("a password is required")) {
-            setPhase("failed");
-          } else if (/Rebooting to apply update|Rebooting Pi/i.test(all)) {
-            setPhase("rebooting");
-          } else if (res.started || all.includes(UPDATE_LOG_START)) {
-            setPhase((p) => (p === "reconnecting" ? "running" : p === "starting" ? "running" : p));
-          }
-          return prev;
-        });
+        const next = classify(textRef.current);
+        setPhase(next);
+
+        // Stop polling on a terminal state; otherwise keep going.
+        if (next === "complete" || next === "failed") {
+          return;
+        }
       } catch (e) {
         // Poll failed — the API is almost certainly restarting/rebooting as part
-        // of the update. Treat as "reconnecting", keep trying.
-        if (!cancelled) setPhase((p) => (p === "failed" ? p : "reconnecting"));
-      } finally {
-        if (!cancelled) timer = setTimeout(poll, 1200);
+        // of the update. Treat as "reconnecting" unless we already saw a
+        // terminal/rebooting state, and keep trying.
+        if (!cancelled) {
+          setPhase((p) =>
+            p === "failed" || p === "complete" || p === "rebooting" ? p : "reconnecting"
+          );
+        }
       }
+      if (!cancelled) timer = setTimeout(poll, 1200);
     };
 
     poll();
@@ -341,17 +360,23 @@ function UpdateProgressModal({ visible, onClose }) {
       text: "Update applied — Pi is rebooting. This page will reconnect shortly.",
       color: "#5cb85c",
     },
-    failed: { text: "Update failed to start. See the log below.", color: "#e05050" },
+    complete: {
+      text: "✓ Update complete — you can close this window.",
+      color: "#5cb85c",
+    },
+    failed: { text: "Update failed. See the log below.", color: "#e05050" },
   }[phase];
+
+  const done = phase === "complete" || phase === "failed";
 
   return (
     <Modal
       visible={visible}
       onDismiss={onClose}
-      header="Updating"
+      header={done ? (phase === "complete" ? "Update Complete" : "Update Failed") : "Updating"}
       footer={
         <div className="m-btn-row">
-          <button className="m-btn m-btn-neutral" onClick={onClose}>
+          <button className={`m-btn ${done ? "m-btn-primary" : "m-btn-neutral"}`} onClick={onClose}>
             Close
           </button>
         </div>

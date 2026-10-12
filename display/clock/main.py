@@ -74,6 +74,12 @@ def run():
 
     threading.Thread(target=_ws_thread, daemon=True).start()
 
+    # The display goes down the `timezones` list. In focus mode it advances one
+    # zone per step; in multi mode it advances one page (of three) per step.
+    # A step lasts `cycle_seconds`.
+    step_index = 0
+    last_step_flip = time.monotonic()
+
     while True:
         # Full-screen overlay (factory-reset countdown / "Factory Reset") takes
         # over the whole matrix regardless of display mode.
@@ -83,19 +89,65 @@ def run():
             continue
 
         with _lock:
-            tz_name = _settings.get("timezone", "UTC")
+            zones = list(_settings.get("timezones", []))
+            display_mode = _settings.get("display_mode", "focus")
+            cycle_seconds = _settings.get("cycle_seconds", 5)
             color = tuple(_settings.get("color", [255, 255, 255]))
             use_24h = _settings.get("use_24h", False)
 
+        if not zones:
+            zones = ["UTC"]
         try:
-            tz = ZoneInfo(tz_name)
-        except Exception:
-            tz = ZoneInfo("UTC")
+            cycle_seconds = max(1, int(cycle_seconds))
+        except (TypeError, ValueError):
+            cycle_seconds = 5
 
-        current = datetime.now(tz)
-        renderer.render(canvas, current, color, use_24h)
+        # Build the list of steps for the current mode. In focus mode each step
+        # is a single zone; in multi mode each step is a slice of up to three.
+        if display_mode == "multi":
+            steps = [zones[i : i + 3] for i in range(0, len(zones), 3)]
+        else:
+            steps = [[z] for z in zones]
+        if not steps:
+            steps = [["UTC"]]
+
+        # Advance the step on the cycle timer, wrapping around the list.
+        now = time.monotonic()
+        if now - last_step_flip >= cycle_seconds:
+            step_index += 1
+            last_step_flip = now
+        if step_index >= len(steps):
+            step_index = 0
+        current_zones = steps[step_index]
+
+        if display_mode == "multi":
+            renderer.render_multi(canvas, _entries_for(current_zones), color, use_24h)
+        else:
+            tz_name = current_zones[0]
+            try:
+                tz = ZoneInfo(tz_name)
+            except Exception:
+                tz_name, tz = "UTC", ZoneInfo("UTC")
+            renderer.render(canvas, datetime.now(tz), color, use_24h, tz_name)
+
         canvas = matrix.SwapOnVSync(canvas)
         time.sleep(1)
+
+
+def _entries_for(zone_names: list) -> list:
+    """Return (abbr, datetime) tuples for each valid zone, in list order."""
+    entries = []
+    for name in zone_names:
+        try:
+            tz = ZoneInfo(name)
+        except Exception:
+            continue
+        dt = datetime.now(tz)
+        abbr = dt.strftime("%Z")
+        if not abbr or any(ch.isdigit() for ch in abbr):
+            abbr = name.split("/")[-1][:4].upper()
+        entries.append((abbr, dt))
+    return entries
 
 
 if __name__ == "__main__":

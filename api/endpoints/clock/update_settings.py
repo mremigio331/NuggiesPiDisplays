@@ -11,24 +11,61 @@ router = APIRouter()
 
 
 class ClockSettings(BaseModel):
-    timezone: Optional[str] = None
-    timezone_auto: Optional[bool] = None
+    # Ordered list of IANA timezones to show. The display goes down this list.
+    timezones: Optional[List[str]] = None
+    # "focus" shows one timezone at a time (big time + date + tz abbr).
+    # "multi" shows up to three at a time, divided into thirds.
+    display_mode: Optional[str] = None
+    # Seconds each timezone (focus) or page of three (multi) stays on screen.
+    cycle_seconds: Optional[int] = None
     color: Optional[List[int]] = None
     use_24h: Optional[bool] = None
+
+
+def _validate_timezones(zones) -> List[str]:
+    from zoneinfo import ZoneInfo
+
+    if not isinstance(zones, list) or len(zones) == 0:
+        raise HTTPException(
+            status_code=422, detail="timezones must be a non-empty list"
+        )
+    # De-duplicate while preserving order and validate each IANA name.
+    seen = set()
+    cleaned = []
+    for z in zones:
+        if not isinstance(z, str) or z in seen:
+            continue
+        try:
+            ZoneInfo(z)
+        except Exception:
+            raise HTTPException(status_code=422, detail=f"Invalid timezone: {z}")
+        seen.add(z)
+        cleaned.append(z)
+    if not cleaned:
+        raise HTTPException(
+            status_code=422, detail="timezones must contain at least one valid zone"
+        )
+    return cleaned
 
 
 @router.put("/settings")
 async def update_settings(body: ClockSettings):
     updates = body.model_dump(exclude_none=True)
 
-    if "timezone" in updates:
-        try:
-            from zoneinfo import ZoneInfo
+    if "timezones" in updates:
+        updates["timezones"] = _validate_timezones(updates["timezones"])
 
-            ZoneInfo(updates["timezone"])
-        except Exception:
+    if "display_mode" in updates and updates["display_mode"] not in ("focus", "multi"):
+        raise HTTPException(
+            status_code=422, detail="display_mode must be 'focus' or 'multi'"
+        )
+
+    if "cycle_seconds" in updates:
+        cs = updates["cycle_seconds"]
+        if not isinstance(cs, int) or not (1 <= cs <= 3600):
             raise HTTPException(
-                status_code=422, detail=f"Invalid timezone: {updates['timezone']}"
+                status_code=422,
+                detail="cycle_seconds must be an int between 1 and 3600",
             )
 
     if "color" in updates:
@@ -38,27 +75,12 @@ async def update_settings(body: ClockSettings):
                 status_code=422, detail="color must be [r, g, b] with values 0-255"
             )
 
-    # A manual timezone pick turns auto-detect off, unless the caller is
-    # explicitly setting timezone_auto in the same request.
-    if "timezone" in updates and "timezone_auto" not in updates:
-        updates["timezone_auto"] = False
-
     settings = read_settings()
     clock = settings.get("clock", {})
     clock.update(updates)
     settings["clock"] = clock
     write_settings(settings)
     logger.info(f"Clock settings updated: {list(updates.keys())}")
-
-    # If the user just switched auto-detect on (without also setting a manual
-    # timezone), resolve the timezone from IP right away so the toggle takes
-    # effect immediately instead of waiting for the next boot.
-    if updates.get("timezone_auto") is True and "timezone" not in updates:
-        from .auto_timezone import auto_detect_timezone
-
-        await auto_detect_timezone()
-        clock = read_settings().get("clock", {})
-        return JSONResponse(clock)
 
     await manager.broadcast(clock)
     return JSONResponse(clock)
