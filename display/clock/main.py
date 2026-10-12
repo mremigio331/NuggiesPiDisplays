@@ -93,7 +93,10 @@ def run():
             display_mode = _settings.get("display_mode", "focus")
             cycle_seconds = _settings.get("cycle_seconds", 5)
             color = tuple(_settings.get("color", [255, 255, 255]))
+            color_mode = _settings.get("color_mode", "solid")
             use_24h = _settings.get("use_24h", False)
+
+        rainbow = color_mode == "rainbow"
 
         if not zones:
             zones = ["UTC"]
@@ -120,18 +123,26 @@ def run():
             step_index = 0
         current_zones = steps[step_index]
 
+        # Rainbow phase advances with wall-clock time so hues slide right at a
+        # steady rate regardless of frame timing. One full cycle ~every 4s.
+        phase = (now * 0.25) % 1.0 if rainbow else None
+
         if display_mode == "multi":
-            renderer.render_multi(canvas, _entries_for(current_zones), color, use_24h)
+            renderer.render_multi(
+                canvas, _entries_for(current_zones), color, use_24h, phase
+            )
         else:
             tz_name = current_zones[0]
             try:
                 tz = ZoneInfo(tz_name)
             except Exception:
                 tz_name, tz = "UTC", ZoneInfo("UTC")
-            renderer.render(canvas, datetime.now(tz), color, use_24h, tz_name)
+            renderer.render(canvas, datetime.now(tz), color, use_24h, tz_name, phase)
 
         canvas = matrix.SwapOnVSync(canvas)
-        time.sleep(1)
+        # Animate smoothly in rainbow mode; otherwise the clock only needs a
+        # once-per-second tick.
+        time.sleep(1 / 15 if rainbow else 1)
 
 
 def _entries_for(zone_names: list) -> list:

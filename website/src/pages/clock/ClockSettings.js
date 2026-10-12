@@ -9,15 +9,22 @@ import SettingsHeader from "../../components/shared/SettingsHeader";
 import LoadingSpinner from "../../components/shared/LoadingSpinner";
 
 const COLOR_PRESETS = [
-  { label: "White", value: "255,255,255", rgb: [255, 255, 255] },
-  { label: "Red", value: "255,0,0", rgb: [255, 0, 0] },
-  { label: "Green", value: "0,255,0", rgb: [0, 255, 0] },
   { label: "Blue", value: "0,0,255", rgb: [0, 0, 255] },
-  { label: "Yellow", value: "255,255,0", rgb: [255, 255, 0] },
   { label: "Cyan", value: "0,255,255", rgb: [0, 255, 255] },
+  { label: "Green", value: "0,255,0", rgb: [0, 255, 0] },
   { label: "Magenta", value: "255,0,255", rgb: [255, 0, 255] },
   { label: "Orange", value: "255,165,0", rgb: [255, 165, 0] },
+  { label: "Red", value: "255,0,0", rgb: [255, 0, 0] },
+  { label: "White", value: "255,255,255", rgb: [255, 255, 255] },
+  { label: "Yellow", value: "255,255,0", rgb: [255, 255, 0] },
 ];
+
+// Dropdown choices = solid presets plus Caitlyn Mode, sorted alphabetically by
+// label (the emoji is ignored for sorting so it lands after "Blue").
+const COLOR_OPTIONS = [
+  ...COLOR_PRESETS.map((p) => ({ label: p.label, value: p.value, sortKey: p.label })),
+  { label: "🌈 Caitlyn Mode", value: "rainbow", sortKey: "Caitlyn Mode" },
+].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
 const CYCLE_OPTIONS = [3, 5, 10, 15, 30, 60];
 
@@ -71,12 +78,32 @@ function tzAbbr(date, timeZone) {
 
 // Preview of the physical display: focus = one zone (time / date / tz),
 // multi = up to three columns divided into thirds. Both follow list order.
-function ClockPreview({ timezones, mode, use24h, color }) {
+const RAINBOW_GRADIENT =
+  "linear-gradient(90deg, #ff0000, #ff8800, #ffee00, #00cc44, #0088ff, #8800ff, #ff0000)";
+
+// Text styled as an animated rainbow sliding to the right (matches the board's
+// "Caitlyn Mode"). Uses background-clip so the gradient fills the glyphs.
+function rainbowTextStyle(extra = {}) {
+  return {
+    background: RAINBOW_GRADIENT,
+    backgroundSize: "200% 100%",
+    WebkitBackgroundClip: "text",
+    backgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+    color: "transparent",
+    animation: "clockRainbowSlide 2.5s linear infinite",
+    ...extra,
+  };
+}
+
+function ClockPreview({ timezones, mode, use24h, color, rainbow }) {
   const [now, setNow] = React.useState(() => new Date());
   React.useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  const timeColorStyle = rainbow ? rainbowTextStyle() : { color };
 
   if (!timezones || timezones.length === 0) {
     return (
@@ -126,13 +153,13 @@ function ClockPreview({ timezones, mode, use24h, color }) {
                   fontSize: "1.3rem",
                   fontWeight: 700,
                   fontVariantNumeric: "tabular-nums",
-                  color,
                   lineHeight: 1.1,
+                  ...timeColorStyle,
                 }}
               >
                 {time}
               </div>
-              {ampm && <div style={{ fontSize: "0.7rem", color }}>{ampm}</div>}
+              {ampm && <div style={{ fontSize: "0.7rem", ...timeColorStyle }}>{ampm}</div>}
             </div>
           );
         })}
@@ -178,8 +205,8 @@ function ClockPreview({ timezones, mode, use24h, color }) {
           fontSize: "2rem",
           fontWeight: 700,
           fontVariantNumeric: "tabular-nums",
-          color,
           letterSpacing: 2,
+          ...timeColorStyle,
         }}
       >
         {time}
@@ -398,6 +425,7 @@ export default function ClockSettings() {
   const [displayMode, setDisplayMode] = React.useState("focus"); // "focus" | "multi"
   const [cycleSeconds, setCycleSeconds] = React.useState(5);
   const [colorPreset, setColorPreset] = React.useState(COLOR_PRESETS[0]);
+  const [colorMode, setColorMode] = React.useState("solid"); // "solid" | "rainbow"
   const [use24h, setUse24h] = React.useState(false);
   const [saveStatus, setSaveStatus] = React.useState(null); // null | "saving" | "saved"
 
@@ -422,6 +450,7 @@ export default function ClockSettings() {
       setDisplayMode(settings.display_mode === "multi" ? "multi" : "focus");
       setCycleSeconds(settings.cycle_seconds ?? 5);
       setColorPreset(findPreset(settings.color));
+      setColorMode(settings.color_mode === "rainbow" ? "rainbow" : "solid");
       setUse24h(settings.use_24h ?? false);
     }
   }, [settings]);
@@ -490,10 +519,19 @@ export default function ClockSettings() {
     save({ timezones: next });
   };
 
-  const handleColor = (preset) => {
+  // The color dropdown offers the solid presets plus "Caitlyn Mode" (rainbow).
+  // Picking a solid preset also flips color_mode back to solid.
+  const handleColorChoice = (choice) => {
+    if (choice === "rainbow") {
+      setColorMode("rainbow");
+      save({ color_mode: "rainbow" });
+      return;
+    }
+    const preset = COLOR_PRESETS.find((p) => p.value === choice) ?? COLOR_PRESETS[0];
     setColorPreset(preset);
     colorRef.current = preset;
-    scheduleDisplaySave();
+    setColorMode("solid");
+    save({ color: valueToRgb(preset.value), color_mode: "solid" });
   };
   const handle24h = (checked) => {
     setUse24h(checked);
@@ -525,10 +563,18 @@ export default function ClockSettings() {
         Changes apply automatically
       </div>
 
+      <style>{`@keyframes clockRainbowSlide { from { background-position: 0% 0; } to { background-position: -200% 0; } }`}</style>
+
       {/* Live preview */}
       <div className="m-card" style={{ textAlign: "center" }}>
         <div className="m-card-title">Preview</div>
-        <ClockPreview timezones={timezones} mode={displayMode} use24h={use24h} color={previewHex} />
+        <ClockPreview
+          timezones={timezones}
+          mode={displayMode}
+          use24h={use24h}
+          color={previewHex}
+          rainbow={colorMode === "rainbow"}
+        />
         {timezones.length > (displayMode === "multi" ? 3 : 1) && (
           <div style={{ fontSize: "0.75rem", color: "#5a7a9a", marginTop: 8 }}>
             Cycles through {timezones.length} timezones every {cycleSeconds}s
@@ -618,19 +664,22 @@ export default function ClockSettings() {
                 width: 16,
                 height: 16,
                 borderRadius: 3,
-                background: previewHex,
+                background:
+                  colorMode === "rainbow"
+                    ? "linear-gradient(90deg, red, orange, yellow, green, blue, violet)"
+                    : previewHex,
                 border: "1px solid #555",
               }}
             />
             <select
               className="m-select"
               style={{ width: "auto" }}
-              value={colorPreset.value}
-              onChange={(e) => handleColor(COLOR_PRESETS.find((p) => p.value === e.target.value))}
+              value={colorMode === "rainbow" ? "rainbow" : colorPreset.value}
+              onChange={(e) => handleColorChoice(e.target.value)}
             >
-              {COLOR_PRESETS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
+              {COLOR_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
                 </option>
               ))}
             </select>

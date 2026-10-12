@@ -19,6 +19,9 @@ class ClockSettings(BaseModel):
     # Seconds each timezone (focus) or page of three (multi) stays on screen.
     cycle_seconds: Optional[int] = None
     color: Optional[List[int]] = None
+    # "solid" uses `color`; "rainbow" (aka Caitlyn Mode) animates a horizontal
+    # rainbow that slides to the right.
+    color_mode: Optional[str] = None
     use_24h: Optional[bool] = None
 
 
@@ -67,6 +70,11 @@ async def update_settings(body: ClockSettings):
                 status_code=422,
                 detail="cycle_seconds must be an int between 1 and 3600",
             )
+
+    if "color_mode" in updates and updates["color_mode"] not in ("solid", "rainbow"):
+        raise HTTPException(
+            status_code=422, detail="color_mode must be 'solid' or 'rainbow'"
+        )
 
     if "color" in updates:
         c = updates["color"]

@@ -4,14 +4,14 @@ import { useClockSettings } from "../../hooks/useClockSettings";
 import SwitchDisplayButton from "../../components/shared/SwitchDisplayButton";
 
 const COLOR_PRESETS = [
-  { label: "White", value: "255,255,255", rgb: [255, 255, 255] },
-  { label: "Red", value: "255,0,0", rgb: [255, 0, 0] },
-  { label: "Green", value: "0,255,0", rgb: [0, 255, 0] },
   { label: "Blue", value: "0,0,255", rgb: [0, 0, 255] },
-  { label: "Yellow", value: "255,255,0", rgb: [255, 255, 0] },
   { label: "Cyan", value: "0,255,255", rgb: [0, 255, 255] },
+  { label: "Green", value: "0,255,0", rgb: [0, 255, 0] },
   { label: "Magenta", value: "255,0,255", rgb: [255, 0, 255] },
   { label: "Orange", value: "255,165,0", rgb: [255, 165, 0] },
+  { label: "Red", value: "255,0,0", rgb: [255, 0, 0] },
+  { label: "White", value: "255,255,255", rgb: [255, 255, 255] },
+  { label: "Yellow", value: "255,255,0", rgb: [255, 255, 0] },
 ];
 
 function rgbToHex(rgb) {

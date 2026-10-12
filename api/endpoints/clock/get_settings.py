@@ -70,6 +70,7 @@ def normalize_clock(clock: dict) -> dict:
 
     clock.setdefault("cycle_seconds", 5)
     clock.setdefault("color", [255, 255, 255])
+    clock.setdefault("color_mode", "solid")
     clock.setdefault("use_24h", False)
 
     # Drop obsolete keys so clients only see the current schema.

@@ -1,6 +1,7 @@
+import colorsys
 from datetime import datetime
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from matrix import USING_HARDWARE
 
 MATRIX_W = 64
@@ -23,6 +24,9 @@ FOCUS_DATE_Y = 20
 FOCUS_TZ_Y = 30
 COLOR_BG = (0, 0, 0)
 
+# Rainbow ("Caitlyn Mode"): how many full hue cycles span the 64px width.
+_RAINBOW_CYCLES = 1.5
+
 _gfx = None
 _hw_large = None
 _hw_small = None
@@ -43,18 +47,13 @@ if USING_HARDWARE:
     except Exception:
         _gfx = None
 
-try:
-    _pil_large = ImageFont.truetype(
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 10
-    )
-    _pil_small = ImageFont.truetype(
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 8
-    )
-    _pil_tiny = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 6)
-except OSError:
-    _pil_large = ImageFont.load_default()
-    _pil_small = _pil_large
-    _pil_tiny = _pil_large
+# Bitmap fonts for the PIL mask path (rainbow + headless mock). Parsed from the
+# same BDF files the hardware uses, so text looks identical to the solid path.
+import bdf as _bdf
+
+_mask_large = _bdf.load(_BDF_LARGE)
+_mask_small = _bdf.load(_BDF_SMALL)
+_mask_tiny = _bdf.load(_BDF_TINY)
 
 
 def _center_x(text: str, char_w: int) -> int:
@@ -70,8 +69,65 @@ def _tz_abbr(dt: datetime, tz_name: str) -> str:
     return abbr
 
 
+# --- Rainbow ("Caitlyn Mode") ----------------------------------------------- #
+
+
+def _rainbow_columns(phase: float):
+    """Precompute one (r, g, b) per x-column for the current animation phase.
+
+    `phase` advances over time; subtracting it shifts the hue pattern to the
+    right (a column shows the hue that was just to its left a moment ago)."""
+    cols = []
+    for x in range(MATRIX_W):
+        hue = ((x / MATRIX_W) * _RAINBOW_CYCLES - phase) % 1.0
+        r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
+        cols.append((int(r * 255), int(g * 255), int(b * 255)))
+    return cols
+
+
+def _colorize(img: Image.Image, color, rainbow_phase):
+    """Return `img` (white-on-black text mask) recolored.
+
+    Solid: every lit pixel becomes `color`. Rainbow: each lit pixel takes the
+    hue of its x-column for `rainbow_phase`."""
+    out = Image.new("RGB", img.size, COLOR_BG)
+    src = img.load()
+    dst = out.load()
+    w, h = img.size
+    if rainbow_phase is None:
+        for y in range(h):
+            for x in range(w):
+                if src[x, y][0] > 40:  # lit pixel in the mask
+                    dst[x, y] = color
+    else:
+        cols = _rainbow_columns(rainbow_phase)
+        for y in range(h):
+            for x in range(w):
+                if src[x, y][0] > 40:
+                    dst[x, y] = cols[x]
+    return out
+
+
+_MASK_FONTS = {"large": _mask_large, "small": _mask_small, "tiny": _mask_tiny}
+
+
+def _draw_mask(lines):
+    """Draw `lines` [(x, baseline_y, text, font_key)] as a white-on-black mask,
+    using the BDF bitmap fonts so glyphs match the hardware solid path."""
+    mask = Image.new("RGB", (MATRIX_W, MATRIX_H), COLOR_BG)
+    draw = ImageDraw.Draw(mask)
+    for x, baseline_y, text, key in lines:
+        _MASK_FONTS[key].draw(draw, x, baseline_y, text, (255, 255, 255))
+    return mask
+
+
 def render(
-    canvas, dt: datetime, color: tuple, use_24h: bool = False, tz_name: str = ""
+    canvas,
+    dt: datetime,
+    color: tuple,
+    use_24h: bool = False,
+    tz_name: str = "",
+    rainbow_phase=None,
 ) -> None:
     """Focus view: one timezone, three centered lines (time / date / tz)."""
     if use_24h:
@@ -85,20 +141,24 @@ def render(
     date_x = _center_x(date_str, _CHAR_W_SMALL)
     tz_x = _center_x(tz_str, _CHAR_W_SMALL)
 
-    img = Image.new("RGB", (MATRIX_W, MATRIX_H), COLOR_BG)
-
-    if USING_HARDWARE and _gfx and _hw_large and _hw_small:
-        canvas.SetImage(img)
+    # Hardware with solid color uses the crisp BDF glyph path. Rainbow (and the
+    # headless mock) go through the PIL mask + per-pixel colorize path.
+    if USING_HARDWARE and _gfx and _hw_large and _hw_small and rainbow_phase is None:
+        canvas.SetImage(Image.new("RGB", (MATRIX_W, MATRIX_H), COLOR_BG))
         c = _gfx.Color(*color)
         _gfx.DrawText(canvas, _hw_large, time_x, FOCUS_TIME_Y, c, time_str)
         _gfx.DrawText(canvas, _hw_small, date_x, FOCUS_DATE_Y, c, date_str)
         _gfx.DrawText(canvas, _hw_small, tz_x, FOCUS_TZ_Y, c, tz_str)
-    else:
-        draw = ImageDraw.Draw(img)
-        draw.text((time_x, FOCUS_TIME_Y - 10), time_str, font=_pil_large, fill=color)
-        draw.text((date_x, FOCUS_DATE_Y - 8), date_str, font=_pil_small, fill=color)
-        draw.text((tz_x, FOCUS_TZ_Y - 8), tz_str, font=_pil_small, fill=color)
-        canvas.SetImage(img)
+        return
+
+    mask = _draw_mask(
+        [
+            (time_x, FOCUS_TIME_Y, time_str, "large"),
+            (date_x, FOCUS_DATE_Y, date_str, "small"),
+            (tz_x, FOCUS_TZ_Y, tz_str, "small"),
+        ]
+    )
+    canvas.SetImage(_colorize(mask, color, rainbow_phase))
 
 
 # --- Multi view (up to three timezones) ------------------------------------- #
@@ -123,14 +183,14 @@ def _col_center_x(col: int, text: str, char_w: int) -> int:
     return max(0, min(x, MATRIX_W - len(text) * char_w))
 
 
-def render_multi(canvas, entries: list, color: tuple, use_24h: bool = False) -> None:
+def render_multi(
+    canvas, entries: list, color: tuple, use_24h: bool = False, rainbow_phase=None
+) -> None:
     """Render up to three timezone columns.
 
     `entries` is a list of (abbr, datetime) tuples in display order, sliced to
     at most 3 by the caller.
     """
-    img = Image.new("RGB", (MATRIX_W, MATRIX_H), COLOR_BG)
-
     lines = []  # (x, baseline_y, text)
     for i, (abbr, dt) in enumerate(entries[:_COL_COUNT]):
         if use_24h:
@@ -149,21 +209,26 @@ def render_multi(canvas, entries: list, color: tuple, use_24h: bool = False) -> 
                 (_col_center_x(i, ampm_str, _CHAR_W_TINY), _W_AMPM_Y, ampm_str)
             )
 
-    if USING_HARDWARE and _gfx and _hw_tiny:
-        canvas.SetImage(img)
+    divider_cols = range(1, min(len(entries), _COL_COUNT))
+
+    if USING_HARDWARE and _gfx and _hw_tiny and rainbow_phase is None:
+        canvas.SetImage(Image.new("RGB", (MATRIX_W, MATRIX_H), COLOR_BG))
         c = _gfx.Color(*color)
         divider = _gfx.Color(*[v // 3 for v in color])
-        for col in range(1, min(len(entries), _COL_COUNT)):
+        for col in divider_cols:
             x = col * _COL_W
             _gfx.DrawLine(canvas, x, 0, x, MATRIX_H - 1, divider)
         for x, y, text in lines:
             _gfx.DrawText(canvas, _hw_tiny, x, y, c, text)
-    else:
-        draw = ImageDraw.Draw(img)
-        divider = tuple(v // 3 for v in color)
-        for col in range(1, min(len(entries), _COL_COUNT)):
-            x = col * _COL_W
-            draw.line([(x, 0), (x, MATRIX_H - 1)], fill=divider)
-        for x, y, text in lines:
-            draw.text((x, y - 6), text, font=_pil_tiny, fill=color)
-        canvas.SetImage(img)
+        return
+
+    # PIL mask path (headless mock, or rainbow on hardware).
+    mask = _draw_mask([(x, y, text, "tiny") for (x, y, text) in lines])
+    img = _colorize(mask, color, rainbow_phase)
+    # Draw dividers after colorizing so they stay a dim constant tone.
+    draw = ImageDraw.Draw(img)
+    div_color = tuple(v // 3 for v in color) if rainbow_phase is None else (60, 60, 60)
+    for col in divider_cols:
+        x = col * _COL_W
+        draw.line([(x, 0), (x, MATRIX_H - 1)], fill=div_color)
+    canvas.SetImage(img)
