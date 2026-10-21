@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "prestart": "npm ci || (rm -rf node_modules && npm install)",
     "start": "webpack serve --mode development",
     "watch": "webpack --mode development --watch",
     "build": "webpack --mode production",
