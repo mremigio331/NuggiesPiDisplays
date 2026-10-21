@@ -802,19 +802,72 @@ run_update() {
 
     echo "--- Installing frontend dependencies..."
     cd "$SCRIPT_DIR/website"
-    npm install
-    # Prod serves the built bundle from website/dist, so it must be rebuilt on
-    # update or the served UI stays stale. Dev serves from the webpack dev
-    # server (no dist to refresh), so skip the build there to save time on the Pi.
+    # Use `npm ci`, NOT `npm install`, on update. `npm install` trusts whatever
+    # node_modules already exists and does nothing when it believes the tree is
+    # "up to date" — so a node_modules missing a transitive dep (e.g.
+    # merge-stream, pulled in by jest-worker for webpack's Terser minifier) is
+    # never repaired, and the prod build below dies with
+    # "Cannot find module 'merge-stream'". `npm ci` deletes node_modules and
+    # reinstalls exactly from package-lock.json every time. Fall back to a clean
+    # wipe + install if `npm ci` itself fails (lockfile out of sync, etc.).
+    if ! npm ci; then
+        echo "!!! npm ci failed — wiping node_modules and reinstalling from scratch." >&2
+        rm -rf node_modules
+        npm install
+    fi
+
+    # Prod serves the built bundle from website/dist via the Python API. Dev
+    # serves from the webpack dev server (no dist to refresh), so only prod
+    # rebuilds here.
     if systemctl list-unit-files nuggies-api.service &>/dev/null \
        && systemctl is-enabled --quiet nuggies-api.service 2>/dev/null; then
-        echo "--- Building frontend (prod)..."
-        npm run build
-        # The build ran as root (setup.sh re-execs as root), so dist/ is now
-        # root-owned — but restore_tree_ownership already ran before this point.
-        # Hand the built bundle back to $USER so the tree stays consistently
-        # $USER-owned (webpack's clean:true and $USER-level git both need it).
-        chown -R "$USER":"$USER" "$SCRIPT_DIR/website/dist"
+        echo "--- Building frontend (prod, crash-safe atomic swap)..."
+        # CRASH-SAFE BUILD. The live site is website/dist. webpack is configured
+        # with clean:true, so building straight into dist WIPES the running
+        # bundle at the very start of the build — if the build then fails (a
+        # dropped network, a killed process, an OOM on the Pi), dist is left
+        # empty and the site serves a white screen until the next good update.
+        #
+        # Instead we build into a SEPARATE dist.new, verify it is a real bundle,
+        # and only then swap it into place. The live dist is never touched until
+        # a complete, verified build exists, so any failure leaves the currently
+        # running site exactly as it was.
+        local DIST="$SCRIPT_DIR/website/dist"
+        local DIST_NEW="$SCRIPT_DIR/website/dist.new"
+        local DIST_OLD="$SCRIPT_DIR/website/dist.old"
+
+        rm -rf "$DIST_NEW" "$DIST_OLD"
+
+        # --output-path overrides webpack.config's path; clean:true then only
+        # wipes dist.new (which we just removed anyway), never the live dist.
+        if ! npx webpack --mode production --output-path "$DIST_NEW"; then
+            echo "!!! Frontend build FAILED — leaving the existing dist in place." >&2
+            echo "!!! The site keeps serving the previous build; no downtime." >&2
+            rm -rf "$DIST_NEW"
+            exit 1
+        fi
+
+        # Verify the build actually produced a usable bundle before swapping.
+        if [[ ! -f "$DIST_NEW/index.html" ]] || ! ls "$DIST_NEW"/*.js >/dev/null 2>&1; then
+            echo "!!! Build produced no index.html or JS bundle — refusing to swap." >&2
+            echo "!!! The site keeps serving the previous build; no downtime." >&2
+            rm -rf "$DIST_NEW"
+            exit 1
+        fi
+
+        # Atomic swap: move the old aside, move the new in, then drop the old.
+        # Two renames on the same filesystem; the window where dist is absent is
+        # a single mv and the API simply 404s a static file for that instant.
+        if [[ -d "$DIST" ]]; then
+            mv "$DIST" "$DIST_OLD"
+        fi
+        mv "$DIST_NEW" "$DIST"
+        rm -rf "$DIST_OLD"
+
+        # The build ran as root (setup.sh re-execs as root). Hand the built
+        # bundle back to $USER so the tree stays consistently $USER-owned.
+        chown -R "$USER":"$USER" "$DIST"
+        echo "Frontend built and swapped in atomically."
     else
         echo "--- Skipping frontend build (dev mode: served by webpack dev server)."
     fi
