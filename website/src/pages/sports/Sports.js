@@ -144,13 +144,7 @@ export default function Sports() {
     },
   };
   const activeConfig = sportConfig[sport] ?? sportConfig.nba;
-  const {
-    queryKey,
-    queryFn,
-    Card: GameCard,
-    label: sportLabel,
-    aggregated,
-  } = activeConfig;
+  const { queryKey, queryFn, Card: GameCard, label: sportLabel, aggregated } = activeConfig;
 
   const {
     data: scoreboardData,
@@ -234,24 +228,24 @@ export default function Sports() {
         onOpenSettings={() => navigate("/sports/settings")}
       />
 
-      {/* Overview/focus and locks apply to a single league's slate, not the
-          mixed favourites feed, so they are hidden for favourites. */}
-      {!aggregated && (
-        <>
-          <MatrixDisplayModeToggle
-            displayMode={displayMode}
-            isPending={modeMut.isPending}
-            onChangeMode={(nextMode) => modeMut.mutate({ display_mode: nextMode })}
-          />
+      {/* Overview/focus applies to both a single league's slate and the mixed
+          favourites feed (which pairs each team's last + live/next games). Locks
+          apply only to a single league's slate, so the locks banner stays hidden
+          for favourites. */}
+      <MatrixDisplayModeToggle
+        displayMode={displayMode}
+        isPending={modeMut.isPending}
+        onChangeMode={(nextMode) => modeMut.mutate({ display_mode: nextMode })}
+      />
 
-          <LockedGamesBanner
-            locks={lockedGames}
-            games={games}
-            isPending={gameControls.isPending}
-            onUnlock={gameControls.onUnlockGame}
-            onClearAll={() => lockMut.mutate({ action: "clear" })}
-          />
-        </>
+      {!aggregated && (
+        <LockedGamesBanner
+          locks={lockedGames}
+          games={games}
+          isPending={gameControls.isPending}
+          onUnlock={gameControls.onUnlockGame}
+          onClearAll={() => lockMut.mutate({ action: "clear" })}
+        />
       )}
 
       <div className="m-section-sub" style={{ marginBottom: 10 }}>
@@ -271,11 +265,7 @@ export default function Sports() {
 
       {renderSection("Live", liveGames)}
       {renderSection("Upcoming", scheduledGames, liveGames.length > 0)}
-      {renderSection(
-        "Final",
-        finalGames,
-        liveGames.length > 0 || scheduledGames.length > 0
-      )}
+      {renderSection("Final", finalGames, liveGames.length > 0 || scheduledGames.length > 0)}
     </div>
   );
 }

@@ -124,16 +124,12 @@ _NEUTRAL_BG = "ffffff"  # fallback when both away colors clash with home
 
 
 def _resolve_away_bg(game: dict) -> str:
-    """Away team's background hex, swapped to its alternate (then to a neutral)
-    when it clashes with the home team's primary color."""
-    home = game.get("home_color", "333333")
-    away = game.get("away_color", "333333")
-    if _delta_e(away, home) >= _CLASH_THRESHOLD:
-        return away  # distinct enough — keep primary
-    alt = game.get("away_alt_color", "ffffff")
-    if _delta_e(alt, home) >= _CLASH_THRESHOLD:
-        return alt  # alternate is distinct — use it
-    return _NEUTRAL_BG  # both clash — neutral fallback
+    """Away team's background hex — always its PRIMARY color.
+
+    Every row uses the same rule: PRIMARY as the background, SECONDARY
+    (alternate) as the text — home and away alike. No swap, no clash test.
+    """
+    return game.get("away_color", "333333")
 
 
 def _override_text_hex(primary_hex: str) -> str | None:
@@ -146,16 +142,10 @@ def _override_text_hex(primary_hex: str) -> str | None:
 
 
 def _away_text_color(game: dict, away_bg: str):
-    """Text color for the away score row.
-
-    Normally the alternate color (the established two-tone look). But when the
-    background fell back to the neutral light fill, the alt color may wash out,
-    so draw dark text for guaranteed contrast instead. A manual override for the
-    team's primary (see _TEXT_COLOR_OVERRIDES) wins when present and legible on
-    the current background — on the neutral light fill we still force dark text.
-    """
-    if away_bg == _NEUTRAL_BG:
-        return _color(20, 20, 20)
+    """Text color for the away score row — the team's SECONDARY (alternate)
+    color, matching the home rule (primary bg, secondary text). ``away_bg`` is
+    accepted for a stable signature with the home variant but is not needed. A
+    manual override for the team's primary (see _TEXT_COLOR_OVERRIDES) wins."""
     override = _override_text_hex(game.get("away_color", ""))
     if override:
         return _team_color(override)
@@ -163,8 +153,9 @@ def _away_text_color(game: dict, away_bg: str):
 
 
 def _home_text_color(game: dict):
-    """Text color for the home score row — alternate color, or a manual override
-    for the team's primary (see _TEXT_COLOR_OVERRIDES) when present."""
+    """Text color for the home score row — the team's SECONDARY (alternate)
+    color, or a manual override for the team's primary when present. The home
+    background is the primary, so the text is the alternate."""
     override = _override_text_hex(game.get("home_color", ""))
     if override:
         return _team_color(override)
@@ -406,6 +397,22 @@ def _format_game_time(game_date: str) -> str:
         dt = datetime.fromisoformat(game_date.replace("Z", "+00:00")).astimezone()
         h = dt.hour % 12 or 12
         return f"{h}:{dt.minute:02d}{'a' if dt.hour < 12 else 'p'}"
+    except Exception:
+        return ""
+
+
+def _format_game_date(game_date: str) -> str:
+    """Convert UTC ISO game_date to a short local date, e.g. 'Mar 3'.
+
+    Used for upcoming games in the favourites overview, where the date matters
+    because the next game may be days away — unlike a single-league scoreboard,
+    which only shows today's slate and so needs just a kickoff time.
+    """
+    if not game_date:
+        return ""
+    try:
+        dt = datetime.fromisoformat(game_date.replace("Z", "+00:00")).astimezone()
+        return f"{dt.strftime('%b')} {dt.day}"
     except Exception:
         return ""
 
@@ -1949,3 +1956,242 @@ def render_football_overview(canvas, game_a: dict, game_b: dict | None) -> None:
     _render_football_overview_panel(canvas, game_a, _OVR_LEFT_X, _OVR_LEFT_W)
     if game_b:
         _render_football_overview_panel(canvas, game_b, _OVR_RIGHT_X, _OVR_RIGHT_W)
+
+
+# ── Favourites overview (mixed leagues) ──────────────────────────────────────
+#
+# The favourites feed pairs one team's games (last + live/next) side by side,
+# and the two games may be from different leagues, so each panel is drawn by its
+# own sport's overview-panel renderer rather than a single shared one.
+#
+# For an UPCOMING game the single-line kickoff time the panels normally draw is
+# not enough — the next game can be days out — so after drawing the panel we
+# overpaint the info strip with two lines: the date ("Mar 3") above the time
+# ("7:30p"). Final and live games keep their panel's own single-line status
+# (just the result / clock); only upcoming games get the date, as requested.
+
+# sport key → overview-panel renderer. Mirrors _SPORT_CONFIG in main.py; the
+# favourites feed tags each game with its sport so we can pick the right one.
+_SPORT_OVERVIEW_PANEL = {
+    "mlb": _render_mlb_overview_panel,
+    "nba": _render_nba_overview_panel,
+    "wnba": _render_nba_overview_panel,
+    "nhl": _render_hockey_overview_panel,
+    "nfl": _render_football_overview_panel,
+    "ncaaf": _render_football_overview_panel,
+    "nwsl": _render_soccer_overview_panel,
+    "epl": _render_soccer_overview_panel,
+    "laliga": _render_soccer_overview_panel,
+    "bundesliga": _render_soccer_overview_panel,
+}
+
+# sport key → focus LEFT-panel renderer (team score rows + status/date). Used by
+# render_favorites_upcoming_focus so an upcoming favourite reads like any other
+# focus frame. Each takes (canvas, game); hockey's extra details arg defaults.
+_SPORT_FOCUS_LEFT = {
+    "mlb": _render_baseball_left_panel,
+    "nba": _render_left_panel,
+    "wnba": _render_left_panel,
+    "nhl": _render_hockey_left_panel,
+    "nfl": _render_football_left_panel,
+    "ncaaf": _render_football_left_panel,
+    "nwsl": _render_soccer_left_panel,
+    "epl": _render_soccer_left_panel,
+    "laliga": _render_soccer_left_panel,
+    "bundesliga": _render_soccer_left_panel,
+}
+
+
+def _draw_overview_upcoming_datetime(canvas, game: dict, x0: int, w: int) -> None:
+    """Overpaint an upcoming panel's info strip, alternating date / time.
+
+    The info strip is y=21..31 (11px) — only one 6px text row fits cleanly — so
+    instead of stacking date above time we show them one at a time on a single
+    centred row (baseline y=28): the date ("Mar 3") for 5 seconds, then the time
+    ("7:30p") for 5 seconds, repeating. Clears the strip first so the panel's
+    own single-line time underneath is replaced, not overlapped.
+    """
+    gray = _color(140, 140, 140)
+    # Clear the info strip (y=21..31) for this panel before redrawing.
+    _fill_rect(canvas, x0, 21, x0 + w - 1, 31, 0, 0, 0)
+
+    date_str = _format_game_date(game.get("game_date", ""))[:7]
+    time_str = _format_game_time(game.get("game_date", ""))[:7]
+
+    # Alternate every 5s. If only one is available it stays put instead of
+    # blinking to blank.
+    show_time = (int(time.time()) // 5) % 2 == 1
+    if date_str and time_str:
+        text = time_str if show_time else date_str
+    else:
+        text = date_str or time_str or "Soon"
+
+    _draw_text(canvas, text, x0 + max(0, (w - len(text) * _CW) // 2), 28, gray)
+
+
+def _draw_overview_upcoming_records(canvas, game: dict, x0: int, w: int) -> None:
+    """Right-align each team's record on its score row for an upcoming game.
+
+    An upcoming game draws no score (the base panel hides it for ``pre``), so
+    the right side of each team row is free — put the win-loss record there
+    (away row baseline y=7, home row baseline y=18, matching
+    _render_overview_panel_base). Each record is drawn in the SAME color that
+    row's score would use (via _away_text_color / _home_text_color), so the
+    record follows its team's colors just like a score does. Omitted per-side
+    when the record is missing, so a failed lookup shows nothing, not '0-0'.
+    """
+    x1 = x0 + w - 1
+    away_bg = _resolve_away_bg(game)
+    row_colors = {
+        "away_record": (7, _away_text_color(game, away_bg)),
+        "home_record": (18, _home_text_color(game)),
+    }
+    for key, (baseline, col) in row_colors.items():
+        rec = str(game.get(key) or "").strip()
+        if not rec:
+            continue
+        rec = rec[:5]  # e.g. '12-10' max for a 32px panel
+        _draw_text(canvas, rec, x1 - len(rec) * _CW + 1, baseline, col)
+
+
+def _render_favorites_panel(canvas, game: dict, x0: int, w: int) -> None:
+    """Draw one favourites game in a panel, routed by its own sport.
+
+    Falls back to the NBA panel for an untagged/unknown sport so a stray game
+    still renders rather than blanking its half of the matrix.
+    """
+    panel = _SPORT_OVERVIEW_PANEL.get(game.get("sport", ""), _render_nba_overview_panel)
+    panel(canvas, game, x0, w)
+    # Upcoming games get the two-line date + time overlay (the whole point of
+    # the favourites view: last result beside when the next game is) plus each
+    # team's record on the right of its row, where the (hidden) score would be.
+    if game.get("state", "pre") == "pre":
+        _draw_overview_upcoming_datetime(canvas, game, x0, w)
+        _draw_overview_upcoming_records(canvas, game, x0, w)
+
+
+def render_favorites_overview(canvas, game_a: dict, game_b: dict | None) -> None:
+    """Split-screen favourites overview: one team's two games, mixed leagues.
+
+    ``game_a`` is typically the team's last (final) game and ``game_b`` its
+    current/next game, but each is drawn by its own league's panel renderer so
+    any pairing renders correctly.
+    """
+    canvas.Clear()
+    for y in range(MATRIX_H):
+        canvas.SetPixel(_OVR_DIV_X, y, 35, 35, 35)
+    _render_favorites_panel(canvas, game_a, _OVR_LEFT_X, _OVR_LEFT_W)
+    if game_b:
+        _render_favorites_panel(canvas, game_b, _OVR_RIGHT_X, _OVR_RIGHT_W)
+
+
+def _leader_value_display(raw: str) -> str:
+    """Compact a leader's displayValue to a number WITH its unit, panel-sized.
+
+    ESPN packs several stats into one football value ("156/234, 1,328 YDS, 9
+    TD, 6 INT") but a single number for others ("7"). On a ~35px panel we want
+    the category's headline figure AND its unit so "245" reads as "245 YDS", not
+    a bare number that could be carries. Strategy, no per-sport hardcoding:
+
+      1. Split on commas into segments; drop thousands separators within numbers.
+      2. Prefer a segment whose unit is YDS (yards is the point of every yardage
+         category); else take the FIRST "<number> <UNIT>" segment (e.g. "3 TD").
+      3. If no unit segment exists, return the first token ("3.5", "7") as-is.
+
+    The result is capped so it fits the panel (unit kept when it does).
+    """
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    # Segments like "1,328 YDS" -> normalise the embedded thousands comma.
+    segments = [seg.strip() for seg in s.split(",")]
+    merged: list[str] = []
+    for seg in segments:
+        # "1" then "328 YDS" came from splitting "1,328 YDS" — rejoin a bare
+        # number segment with the next one.
+        if merged and merged[-1].isdigit() and seg and seg[0].isdigit():
+            merged[-1] = merged[-1] + seg
+        else:
+            merged.append(seg)
+
+    def _is_num_unit(seg: str) -> bool:
+        parts = seg.split()
+        return len(parts) == 2 and parts[0].replace(".", "").isdigit()
+
+    yds = next((seg for seg in merged if seg.upper().endswith("YDS")), None)
+    if yds:
+        return yds[:8]
+    first_pair = next((seg for seg in merged if _is_num_unit(seg)), None)
+    if first_pair:
+        return first_pair[:8]
+    return (s.split() or [""])[0].rstrip(",")[:8]
+
+
+def _render_favorites_leaders_right(canvas, game: dict, panel_idx: int) -> None:
+    """Right panel — one season-leader category for an UPCOMING favourites game.
+
+    ``game["leaders"]`` is ``{"home":[...], "away":[...]}`` of
+    ``{category,label,name,value}`` entries as ESPN provided them (see
+    get_summary_leaders — whatever categories the sport returns, not a fixed
+    list). We cycle ONE category per panel flip using ``panel_idx``, drawing the
+    away leader above the home leader, each as 'LASTNAME  value' in that team's
+    color — the same name+count language as the NFL leader panel.
+
+    Category count is the max across the two teams (they usually match). When a
+    team lacks the current category its row is left blank rather than faked.
+    """
+    leaders = game.get("leaders") or {}
+    away = leaders.get("away") or []
+    home = leaders.get("home") or []
+    white = _color(210, 210, 210)
+    gray = _color(100, 100, 100)
+
+    n = max(len(away), len(home))
+    if n == 0:
+        _draw_text(canvas, "Season", _center_x("Season", RIGHT_X, RIGHT_W), 14, gray)
+        _draw_text(canvas, "Leaders", _center_x("Leaders", RIGHT_X, RIGHT_W), 22, gray)
+        return
+
+    idx = panel_idx % n
+    # Header: the category label (from whichever side has this index).
+    label = ""
+    for side in (away, home):
+        if idx < len(side):
+            label = side[idx].get("label", "") or side[idx].get("category", "")
+            break
+    label = label.upper()[:7]
+    _draw_text(canvas, label, _center_x(label, RIGHT_X, RIGHT_W), 6, white)
+    for x in range(RIGHT_X, MATRIX_W):
+        canvas.SetPixel(x, 7, 40, 40, 40)
+
+    def _draw_leader(entries: list, side_col, name_y: int, val_y: int) -> None:
+        if idx >= len(entries):
+            return
+        e = entries[idx]
+        name = _fit_name(e.get("name", ""))  # surname, trimmed to panel width
+        value = _leader_value_display(e.get("value", ""))
+        _draw_text(canvas, name, RIGHT_X + 1, name_y, side_col)
+        _draw_text(canvas, value, RIGHT_X + 1, val_y, white)
+
+    away_col = _team_text_color(game, "away")
+    home_col = _team_text_color(game, "home")
+    _draw_leader(away, away_col, 13, 19)
+    _draw_leader(home, home_col, 25, 31)
+
+
+def render_favorites_upcoming_focus(canvas, game: dict, panel_idx: int) -> None:
+    """Full focus frame for an UPCOMING favourites game: team rows + leaders.
+
+    Left panel is the game's own league left panel (team score rows + the
+    kickoff date/time), so the matchup reads exactly like any other focus frame.
+    Right panel shows the season leaders (see _render_favorites_leaders_right),
+    cycling one category per panel flip. Used only for pre games that carry a
+    ``leaders`` block; the loop falls back to the normal renderer otherwise.
+    """
+    canvas.Clear()
+    _draw_divider(canvas)
+    # Reuse the game's own league left panel so team rows + status match the
+    # rest of the display. Route by sport; default to the NBA left panel.
+    left = _SPORT_FOCUS_LEFT.get(game.get("sport", ""), _render_left_panel)
+    left(canvas, game)
+    _render_favorites_leaders_right(canvas, game, panel_idx)

@@ -287,6 +287,9 @@ class ESPNClient:
         # Per-sport parsed team-color maps (see _team_color_map). Memoised for
         # the client's lifetime since team colors are effectively static.
         self._color_maps: dict[str, dict[str, dict[str, str]]] = {}
+        # Per-team overall record (see get_team_record), memoised for the
+        # client's lifetime — records change at most once per game.
+        self._record_cache: dict[str, str] = {}
 
     def _get(self, url: str) -> dict:
         cached = self._cache.get(url)
@@ -347,6 +350,162 @@ class ESPNClient:
             )
         teams.sort(key=lambda t: t["abbreviation"] or t["name"])
         return teams
+
+    def get_team_schedule(self, sport: str, team_id: str) -> list[dict]:
+        """Every game on one team's schedule, oldest first, in scoreboard shape.
+
+        Used by the favourites feed, which needs each favourited team's *last*
+        completed game and its *next* (or live) game — information the daily
+        scoreboard cannot give, since it only knows about today's slate.
+
+        ESPN's ``teams/{id}/schedule`` endpoint returns the whole season of
+        events (past with final scores, future scheduled). Each event carries
+        the same ``competitions``/``competitors`` structure as the scoreboard,
+        so every game is parsed through :func:`_parse_base_game` and comes out
+        in the identical dict shape the renderers already consume (team abbrs,
+        ids, scores, colors, state, ``game_date``). Returns ``[]`` for an
+        unknown sport or on any fetch/parse failure — one team's schedule gap
+        must never sink the whole favourites feed.
+        """
+        league_path = ESPN_LEAGUE_PATHS.get(sport, "")
+        if not league_path:
+            logger.error(f"No ESPN league path for sport {sport!r}")
+            return []
+
+        url = f"{_ESPN_BASE}/{league_path}/teams/{team_id}/schedule"
+        try:
+            raw = self._get(url)
+        except Exception as e:
+            logger.error(f"ESPN schedule fetch failed for {sport} team {team_id}: {e}")
+            return []
+
+        color_map = self._team_color_map(league_path)
+        games: list[dict] = []
+        for event in raw.get("events", []):
+            comp = (event.get("competitions") or [{}])[0]
+            competitors = comp.get("competitors", [])
+            home = next((c for c in competitors if c.get("homeAway") == "home"), None)
+            away = next((c for c in competitors if c.get("homeAway") == "away"), None)
+            if not home or not away:
+                continue
+
+            status = comp.get("status", {})
+            stype = status.get("type", {})
+
+            # On the schedule endpoint a competitor's `score` is a dict
+            # ({"value": 24.0, "displayValue": "24"}) rather than the plain
+            # number the scoreboard returns. Flatten it to the numeric value so
+            # _parse_base_game's int(score) works for both shapes; an upcoming
+            # game has no score, which becomes 0.
+            def _flatten_score(competitor: dict) -> dict:
+                score = competitor.get("score")
+                if isinstance(score, dict):
+                    return {**competitor, "score": score.get("value") or 0}
+                return competitor
+
+            game = _parse_base_game(
+                event,
+                _flatten_score(home),
+                _flatten_score(away),
+                stype,
+                status,
+                color_map,
+            )
+            # Schedule events don't carry a live clock; set empty so renderers
+            # that read game["clock"] behave the same as for a pre/post game.
+            game["clock"] = status.get("displayClock", "")
+            games.append(game)
+
+        # Oldest first so "last completed" and "next upcoming" are easy to pick
+        # by scanning from the ends.
+        games.sort(key=lambda g: g.get("game_date", ""))
+        return games
+
+    def get_team_record(self, sport: str, team_id: str) -> str:
+        """The team's overall win-loss record, e.g. '4-2' (empty when unknown).
+
+        The schedule endpoint's upcoming games carry no records, so the
+        favourites feed fetches them here from ESPN's ``teams/{id}`` endpoint
+        (``team.record.items`` → the entry typed ``total``). Records change at
+        most once per game, so each team's record is memoised per client for the
+        life of the process; the schedule client already uses a long TTL on the
+        underlying HTTP cache too.
+        """
+        league_path = ESPN_LEAGUE_PATHS.get(sport, "")
+        if not league_path:
+            return ""
+        cache_key = f"{league_path}/{team_id}"
+        cached = self._record_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        url = f"{_ESPN_BASE}/{league_path}/teams/{team_id}"
+        record = ""
+        try:
+            raw = self._get(url)
+            items = ((raw.get("team") or {}).get("record") or {}).get("items") or []
+            # Prefer the 'total' record; fall back to the first item.
+            total = next((i for i in items if i.get("type") == "total"), None)
+            record = (total or (items[0] if items else {})).get("summary", "") or ""
+        except Exception as e:
+            logger.error(f"ESPN record fetch failed for {sport} team {team_id}: {e}")
+            record = ""
+        self._record_cache[cache_key] = record
+        return record
+
+    def get_summary_leaders(self, sport: str, event_id: str) -> dict:
+        """Per-team stat leaders for one game, as ESPN provides them.
+
+        Reads the game summary's ``leaders`` block, which ESPN populates with
+        SEASON leaders even for an upcoming (not-yet-played) game — so the
+        favourites feed can show "who leads each team" for a future matchup. The
+        categories are whatever ESPN returns for that sport (NHL: goals/assists/
+        points; football: passingYards/rushingYards/receivingYards/sacks/
+        tackles; etc.), NOT a hardcoded per-sport list — we take what we are
+        given, in order, capped at 4.
+
+        Returns ``{"home": [...], "away": [...]}`` where each entry is
+        ``{"category", "label", "name", "value"}`` (``name`` is the player's
+        last name, ``value`` the display value). Sides are resolved from the
+        summary header's home/away map. Empty lists when there are no leaders
+        (e.g. early season) or on any failure — the caller then shows nothing.
+        """
+        league_path = ESPN_LEAGUE_PATHS.get(sport, "")
+        if not league_path or not event_id:
+            return {"home": [], "away": []}
+
+        url = f"{_ESPN_BASE}/{league_path}/summary?event={event_id}"
+        result: dict = {"home": [], "away": []}
+        try:
+            raw = self._get(url)
+            home_away = _build_home_away_map(raw)  # team_id -> "home"|"away"
+            for team_block in raw.get("leaders") or []:
+                tid = str((team_block.get("team") or {}).get("id") or "")
+                side = home_away.get(tid)
+                if side not in ("home", "away"):
+                    continue
+                entries: list[dict] = []
+                for cat in (team_block.get("leaders") or [])[:4]:
+                    leader = (cat.get("leaders") or [{}])[0]
+                    athlete = leader.get("athlete") or {}
+                    name = (
+                        athlete.get("lastName")
+                        or _last_name(athlete.get("displayName", ""))
+                        or athlete.get("shortName", "")
+                    )
+                    entries.append(
+                        {
+                            "category": cat.get("name", ""),
+                            "label": (cat.get("displayName") or cat.get("name") or ""),
+                            "name": name,
+                            "value": str(leader.get("displayValue", "") or ""),
+                        }
+                    )
+                result[side] = entries
+        except Exception as e:
+            logger.error(f"ESPN leaders fetch failed for {sport} event {event_id}: {e}")
+            return {"home": [], "away": []}
+        return result
 
     def _team_color_map(self, league_path: str) -> dict[str, dict[str, str]]:
         """Map ``team_id -> {"color", "alt_color"}`` for an ESPN league path.

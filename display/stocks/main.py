@@ -145,7 +145,9 @@ def run():
             # jumps until the dwell completes without one.
             while pending is not None:
                 logger.info(f"Jumping to requested view {pending[0]}:{pending[1]}")
-                canvas, pending = _show(matrix, canvas, pending[0], pending[1], interval)
+                canvas, pending = _show(
+                    matrix, canvas, pending[0], pending[1], interval
+                )
 
 
 if __name__ == "__main__":

@@ -219,11 +219,7 @@ function StockCard({ symbol, cycleKey, isOnDisplay, onShowNow, showNowPending, c
             style={{ fontSize: "0.75rem", padding: "4px 10px" }}
             onClick={() => onShowNow(symbol, cycleKey)}
             disabled={showNowPending || isOnDisplay}
-            title={
-              isOnDisplay
-                ? "Already on display"
-                : "Jump the display to this stock now"
-            }
+            title={isOnDisplay ? "Already on display" : "Jump the display to this stock now"}
           >
             {isOnDisplay ? "On display" : showNowPending ? "…" : "Show now"}
           </button>

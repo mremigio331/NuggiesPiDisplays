@@ -64,7 +64,11 @@ async def update_settings(body: StocksSettings):
         fv = updates["force_view"]
         if fv:  # empty string clears the force; otherwise "SYMBOL:cycle_key"
             parts = fv.split(":")
-            if len(parts) != 2 or not parts[0].strip() or parts[1] not in VALID_CYCLE_KEYS:
+            if (
+                len(parts) != 2
+                or not parts[0].strip()
+                or parts[1] not in VALID_CYCLE_KEYS
+            ):
                 raise HTTPException(
                     status_code=422,
                     detail="force_view must be 'SYMBOL:cycle_key' with a valid cycle key",

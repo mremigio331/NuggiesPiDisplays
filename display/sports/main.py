@@ -201,6 +201,49 @@ def _has_live_game(games: list[dict]) -> bool:
     return any(g.get("state") == "in" for g in games)
 
 
+def _overview_pairs(
+    games: list[dict], aggregated: bool
+) -> list[tuple[dict, dict | None]]:
+    """Group a slate into the (game_a, game_b) pairs overview shows at once.
+
+    Normal league: consecutive games two at a time — [(g0,g1), (g2,g3), …],
+    a trailing odd game paired with None.
+
+    Favourites feed (``aggregated``): one pair per favourited team, keyed by
+    each game's ``favorite_id`` so a team's last + live/next games stay side by
+    side. Insertion order is preserved (the API already emits a team's games
+    adjacently), and a team contributing a single game is paired with None so
+    it still renders in its own panel rather than next to another team's game.
+    """
+    if not games:
+        return []
+    if not aggregated:
+        pairs: list[tuple[dict, dict | None]] = []
+        for i in range(0, len(games), 2):
+            a = games[i]
+            b = games[i + 1] if i + 1 < len(games) else None
+            pairs.append((a, b))
+        return pairs
+
+    # Favourites: bucket by favorite_id, preserving first-seen order.
+    grouped: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for g in games:
+        key = str(g.get("favorite_id") or g.get("event_id") or "")
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+        grouped[key].append(g)
+
+    pairs = []
+    for key in order:
+        team_games = grouped[key]
+        a = team_games[0]
+        b = team_games[1] if len(team_games) > 1 else None
+        pairs.append((a, b))
+    return pairs
+
+
 def _find_event(games: list[dict], event_id: str | None) -> int | None:
     """Index of event_id in games, or None when blank or not on today's slate."""
     if not event_id:
@@ -313,6 +356,23 @@ def run() -> None:
         if not rotation:
             rotation = games
 
+        # Favourites in FOCUS mode cycles current games first, then past/future.
+        # The feed arrives grouped by team (each team's last, then its
+        # live/next), which is what overview wants for its side-by-side pairs —
+        # but focus shows one game at a time, so a live game should lead. Pull
+        # live ("in") games to the front, keeping the feed's existing order
+        # within each band. Overview keeps the team-grouped order untouched.
+        #
+        # This MUST happen before the "Show now" lookup below: that lookup sets
+        # game_idx to a position IN this rotation, so reordering afterwards would
+        # make the index point at the wrong game (the bug where Show landed on
+        # the past game instead of the requested one).
+        display_mode = settings.get("display_mode", "focus")
+        if display_mode == "focus" and cfg.get("aggregated"):
+            live = [g for g in rotation if g.get("state") == "in"]
+            rest = [g for g in rotation if g.get("state") != "in"]
+            rotation = live + rest
+
         # "Show now": jump inside the rotation, or briefly peek at a game the
         # locks are filtering out — otherwise the button would do nothing.
         force_event_id = (settings.get("force_event_id") or "").strip()
@@ -340,32 +400,32 @@ def run() -> None:
         else:
             rotation = [games[peek_idx]]
 
-        display_mode = settings.get("display_mode", "focus")
         # One game cannot fill a split view — show it full screen instead of
         # leaving half the matrix blank.
         if len(rotation) < 2:
-            display_mode = "focus"
-        # The favourites feed mixes leagues, and a split overview view can only
-        # use one renderer for its pair — forcing focus means every game is
-        # drawn by its own league's renderer, one at a time.
-        if cfg.get("aggregated"):
             display_mode = "focus"
 
         state_locked = [i for i in locked_ids if _find_event(games, i) is not None]
 
         if display_mode == "overview":
-            # Advance by 2 each cycle (two games shown at once)
+            # Group the slate into the (game_a, game_b) pairs overview shows one
+            # at a time. For a normal league that's just consecutive games two
+            # at a time. For the favourites feed each pair is ONE team's games
+            # (its last + its live/next), kept together by favorite_id so a
+            # team's two cards always appear side by side — even when a team
+            # contributes only one game (season just started / already over).
+            pairs = _overview_pairs(rotation, cfg.get("aggregated", False))
+            pair_count = max(len(pairs), 1)
+
+            # Advance one pair (= one team, for favourites) per cycle.
             if (now - last_game_flip) >= OVERVIEW_CYCLE:
                 if last_game_flip > 0:
-                    game_idx = (game_idx + 2) % max(len(rotation), 1)
+                    game_idx = (game_idx + 1) % pair_count
                 last_game_flip = now
 
-            game_a = rotation[game_idx % len(rotation)]
-            game_b = (
-                rotation[(game_idx + 1) % len(rotation)] if len(rotation) > 1 else None
-            )
+            game_a, game_b = pairs[game_idx % pair_count]
             logger.debug(
-                f"{cfg['label']} overview {game_idx + 1}/{len(rotation)}"
+                f"{cfg['label']} overview {game_idx + 1}/{pair_count}"
                 f"{f' of {len(state_locked)} locked' if state_locked else ''}: "
                 f"{game_a.get('away_team')} @ {game_a.get('home_team')} [{game_a.get('state')}]"
             )
@@ -378,7 +438,11 @@ def run() -> None:
                 ],
                 state_locked,
             )
-            cfg["render_overview"](canvas, game_a, game_b)
+            if cfg.get("aggregated"):
+                # Each panel may be a different league — route per game.
+                renderer.render_favorites_overview(canvas, game_a, game_b)
+            else:
+                cfg["render_overview"](canvas, game_a, game_b)
 
         else:  # focus
             # In the favourites feed each game may come from a different league,
@@ -451,7 +515,18 @@ def run() -> None:
                 f"[{state}] panel={panel_view}"
             )
             _write_state(sport, display_mode, [game.get("event_id", "")], state_locked)
-            game_cfg["render_focus"](canvas, game, details, panel_view)
+            # Upcoming favourites games have no real-game details yet, but ESPN
+            # gives each team's SEASON leaders (attached by the API as
+            # game["leaders"]). Render those as a leaders panel — whatever
+            # categories ESPN provided — cycling one category per panel flip.
+            leaders = game.get("leaders") if cfg.get("aggregated") else None
+            has_leaders = isinstance(leaders, dict) and (
+                leaders.get("home") or leaders.get("away")
+            )
+            if cfg.get("aggregated") and state == "pre" and has_leaders:
+                renderer.render_favorites_upcoming_focus(canvas, game, panel_idx)
+            else:
+                game_cfg["render_focus"](canvas, game, details, panel_view)
 
         canvas = matrix.SwapOnVSync(canvas)
         time.sleep(1)

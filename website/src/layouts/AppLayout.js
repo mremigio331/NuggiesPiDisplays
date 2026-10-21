@@ -44,10 +44,7 @@ export default function AppLayout({ children }) {
               }
               onClick={() => navigate("/system")}
             >
-              ⚙
-              {updateAvailable && (
-                <span className="ml-update-badge" title="Update available" />
-              )}
+              ⚙{updateAvailable && <span className="ml-update-badge" title="Update available" />}
             </button>
           ) : (
             updateAvailable && (
