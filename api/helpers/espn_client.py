@@ -189,10 +189,38 @@ def _football_score_type(ptype: dict, points: int) -> str:
     return (abbr or text.upper())[:2]
 
 
+def _resolve_team_colors(
+    team: dict, color_map: dict[str, dict[str, str]] | None
+) -> tuple[str, str]:
+    """Return (color, alt_color) for a scoreboard team.
+
+    ESPN's scoreboard payload often omits one or both colors (notably the NHL
+    scoreboard, which returns no alternates at all). We prefer the scoreboard's
+    own value, fall back to the teams-endpoint ``color_map`` keyed by team id,
+    and finally to a readable literal default so a row always has usable colors.
+    """
+    tid = str(team.get("id") or "")
+    mapped = (color_map or {}).get(tid, {})
+    color = team.get("color") or mapped.get("color") or "003366"
+    alt = team.get("alternateColor") or mapped.get("alt_color") or "ffffff"
+    return color, alt
+
+
 def _parse_base_game(
-    event: dict, home: dict, away: dict, stype: dict, status: dict
+    event: dict,
+    home: dict,
+    away: dict,
+    stype: dict,
+    status: dict,
+    color_map: dict[str, dict[str, str]] | None = None,
 ) -> dict:
-    """Fields common to every sport's scoreboard game entry."""
+    """Fields common to every sport's scoreboard game entry.
+
+    ``color_map`` (team_id -> {"color", "alt_color"}) fills in colors the
+    scoreboard omits; see _team_color_map / _resolve_team_colors.
+    """
+    home_color, home_alt = _resolve_team_colors(home["team"], color_map)
+    away_color, away_alt = _resolve_team_colors(away["team"], color_map)
     return {
         "event_id": event.get("id", ""),
         "home_team": home["team"].get("abbreviation", ""),
@@ -204,10 +232,10 @@ def _parse_base_game(
         "away_id": str(away["team"].get("id", "")),
         "home_score": int(home.get("score") or 0),
         "away_score": int(away.get("score") or 0),
-        "home_color": home["team"].get("color", "003366"),
-        "away_color": away["team"].get("color", "003366"),
-        "home_alt_color": home["team"].get("alternateColor", "ffffff"),
-        "away_alt_color": away["team"].get("alternateColor", "ffffff"),
+        "home_color": home_color,
+        "away_color": away_color,
+        "home_alt_color": home_alt,
+        "away_alt_color": away_alt,
         "status": stype.get("description", "Scheduled"),
         "status_detail": stype.get("shortDetail", ""),
         "period": status.get("period", 0),
@@ -256,6 +284,9 @@ class ESPNClient:
     def __init__(self, cache_ttl: int = 30):
         self._cache: dict[str, tuple[float, dict]] = {}
         self._ttl = cache_ttl
+        # Per-sport parsed team-color maps (see _team_color_map). Memoised for
+        # the client's lifetime since team colors are effectively static.
+        self._color_maps: dict[str, dict[str, dict[str, str]]] = {}
 
     def _get(self, url: str) -> dict:
         cached = self._cache.get(url)
@@ -317,6 +348,52 @@ class ESPNClient:
         teams.sort(key=lambda t: t["abbreviation"] or t["name"])
         return teams
 
+    def _team_color_map(self, league_path: str) -> dict[str, dict[str, str]]:
+        """Map ``team_id -> {"color", "alt_color"}`` for an ESPN league path.
+
+        ``league_path`` is the ESPN path segment (e.g. "hockey/nhl",
+        "soccer/eng.1", "football/college-football") so this works for every
+        sport, including the ones whose scoreboard methods take an ESPN league
+        slug rather than our internal sport key.
+
+        ESPN's scoreboard feed frequently omits ``alternateColor`` (and
+        occasionally ``color``) — the NHL scoreboard returns ``None`` for every
+        team's alternate — while the teams endpoint always carries both. We use
+        this map to fill those gaps so secondary colors render correctly.
+
+        Team colors effectively never change within a season, so the parsed map
+        is memoised per league for the life of the client. A failed teams fetch
+        caches an empty map so a flaky call doesn't retry on every scoreboard
+        poll; the scoreboard's own values (and literal fallbacks) still apply.
+        """
+        cached = self._color_maps.get(league_path)
+        if cached is not None:
+            return cached
+
+        color_map: dict[str, dict[str, str]] = {}
+        # ESPN caps the teams list at 50/page by default; college football alone
+        # has ~760, so request a large page to get the whole league in one call.
+        url = f"{_ESPN_BASE}/{league_path}/teams?limit=1000"
+        try:
+            raw = self._get(url)
+            leagues = (raw.get("sports") or [{}])[0].get("leagues") or [{}]
+            entries = leagues[0].get("teams") or []
+        except Exception as e:
+            logger.error(f"ESPN team-color map fetch failed for {league_path}: {e}")
+            entries = []
+
+        for entry in entries:
+            team = entry.get("team") or {}
+            tid = str(team.get("id") or "")
+            if not tid:
+                continue
+            color_map[tid] = {
+                "color": team.get("color") or "",
+                "alt_color": team.get("alternateColor") or "",
+            }
+        self._color_maps[league_path] = color_map
+        return color_map
+
     def _get_basketball_scoreboard(self, league: str) -> list[dict]:
         """Return today's games for a basketball league (nba, wnba).
 
@@ -330,6 +407,7 @@ class ESPNClient:
             logger.error(f"ESPN {league.upper()} fetch failed: {e}")
             return []
 
+        color_map = self._team_color_map(f"basketball/{league}")
         games = []
         for event in raw.get("events", []):
             comp = (event.get("competitions") or [{}])[0]
@@ -350,7 +428,7 @@ class ESPNClient:
                 str(away["team"].get("id", "")),
             )
 
-            game = _parse_base_game(event, home, away, stype, status)
+            game = _parse_base_game(event, home, away, stype, status, color_map)
             game["clock"] = status.get("displayClock", "")
             game["possession"] = possession
             games.append(game)
@@ -465,6 +543,7 @@ class ESPNClient:
             logger.error(f"ESPN MLB fetch failed: {e}")
             return []
 
+        color_map = self._team_color_map("baseball/mlb")
         games = []
         for event in raw.get("events", []):
             comp = (event.get("competitions") or [{}])[0]
@@ -503,7 +582,7 @@ class ESPNClient:
                     (situation.get(key) or {}).get("athlete", {}).get("displayName", "")
                 )
 
-            game = _parse_base_game(event, home, away, stype, status)
+            game = _parse_base_game(event, home, away, stype, status, color_map)
             game.update(
                 {
                     "inning_half": inning_half,
@@ -536,6 +615,7 @@ class ESPNClient:
             logger.error(f"ESPN NHL fetch failed: {e}")
             return []
 
+        color_map = self._team_color_map("hockey/nhl")
         games = []
         for event in raw.get("events", []):
             comp = (event.get("competitions") or [{}])[0]
@@ -546,7 +626,7 @@ class ESPNClient:
                 continue
             status = comp.get("status", {})
             stype = status.get("type", {})
-            game = _parse_base_game(event, home, away, stype, status)
+            game = _parse_base_game(event, home, away, stype, status, color_map)
             game["clock"] = status.get("displayClock", "")
             games.append(game)
         return games
@@ -904,6 +984,7 @@ class ESPNClient:
             logger.error(f"ESPN Soccer ({league}) fetch failed: {e}")
             return []
 
+        color_map = self._team_color_map(f"soccer/{league}")
         games = []
         for event in raw.get("events", []):
             comp = (event.get("competitions") or [{}])[0]
@@ -915,7 +996,7 @@ class ESPNClient:
 
             status = comp.get("status", {})
             stype = status.get("type", {})
-            game = _parse_base_game(event, home, away, stype, status)
+            game = _parse_base_game(event, home, away, stype, status, color_map)
             game["clock"] = status.get("displayClock", "")
             # Soccer period: 1=first half, 2=second half, 3+=extra time
             game["detail"] = stype.get("detail", "")
@@ -1022,6 +1103,7 @@ class ESPNClient:
             logger.error(f"ESPN football ({league}) fetch failed: {e}")
             return []
 
+        color_map = self._team_color_map(f"football/{league}")
         games = []
         for event in raw.get("events", []):
             comp = (event.get("competitions") or [{}])[0]
@@ -1041,7 +1123,7 @@ class ESPNClient:
             # ESPN sends down = -1 between plays (kickoff, PAT, timeout).
             down = _to_int(situation.get("down"))
 
-            game = _parse_base_game(event, home, away, stype, status)
+            game = _parse_base_game(event, home, away, stype, status, color_map)
             game["clock"] = status.get("displayClock", "")
             game["possession"] = _parse_possession(
                 situation,

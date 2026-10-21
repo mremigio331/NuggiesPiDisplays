@@ -67,6 +67,110 @@ def _parse_hex(hex_str: str) -> tuple[int, int, int]:
     return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
 
 
+# ── Team color-clash resolution ───────────────────────────────────────────────
+#
+# When the two teams in a game have primary colors that are too similar, the
+# away/home score rows (which fill with the team's primary color) become hard to
+# tell apart. We detect that case perceptually (CIELAB + CIE76 Delta-E, which
+# tracks how the eye judges color difference far better than raw RGB distance)
+# and swap the AWAY team to its alternate color — then to neutral white if the
+# alternate still clashes. Home keeps its color by convention ("home whites").
+#
+# _CLASH_THRESHOLD is in Delta-E (CIE76) units: ~2.3 is "just noticeable", while
+# a dim 64×32 LED panel needs a wider gap to read as distinct at a glance. Tune
+# on real hardware against a known clash (e.g. two predominantly-red teams).
+_CLASH_THRESHOLD = 22.0
+
+
+def _hex_to_lab(hex_str: str) -> tuple[float, float, float]:
+    """Convert an RGB hex string to CIELAB (D65). Returns (L, a, b)."""
+    r, g, b = _parse_hex(hex_str)
+
+    # sRGB (0..255) → linear RGB (0..1)
+    def _lin(c: float) -> float:
+        c /= 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    rl, gl, bl = _lin(r), _lin(g), _lin(b)
+
+    # linear RGB → XYZ (D65), then normalize by the D65 white point
+    x = (rl * 0.4124 + gl * 0.3576 + bl * 0.1805) / 0.95047
+    y = rl * 0.2126 + gl * 0.7152 + bl * 0.0722
+    z = (rl * 0.0193 + gl * 0.1192 + bl * 0.9505) / 1.08883
+
+    # XYZ → LAB
+    def _f(t: float) -> float:
+        return t ** (1.0 / 3.0) if t > 0.008856 else (7.787 * t + 16.0 / 116.0)
+
+    fx, fy, fz = _f(x), _f(y), _f(z)
+    return (116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz))
+
+
+def _delta_e(hex_a: str, hex_b: str) -> float:
+    """Perceptual distance between two hex colors (CIE76). Larger = more distinct.
+
+    Returns 0.0 on a parse failure so unparseable colors are treated as a clash
+    and fall through to the safe neutral fallback rather than being kept.
+    """
+    try:
+        l1, a1, b1 = _hex_to_lab(hex_a)
+        l2, a2, b2 = _hex_to_lab(hex_b)
+    except Exception:
+        return 0.0
+    return ((l1 - l2) ** 2 + (a1 - a2) ** 2 + (b1 - b2) ** 2) ** 0.5
+
+
+_NEUTRAL_BG = "ffffff"  # fallback when both away colors clash with home
+
+
+def _resolve_away_bg(game: dict) -> str:
+    """Away team's background hex, swapped to its alternate (then to a neutral)
+    when it clashes with the home team's primary color."""
+    home = game.get("home_color", "333333")
+    away = game.get("away_color", "333333")
+    if _delta_e(away, home) >= _CLASH_THRESHOLD:
+        return away  # distinct enough — keep primary
+    alt = game.get("away_alt_color", "ffffff")
+    if _delta_e(alt, home) >= _CLASH_THRESHOLD:
+        return alt  # alternate is distinct — use it
+    return _NEUTRAL_BG  # both clash — neutral fallback
+
+
+def _override_text_hex(primary_hex: str) -> str | None:
+    """Return the manual text-color override for a team's primary hex, if any.
+
+    See _TEXT_COLOR_OVERRIDES. Returns the raw override hex (not a drawn color)
+    so callers can decide how to apply it; None when the team isn't overridden.
+    """
+    return _TEXT_COLOR_OVERRIDES.get((primary_hex or "").lstrip("#").lower())
+
+
+def _away_text_color(game: dict, away_bg: str):
+    """Text color for the away score row.
+
+    Normally the alternate color (the established two-tone look). But when the
+    background fell back to the neutral light fill, the alt color may wash out,
+    so draw dark text for guaranteed contrast instead. A manual override for the
+    team's primary (see _TEXT_COLOR_OVERRIDES) wins when present and legible on
+    the current background — on the neutral light fill we still force dark text.
+    """
+    if away_bg == _NEUTRAL_BG:
+        return _color(20, 20, 20)
+    override = _override_text_hex(game.get("away_color", ""))
+    if override:
+        return _team_color(override)
+    return _team_color(game.get("away_alt_color", "ffffff"))
+
+
+def _home_text_color(game: dict):
+    """Text color for the home score row — alternate color, or a manual override
+    for the team's primary (see _TEXT_COLOR_OVERRIDES) when present."""
+    override = _override_text_hex(game.get("home_color", ""))
+    if override:
+        return _team_color(override)
+    return _team_color(game.get("home_alt_color", "ffffff"))
+
+
 def _team_color(hex_str: str):
     """Team color for text — boosts dark colors to _MIN_BRIGHTNESS peak."""
     try:
@@ -120,6 +224,64 @@ def _team_color_rgb(hex_str: str) -> tuple[int, int, int]:
             min(255, int(b * scale)),
         )
     return (r, g, b)
+
+
+_MIN_TEXT_PEAK = 100  # below this a primary color is unreadable on black
+
+# Manual text-color overrides, keyed by a team's PRIMARY color hex.
+#
+# The automatic logic in _team_text_color picks each team's text color from its
+# own primary/alternate, but some teams read poorly on the black right panel no
+# matter which it picks — a dark steel primary with only a slightly-lighter
+# alternate, so both teams in a matchup look the same. For those, force a
+# hand-picked, legible text color here.
+#
+# Keyed by primary hex (lower-case, no '#') because the renderer's game dict
+# carries no league field, and a primary hex uniquely identifies the team far
+# better than an abbreviation (which collides across leagues). Keep the team
+# name in the comment so the entry is readable.
+_TEXT_COLOR_OVERRIDES: dict[str, str] = {
+    "344043": "b4975a",  # NHL Vegas Golden Knights — steel primary → gold text
+}
+
+
+def _team_text_color(game: dict, side: str):
+    """Team text color for the black right panel — used by every sport.
+
+    Draws a team's name/stats in its own color on the black right panel:
+    primary color by default, falling back to the alternate only when the
+    primary is too dark to read on black (see below). This is the shared
+    look across all leagues (NBA, MLB, NHL, soccer, football).
+
+    A manual _TEXT_COLOR_OVERRIDES entry (keyed by the team's primary hex) wins
+    outright — use it for teams the automatic choice renders too dark or too
+    close to a frequent opponent (e.g. Vegas's steel gray).
+
+    Otherwise: some primaries are too dark to read on black even after the
+    _MIN_BRIGHTNESS boost (Bears navy 0b1c3a, Steelers black 000000), so fall
+    back to the alternate color when it is brighter. Teams with a usable
+    primary keep it, so a light-gray alternate never replaces a team's real
+    color.
+    """
+    primary = game.get(f"{side}_color") or "ffffff"
+
+    override = _override_text_hex(primary)
+    if override:
+        return _team_color(override)
+
+    alt = game.get(f"{side}_alt_color") or ""
+    try:
+        primary_peak = max(_parse_hex(primary))
+    except Exception:
+        return _team_color(primary)
+    if primary_peak >= _MIN_TEXT_PEAK or not alt:
+        return _team_color(primary)
+    try:
+        if max(_parse_hex(alt)) > primary_peak:
+            return _team_color(alt)
+    except Exception:
+        pass
+    return _team_color(primary)
 
 
 def _fill_rect(
@@ -272,14 +434,15 @@ def _draw_team_score_row(
 def _render_focus_left_header(canvas, game: dict) -> str:
     """Draw away + home score rows in the focus left panel. Returns state."""
     state = game.get("state", "pre")
-    away_tc = _team_color(game.get("away_alt_color", "ffffff"))
-    home_tc = _team_color(game.get("home_alt_color", "ffffff"))
+    away_bg = _resolve_away_bg(game)
+    away_tc = _away_text_color(game, away_bg)
+    home_tc = _home_text_color(game)
     _draw_team_score_row(
         canvas,
         game.get("away_team", "???")[:4],
         game.get("away_score", 0),
         state != "pre",
-        game.get("away_color", "333333"),
+        away_bg,
         away_tc,
         0,
         0,
@@ -308,14 +471,15 @@ def _render_overview_panel_base(canvas, game: dict, x0: int, w: int) -> tuple[st
     Returns (state, x1) for the caller's info strip."""
     state = game.get("state", "pre")
     x1 = x0 + w - 1
-    away_tc = _team_color(game.get("away_alt_color", "ffffff"))
-    home_tc = _team_color(game.get("home_alt_color", "ffffff"))
+    away_bg = _resolve_away_bg(game)
+    away_tc = _away_text_color(game, away_bg)
+    home_tc = _home_text_color(game)
     _draw_team_score_row(
         canvas,
         game.get("away_team", "???")[:3],
         game.get("away_score", 0),
         state != "pre",
-        game.get("away_color", "333333"),
+        away_bg,
         away_tc,
         x0,
         0,
@@ -441,8 +605,8 @@ def _render_right_stat(
                       y=0..4  lit in away color if away has ball
                       y=27..31 lit in home color if home has ball
     """
-    away_col = _team_color(game.get("away_color", "ffffff"))
-    home_col = _team_color(game.get("home_color", "ffffff"))
+    away_col = _team_text_color(game, "away")
+    home_col = _team_text_color(game, "home")
     gray = _color(80, 80, 80)
     white = _color(210, 210, 210)
 
@@ -854,11 +1018,11 @@ def _render_baseball_right_live(canvas, game: dict, details: dict | None) -> Non
     show_pitcher = (int(time.time()) // 10) % 2 == 0
 
     if inning_half == "top":
-        batting_col = _team_color(game.get("away_color", "ffffff"))
-        pitching_col = _team_color(game.get("home_color", "ffffff"))
+        batting_col = _team_text_color(game, "away")
+        pitching_col = _team_text_color(game, "home")
     else:
-        batting_col = _team_color(game.get("home_color", "ffffff"))
-        pitching_col = _team_color(game.get("away_color", "ffffff"))
+        batting_col = _team_text_color(game, "home")
+        pitching_col = _team_text_color(game, "away")
 
     gray = _color(100, 100, 100)
     if show_pitcher:
@@ -896,8 +1060,8 @@ def _render_baseball_right_post(
 
     if panel_view == "decisions":
         # Show top pitcher from each team (most innings pitched)
-        away_col = _team_color(game.get("away_color", "ffffff"))
-        home_col = _team_color(game.get("home_color", "ffffff"))
+        away_col = _team_text_color(game, "away")
+        home_col = _team_text_color(game, "home")
 
         for side, col, y in [("away", away_col, 16), ("home", home_col, 26)]:
             pitchers = details.get(side, {}).get("pitchers", [])
@@ -915,8 +1079,8 @@ def _render_baseball_right_post(
         batters = sorted(
             _all_batters(details), key=lambda p: p.get(stat_key, 0), reverse=True
         )
-        away_col = _team_color(game.get("away_color", "ffffff"))
-        home_col = _team_color(game.get("home_color", "ffffff"))
+        away_col = _team_text_color(game, "away")
+        home_col = _team_text_color(game, "home")
 
         for player, text_y in zip(batters[:3], [14, 21, 28]):
             name = (player.get("name", "") or "?").split()[-1][:5]
@@ -1043,8 +1207,8 @@ def _render_hockey_right_stats(canvas, game: dict, details: dict | None) -> None
       label       centred       in right panel
       home value  right-aligned x=63
     """
-    away_col = _team_color(game.get("away_color", "ffffff"))
-    home_col = _team_color(game.get("home_color", "ffffff"))
+    away_col = _team_text_color(game, "away")
+    home_col = _team_text_color(game, "home")
     gray = _color(100, 100, 100)
     white = _color(210, 210, 210)
 
@@ -1100,8 +1264,8 @@ def _render_hockey_right_leaders(
     Players with a zero total are skipped so the board only shows real
     contributors (e.g. no 0-goal scorers under GOALS).
     """
-    away_col = _team_color(game.get("away_color", "ffffff"))
-    home_col = _team_color(game.get("home_color", "ffffff"))
+    away_col = _team_text_color(game, "away")
+    home_col = _team_text_color(game, "home")
     white = _color(210, 210, 210)
     gray = _color(100, 100, 100)
 
@@ -1146,8 +1310,8 @@ def _render_hockey_right_event_list(
     Shared by the scoring and penalties views — they differ only in which
     details list they read.
     """
-    away_col = _team_color(game.get("away_color", "ffffff"))
-    home_col = _team_color(game.get("home_color", "ffffff"))
+    away_col = _team_text_color(game, "away")
+    home_col = _team_text_color(game, "home")
     white = _color(210, 210, 210)
     gray = _color(100, 100, 100)
 
@@ -1290,8 +1454,8 @@ def _render_soccer_left_panel(canvas, game: dict) -> None:
 
 def _render_soccer_right_stats(canvas, game: dict, details: dict | None) -> None:
     """Right panel — yellow cards / red cards / shots comparison."""
-    away_col = _team_color(game.get("away_color", "ffffff"))
-    home_col = _team_color(game.get("home_color", "ffffff"))
+    away_col = _team_text_color(game, "away")
+    home_col = _team_text_color(game, "home")
     yellow = _color(255, 220, 0)
     red = _color(220, 40, 0)
     gray = _color(100, 100, 100)
@@ -1323,8 +1487,8 @@ def _render_soccer_right_stats(canvas, game: dict, details: dict | None) -> None
 
 def _render_soccer_right_goals(canvas, game: dict, details: dict | None) -> None:
     """Right panel — goal scorers with minute."""
-    away_col = _team_color(game.get("away_color", "ffffff"))
-    home_col = _team_color(game.get("home_color", "ffffff"))
+    away_col = _team_text_color(game, "away")
+    home_col = _team_text_color(game, "home")
     white = _color(210, 210, 210)
     gray = _color(100, 100, 100)
 
@@ -1566,41 +1730,13 @@ def _football_situation_text(game: dict, max_chars: int) -> str:
     return text[:max_chars]
 
 
-_FB_MIN_TEXT_PEAK = 100  # below this a primary color is unreadable on black
-
-
-def _football_team_text_color(game: dict, side: str):
-    """Team text color for the black right panel.
-
-    Some primaries are too dark to read on black even after the
-    _MIN_BRIGHTNESS boost (Bears navy 0b1c3a, Steelers black 000000), so fall
-    back to the alternate color when it is brighter. Teams with a usable
-    primary keep it, so a light-gray alternate never replaces a team's real
-    color.
-    """
-    primary = game.get(f"{side}_color") or "ffffff"
-    alt = game.get(f"{side}_alt_color") or ""
-    try:
-        primary_peak = max(_parse_hex(primary))
-    except Exception:
-        return _team_color(primary)
-    if primary_peak >= _FB_MIN_TEXT_PEAK or not alt:
-        return _team_color(primary)
-    try:
-        if max(_parse_hex(alt)) > primary_peak:
-            return _team_color(alt)
-    except Exception:
-        pass
-    return _team_color(primary)
-
-
 def _football_situation_color(game: dict):
     """Color for the down & distance text: red zone red, else possession color."""
     if game.get("is_red_zone"):
         return _color(*_RED_ZONE_RGB)
     possession = game.get("possession")
     if possession in ("home", "away"):
-        return _football_team_text_color(game, possession)
+        return _team_text_color(game, possession)
     return _color(160, 160, 160)
 
 
@@ -1653,8 +1789,8 @@ def _render_football_left_panel(canvas, game: dict) -> None:
 
 def _render_football_right_stats(canvas, game: dict, details: dict | None) -> None:
     """Right panel — team comparison rows at y=9/16/23/30."""
-    away_col = _football_team_text_color(game, "away")
-    home_col = _football_team_text_color(game, "home")
+    away_col = _team_text_color(game, "away")
+    home_col = _team_text_color(game, "home")
     gray = _color(100, 100, 100)
 
     d = details or {}
@@ -1676,8 +1812,8 @@ def _render_football_right_stats(canvas, game: dict, details: dict | None) -> No
 
 def _render_football_right_scoring(canvas, game: dict, details: dict | None) -> None:
     """Right panel — scoring plays, most recent first, 4 per page."""
-    away_col = _football_team_text_color(game, "away")
-    home_col = _football_team_text_color(game, "home")
+    away_col = _team_text_color(game, "away")
+    home_col = _team_text_color(game, "home")
     white = _color(210, 210, 210)
     gray = _color(100, 100, 100)
 
@@ -1749,7 +1885,7 @@ def _render_football_right_leader(
 
     for side, name_y, val_y in (("away", 13, 19), ("home", 25, 31)):
         leader = d.get(side, {}).get("leaders", {}).get(key) or {}
-        col = _football_team_text_color(game, side)
+        col = _team_text_color(game, side)
         name = _fit_name(leader.get("name") or game.get(f"{side}_team", ""))
         _draw_text(canvas, name, RIGHT_X + 1, name_y, col)
         value = _football_leader_value(leader) if leader else "-"
