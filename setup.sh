@@ -53,6 +53,58 @@ install_system_packages() {
 }
 
 # ---------------------------------------------------------------------------
+# Avahi / mDNS — make the Pi's <hostname>.local reachable and keep it reachable
+# from phones. Phones aggressively sleep their mDNS resolver to save battery, so
+# a .local lookup that works from a laptop silently times out from a phone that
+# has not asked recently. We cannot change the phone, so we make the Pi's
+# responder as resilient as possible:
+#   * pin the advertised host-name to the system hostname (no "hostname-2"
+#     rename collisions after a reboot or a duplicate-name blip),
+#   * advertise on BOTH IPv4 and IPv6 (iOS prefers IPv6 mDNS and will fail the
+#     lookup if only IPv4 is published).
+# This is the single most effective server-side fix for "works everywhere but
+# the phone" — the rest of that problem is router AP-isolation / band-splitting,
+# which lives on the user's router, not here.
+#
+# Deliberately NOT changed: avahi's default rate-limiting is left in place (it
+# only throttles replies, never the Pi's own traffic, and the default burst is
+# already ample for a phone waking up), and the reflector stays OFF — it only
+# matters on a multi-interface host, and these Pis have a single wlan0.
+# ---------------------------------------------------------------------------
+setup_avahi() {
+    echo "--- Configuring Avahi (mDNS / .local) for reliable phone reachability..."
+
+    # Advertise under the real system hostname (what the user types as .local).
+    local HOST
+    HOST="$(hostname)"
+
+    sudo tee /etc/avahi/avahi-daemon.conf > /dev/null <<AVAHI
+# Managed by nuggies_pi_displays setup.sh — hardened for phone mDNS reachability.
+[server]
+host-name=$HOST
+domain-name=local
+use-ipv4=yes
+use-ipv6=yes
+
+[publish]
+publish-addresses=yes
+publish-hinfo=yes
+publish-workstation=yes
+publish-aaaa-on-ipv4=yes
+publish-a-on-ipv6=yes
+
+[rlimits]
+AVAHI
+
+    sudo chmod 644 /etc/avahi/avahi-daemon.conf
+
+    # Make sure the service is enabled and pick up the new config now.
+    sudo systemctl enable avahi-daemon 2>/dev/null || true
+    sudo systemctl restart avahi-daemon 2>/dev/null || true
+    echo "Avahi configured and restarted — ${HOST}.local advertised on IPv4+IPv6."
+}
+
+# ---------------------------------------------------------------------------
 # Node.js 18
 # ---------------------------------------------------------------------------
 install_node() {
@@ -772,6 +824,7 @@ run_update() {
     setup_sudoers
 
     echo "--- Checking hardware config..."
+    setup_avahi
     setup_isolcpus
     disable_onboard_audio
     setup_logs
@@ -841,6 +894,7 @@ fi
 # Run
 # ---------------------------------------------------------------------------
 install_system_packages
+setup_avahi
 install_node
 install_python_packages
 setup_rgbmatrix
