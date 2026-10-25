@@ -148,6 +148,22 @@ Software updates are pulled directly from the internet and applied without any m
 > reports a failure instead of rebooting, note the last few lines — they say which
 > step failed.
 
+### Beta updates
+
+Most people should leave this off. Normal updates are the ones that have been
+tested and approved for everyone.
+
+If you want new features early — before they're approved for everyone — turn on
+**Get beta updates** under **Pi Actions**:
+
+1. Go to **System** in the website
+2. Under **Pi Actions**, turn on the **Get beta updates** switch
+3. Tap **Check for Update** — your Pi now sees the newest beta build
+
+Beta builds are tested but newer, so a problem can show up there first. Turn the
+switch back off at any time to go back to approved-only updates on your next
+check.
+
 ---
 
 ## Resetting Settings

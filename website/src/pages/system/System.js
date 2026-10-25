@@ -279,40 +279,39 @@ function UpdateSection({
             background: "#161616",
           }}
         >
-          <span style={{ color: "#aaa", fontSize: "0.78rem", fontWeight: 600 }}>
-            Release stream
-          </span>
-          <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
-            {["prod", "beta"].map((s) => {
-              const active = updateStage === s;
-              return (
-                <button
-                  key={s}
-                  className={active ? "m-btn m-btn-primary" : "m-btn m-btn-neutral"}
-                  style={{
-                    padding: "2px 12px",
-                    fontSize: "0.75rem",
-                    textTransform: "capitalize",
-                    ...(active
-                      ? { background: "#2f6f3e", borderColor: "#2f6f3e" }
-                      : { opacity: 0.7 }),
-                  }}
-                  disabled={active || setStageMut.isPending}
-                  onClick={() => setStageMut.mutate(s)}
-                >
-                  {s}
-                </button>
-              );
-            })}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span style={{ color: "#ddd", fontSize: "0.78rem", fontWeight: 600 }}>
+              Get beta updates
+            </span>
+            <span style={{ color: "#888", fontSize: "0.68rem" }}>
+              Early builds, before they're approved for everyone.
+            </span>
           </div>
+          <label
+            style={{
+              marginLeft: "auto",
+              display: "inline-flex",
+              alignItems: "center",
+              cursor: setStageMut.isPending ? "default" : "pointer",
+            }}
+            title="On = beta (early builds). Off = prod (approved updates only)."
+          >
+            <input
+              type="checkbox"
+              checked={updateStage === "beta"}
+              disabled={setStageMut.isPending}
+              onChange={(e) => setStageMut.mutate(e.target.checked ? "beta" : "prod")}
+              style={{ width: 18, height: 18, cursor: "inherit", accentColor: "#2f6f3e" }}
+            />
+          </label>
         </div>
       )}
       {updateStage === "beta" && (
         <div
           style={{ color: "#f0a800", fontSize: "0.72rem", marginBottom: "0.5rem", lineHeight: 1.4 }}
         >
-          This device is on the <strong>beta</strong> stream — it gets each build immediately,
-          before prod approval. Switch to <strong>prod</strong> for approved-only updates.
+          You're on <strong>beta</strong> — you get each build right away, before it's approved for
+          everyone. Turn this off for approved-only updates.
         </div>
       )}
       {updateAvailable ? (
