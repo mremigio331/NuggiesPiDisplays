@@ -438,12 +438,13 @@ const UPDATE_LOG_FAILED = "=== NUGGIES UPDATE FAILED ===";
 // restarts the API and reboots the Pi mid-run, so poll failures are expected —
 // they are shown as "reconnecting" rather than errors, and polling continues
 // until the content indicates completion/failure or the user closes the modal.
-function UpdateProgressModal({ visible, onClose }) {
+function UpdateProgressModal({ visible, onClose, runId = "", alreadyRunning = false }) {
   const [lines, setLines] = React.useState("");
   // starting | running | reconnecting | failed | rebooting | complete
   const [phase, setPhase] = React.useState("starting");
   const offsetRef = React.useRef(0);
   const textRef = React.useRef(""); // full accumulated log, for classification
+  const matchedRef = React.useRef(false); // have we locked onto THIS run's log yet?
   const preRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -453,6 +454,7 @@ function UpdateProgressModal({ visible, onClose }) {
       setPhase("starting");
       offsetRef.current = 0;
       textRef.current = "";
+      matchedRef.current = false;
       return undefined;
     }
 
@@ -475,23 +477,43 @@ function UpdateProgressModal({ visible, onClose }) {
 
     const poll = async () => {
       try {
-        const res = await getUpdateLog(offsetRef.current);
+        const res = await getUpdateLog(offsetRef.current, runId);
         if (cancelled) return;
 
-        if (res.exists && res.content) {
-          offsetRef.current = res.offset;
-          textRef.current += res.content;
-          setLines(textRef.current);
-        } else if (res.exists) {
-          offsetRef.current = res.offset;
-        }
+        // Only show THIS run. Until the log on disk is our run_id, the file may
+        // still hold a PREVIOUS update's output — ignore it and keep showing
+        // "starting" so the user never sees the last run before their own.
+        // (When runId is empty, res.match is true and we attach to whatever's
+        // there — the legacy attach-to-latest behaviour.)
+        if (res.exists && res.match) {
+          if (!matchedRef.current) {
+            // First poll that matched: start fresh from the top of this run.
+            matchedRef.current = true;
+            offsetRef.current = 0;
+            textRef.current = "";
+            const full = await getUpdateLog(0, runId);
+            if (!cancelled && full.match) {
+              textRef.current = full.content || "";
+              offsetRef.current = full.offset;
+              setLines(textRef.current);
+            }
+          } else if (res.content) {
+            offsetRef.current = res.offset;
+            textRef.current += res.content;
+            setLines(textRef.current);
+          } else {
+            offsetRef.current = res.offset;
+          }
 
-        const next = classify(textRef.current);
-        setPhase(next);
-
-        // Stop polling on a terminal state; otherwise keep going.
-        if (next === "complete" || next === "failed") {
-          return;
+          const next = classify(textRef.current);
+          setPhase(next);
+          if (next === "complete" || next === "failed") {
+            return; // terminal — stop polling
+          }
+        } else {
+          // Our run hasn't stamped the log yet (the detached setup.sh is still
+          // spinning up) — stay in "starting".
+          setPhase((p) => (p === "running" || p === "rebooting" ? p : "starting"));
         }
       } catch (e) {
         // Poll failed — the API is almost certainly restarting/rebooting as part
@@ -511,7 +533,7 @@ function UpdateProgressModal({ visible, onClose }) {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [visible]);
+  }, [visible, runId]);
 
   // Keep the log scrolled to the bottom as new lines arrive.
   React.useEffect(() => {
@@ -877,6 +899,8 @@ export default function System() {
 
       <UpdateProgressModal
         visible={showUpdateProgress}
+        runId={updateAppMut.data?.run_id ?? ""}
+        alreadyRunning={updateAppMut.data?.already_running ?? false}
         onClose={() => setShowUpdateProgress(false)}
       />
 

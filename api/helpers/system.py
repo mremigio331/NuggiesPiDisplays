@@ -32,6 +32,76 @@ _FACTORY_WIFI_RESET = _PROJECT_ROOT / ".factory_wifi_reset"
 # run. Keep in sync with any client-side check.
 _UPDATE_LOG_START = "=== NUGGIES UPDATE START ==="
 
+# ---------------------------------------------------------------------------- #
+# Update lock + per-run id
+# ---------------------------------------------------------------------------- #
+# Each update is stamped with a UUID (run_id) so the UI can follow ONE specific
+# run and ignore a previous run's leftover log. A lock file holds the active
+# run_id so a second update can't start on top of a running one (which would
+# truncate the shared log and run two setup.sh at once — a way to brick a field
+# device).
+#
+# Lifetime of the lock, covering every exit path:
+#   - normal finish / clean failure -> setup.sh deletes it in its EXIT trap
+#   - crash mid-update (no clean exit) -> cleared on the next API boot
+# These two together mean a wedged lock can never permanently block updates.
+import json as _json
+import uuid as _uuid
+from datetime import datetime as _dt, timezone as _tz
+
+_UPDATE_LOCK = LOG_DIR / "update.lock"
+
+
+def new_run_id() -> str:
+    """Mint a fresh update run id."""
+    return _uuid.uuid4().hex
+
+
+def read_update_lock() -> dict | None:
+    """Return the active lock record {run_id, flags, started} or None if free."""
+    if not _UPDATE_LOCK.exists():
+        return None
+    try:
+        return _json.loads(_UPDATE_LOCK.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # Unreadable/garbage lock — treat as a stale lock, not a live run.
+        return None
+
+
+def take_update_lock(run_id: str, flags: str) -> dict | None:
+    """Atomically claim the update lock for *run_id*.
+
+    Returns None on success. If an update is already running, returns the
+    ACTIVE lock record so the caller can tell the client to attach to it
+    (HTTP 409) instead of starting a second update.
+    """
+    _UPDATE_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "run_id": run_id,
+        "flags": flags,
+        "started": _dt.now(_tz.utc).isoformat(),
+    }
+    try:
+        # O_CREAT|O_EXCL — fails if the file already exists, so the check and the
+        # claim are a single atomic step (no race between two near-simultaneous
+        # update requests).
+        fd = os.open(str(_UPDATE_LOCK), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        return read_update_lock() or {"run_id": "unknown", "flags": "", "started": ""}
+    with os.fdopen(fd, "w") as f:
+        f.write(_json.dumps(record))
+    return None
+
+
+def clear_update_lock() -> None:
+    """Remove the update lock. Safe to call when no lock exists (boot clear)."""
+    try:
+        _UPDATE_LOCK.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        logger.warning(f"Could not clear update lock: {e}")
+
 
 def _privileged_command(*args: str) -> list[str]:
     # If already root (e.g., service user), run command directly.
@@ -83,7 +153,7 @@ class SystemManager:
     # ------------------------------------------------------------------ #
     # setup.sh runner
     # ------------------------------------------------------------------ #
-    def _run_setup_detached(self, *flags: str) -> None:
+    def _run_setup_detached(self, *flags: str, run_id: str = "") -> None:
         """Run setup.sh DETACHED from the API's process group, logging to a file.
 
         setup.sh (both --update and the full installer) restarts
@@ -94,15 +164,19 @@ class SystemManager:
 
         Output can't be captured (we return immediately), so it is redirected to
         {LOG_DIR}/update.log for inspection.
+
+        *run_id* is stamped into the start sentinel so the UI can follow this one
+        run and ignore a previous run's leftover log.
         """
         update_log = LOG_DIR / "update.log"
         update_log.parent.mkdir(parents=True, exist_ok=True)
         # Truncate (mode "w") so each run starts with a clean log — the UI tails
         # this file for live progress, and a start sentinel on the first line
         # lets the client detect a fresh run and distinguish it from stale output
-        # (e.g. a prior run's "a password is required" refusal).
+        # (e.g. a prior run's "a password is required" refusal). The run_id on the
+        # sentinel line lets the client confirm the log it's reading is ITS run.
         log_file = open(update_log, "w")
-        log_file.write(f"{_UPDATE_LOG_START} {' '.join(flags)}\n")
+        log_file.write(f"{_UPDATE_LOG_START} {run_id} {' '.join(flags)}\n")
         log_file.flush()
         # _privileged_command resolves `bash` to its absolute path so the
         # `sudo -n` invocation matches the absolute-path setup.sh grant.
@@ -354,6 +428,7 @@ class SystemManager:
         mode: str | None = None,
         component: str | None = None,
         force: bool = False,
+        run_id: str = "",
     ) -> None:
         """Pull latest code, optionally re-run setup, then reboot.
 
@@ -364,6 +439,11 @@ class SystemManager:
         *component* scopes the update to one part (api/display/website/system) via
         setup.sh's --update-<component> flag; None/"all" runs the full --update.
         *force* adds --force so setup.sh reinstalls even if that part didn't change.
+
+        *run_id* identifies this specific run; it is stamped into the log sentinel
+        so the UI follows only this run. The caller (the /update-app endpoint)
+        has already taken the update lock under this run_id; setup.sh releases it
+        (EXIT trap), and a stale lock is cleared on the next API boot.
         """
         await asyncio.sleep(1)  # let HTTP response flush before blocking
 
@@ -378,6 +458,9 @@ class SystemManager:
             logger.info("Updating to latest code...")
             if not self._pull_latest_code():
                 logger.error("Aborting update: could not update code. NOT rebooting.")
+                # The run never reached setup.sh, so setup.sh's EXIT trap can't
+                # free the lock — release it here so the device isn't wedged.
+                clear_update_lock()
                 return
 
         if run_setup:
@@ -397,7 +480,7 @@ class SystemManager:
             logger.info(
                 f"Launching setup.sh {' '.join(flags)} (detached) to apply update"
             )
-            self._run_setup_detached(*flags)
+            self._run_setup_detached(*flags, run_id=run_id)
             return
 
         logger.info("Rebooting Pi after update (no setup requested)...")

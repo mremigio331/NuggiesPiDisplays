@@ -959,9 +959,14 @@ run_update() {
 
     # Failure sentinel via EXIT trap (see history): emit FAILED unless we reach
     # the COMPLETE sentinel, so the web UI's modal can show failure, not spin.
+    # The trap ALSO removes the update lock on every exit path (clean finish,
+    # clean failure, or the reboot that ends a full update), so a second update
+    # is free to run once this one is truly done. A hard crash that skips the
+    # trap leaves the lock behind; the API clears it on the next boot.
     _UPDATE_DONE=0
     _RESTART_API=0; _RESTART_DISPLAY=0; _RESTART_WEBSITE=0
-    trap '[[ "$_UPDATE_DONE" == "1" ]] || echo "=== NUGGIES UPDATE FAILED ==="' EXIT
+    _UPDATE_LOCK="/var/log/nuggies/update.lock"
+    trap '[[ "$_UPDATE_DONE" == "1" ]] || echo "=== NUGGIES UPDATE FAILED ==="; rm -f "$_UPDATE_LOCK"' EXIT
 
     # One pull for the whole run; per-component skip logic keys off its diff.
     pull_latest

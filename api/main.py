@@ -13,6 +13,7 @@ from helpers.process import start_display, is_running
 from helpers.buttons import poll_buttons
 from helpers.wifi_state import WIFI_FLAG
 from helpers.update_check import run_background_checker
+from helpers.system import clear_update_lock
 from middleware.service_log import ServiceLogMiddleware
 from endpoints.docs import router as docs_router
 from endpoints.home import router as home_router
@@ -31,6 +32,13 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = read_settings()
+
+    # Clear any update lock left over from a crash mid-update. A clean finish or
+    # a clean failure removes the lock in setup.sh's EXIT trap; only a hard crash
+    # (power loss, kill) leaves it behind — and that is always followed by this
+    # boot. So clearing it here guarantees a wedged device can always update
+    # again. Nothing is in progress on a fresh boot, so this frees nothing live.
+    clear_update_lock()
 
     log_level = settings.get("log_level", "INFO")
     set_log_level(log_level)

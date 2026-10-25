@@ -32,13 +32,21 @@ export const forceWifiPortal = () => handle(api.post("/system/force-wifi-portal"
 // to that part (restarts only the affected service). force=true reinstalls even
 // if that part did not change in the pulled range.
 export const updateApp = (runSetup = true, component = null, force = false) =>
-  handle(
-    api.post("/system/update-app", {
+  api
+    .post("/system/update-app", {
       run_setup: runSetup,
       component,
       force,
     })
-  );
+    .then((res) => res.data)
+    .catch((err) => {
+      // 409 = an update is already running. That isn't an error for the UI —
+      // the body carries the in-flight run_id so we can attach to that run.
+      if (err.response && err.response.status === 409) {
+        return { ...err.response.data, already_running: true };
+      }
+      throw err;
+    });
 export const getLogLevel = () => handle(api.get("/system/log-level"));
 export const setLogLevel = (log_level) => handle(api.put("/system/log-level", { log_level }));
 export const getUpdateStatus = () => handle(api.get("/system/update-status"));
@@ -46,8 +54,8 @@ export const getUpdateStatus = () => handle(api.get("/system/update-status"));
 export const getUpdateStage = () => handle(api.get("/system/update-stage"));
 export const setUpdateStage = (stage) => handle(api.put("/system/update-stage", { stage }));
 export const checkUpdate = () => handle(api.post("/system/check-update"));
-export const getUpdateLog = (offset = 0) =>
-  handle(api.get("/system/update-log", { params: { offset } }));
+export const getUpdateLog = (offset = 0, runId = "") =>
+  handle(api.get("/system/update-log", { params: { offset, run_id: runId } }));
 export const getUserGuide = () => handle(api.get("/system/user-guide"));
 export const getLogsList = () => handle(api.get("/system/logs"));
 // IP-based geolocation suggestion: { latitude, longitude, city_label, timezone }
