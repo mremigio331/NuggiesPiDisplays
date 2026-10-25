@@ -1,0 +1,116 @@
+# Two-stage release pipeline: beta (auto) -> prod (manual approval).
+#
+# One code branch: main. On every push, CI builds the website bundle ONCE and
+# publishes it as the `beta` tag + GitHub Release automatically. A second job,
+# `promote-prod`, is pinned to the `prod` GitHub Environment — which requires
+# YOUR approval — and only then moves the `prod` tag to the exact same commit.
+#
+# The source tree never splits: `main` is always the latest code. `beta` and
+# `prod` are TAGS (not branches), so they don't clutter the branch list. Each Pi
+# reads update_stage ("beta"|"prod", default prod) from api/settings.json and
+# pulls the matching tag. Flip one Pi to beta to test before you approve prod.
+name: release-pipeline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: release-pipeline
+  cancel-in-progress: true
+
+permissions:
+  contents: write  # create/move tags and releases
+
+jobs:
+  # ---- Stage 1: build once, publish the beta tag + release (automatic) -------
+  build-beta:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ github.sha }}
+    steps:
+      - name: Checkout main (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install website deps
+        working-directory: website
+        run: npm ci
+
+      - name: Build website bundle
+        working-directory: website
+        run: npm run build
+
+      - name: Verify the bundle is real
+        run: |
+          set -e
+          test -f website/dist/index.html || { echo "::error::dist/index.html missing"; exit 1; }
+          ls website/dist/*.js >/dev/null 2>&1 || { echo "::error::no JS bundle in dist/"; exit 1; }
+          echo "dist OK: $(ls -1 website/dist | wc -l) files"
+
+      # The Pi pulls a TAG and expects website/dist/ to be present at that tag.
+      # dist/ is gitignored on main, so commit it onto a detached build commit
+      # and move the `beta` tag to it. Prod later points at this same commit.
+      - name: Publish beta tag (main + built dist)
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f website/dist
+          git commit -m "ci: build website/dist for ${GITHUB_SHA::7}" --allow-empty
+          BUILD_SHA=$(git rev-parse HEAD)
+          echo "BUILD_SHA=$BUILD_SHA" >> "$GITHUB_ENV"
+          # Move the beta tag to the build commit and push it (force: tags move).
+          git tag -f beta "$BUILD_SHA"
+          git push -f origin "refs/tags/beta"
+
+      - name: Publish beta GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: beta
+          name: "beta"
+          body: "Automatic beta build of ${{ github.sha }}. Approve the prod job to promote."
+          prerelease: true
+          files: |
+            website/dist/**
+
+  # ---- Stage 2: promote the SAME build to prod (requires your approval) ------
+  promote-prod:
+    needs: build-beta
+    runs-on: ubuntu-latest
+    # This Environment carries the required-reviewer rule. The job pauses here
+    # until you click Approve in the Actions run (GitHub emails you a link).
+    environment: prod
+    steps:
+      - name: Checkout the beta build commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: beta
+
+      - name: Move the prod tag to the approved build
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f prod beta^{commit}
+          git push -f origin "refs/tags/prod"
+
+      - name: Publish prod GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: prod
+          name: "prod"
+          body: "Promoted to prod from beta build of ${{ needs.build-beta.outputs.sha }}."
+          prerelease: false
+          files: |
+            website/dist/**

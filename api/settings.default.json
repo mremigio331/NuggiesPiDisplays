@@ -2,6 +2,7 @@
   "active_display": "stocks",
   "auto_start_display": true,
   "log_level": "INFO",
+  "update_stage": "prod",
 
   "stocks": {
     "stock_abbrs": ["AAPL", "MSFT"],

@@ -15,21 +15,40 @@ RGBMATRIX_REPO="/tmp/rpi-rgb-led-matrix"
 MODE=""
 SUBCOMMAND=""
 FORCE_REBOOT=""
+# Which components an update touches. Default (plain --update) = all of them.
+# A scoped flag (--update-api etc.) narrows this to one; repeated flags union.
+# FORCE=1 (--force) bypasses the skip-if-unchanged checks for a full reinstall.
+COMPONENTS=""
+FORCE=""
+_add_component() { case " $COMPONENTS " in *" $1 "*) ;; *) COMPONENTS="${COMPONENTS:+$COMPONENTS }$1" ;; esac; }
 for arg in "$@"; do
   case "$arg" in
     --dev)   MODE="dev"  ;;
     --prod)  MODE="prod" ;;
-    --update)  SUBCOMMAND="update" ;;
+    --update)          SUBCOMMAND="update" ;;
+    --update-api)      SUBCOMMAND="update"; _add_component api ;;
+    --update-display)  SUBCOMMAND="update"; _add_component display ;;
+    --update-website)  SUBCOMMAND="update"; _add_component website ;;
+    --update-system)   SUBCOMMAND="update"; _add_component system ;;
+    --force)   FORCE="1" ;;
     --reboot)  FORCE_REBOOT="1" ;;
   esac
 done
+# No scoped component named -> update everything (the classic --update behaviour).
+[[ "$SUBCOMMAND" == "update" && -z "$COMPONENTS" ]] && COMPONENTS="website api display system"
 
 if [[ -z "$MODE" && -z "$SUBCOMMAND" ]]; then
-  echo "Usage: bash setup.sh --dev | --prod | --update"
+  echo "Usage: bash setup.sh --dev | --prod | --update [--force]"
+  echo "       bash setup.sh --update-api | --update-display | --update-website | --update-system [--force]"
   echo ""
-  echo "  --dev     Full install: screen sessions (API + webpack dev server)"
-  echo "  --prod    Full install: systemd service (API serves built React app)"
-  echo "  --update  Pull latest code, reinstall deps, reapply sudoers"
+  echo "  --dev              Full install: screen sessions (API + webpack dev server)"
+  echo "  --prod             Full install: systemd service (API serves built React app)"
+  echo "  --update           Pull latest, update every component that changed, reapply config"
+  echo "  --update-api       Pull latest, update only the API (pip) if it changed"
+  echo "  --update-display   Pull latest, update only the display (pip) if it changed"
+  echo "  --update-website   Pull latest, refresh only the website bundle if it changed"
+  echo "  --update-system    Pull latest, reapply only system config (sudoers/hardware)"
+  echo "  --force            With any update: skip the 'did it change?' checks and reinstall anyway"
   exit 1
 fi
 
@@ -263,6 +282,39 @@ build_frontend() {
     npm run build
     cd "$SCRIPT_DIR"
     echo "Frontend built to website/dist/"
+}
+
+# ---------------------------------------------------------------------------
+# Frontend provisioning for a FRESH install — mode-aware.
+#   dev  : install Node + npm deps + build locally (live reload, healthy disk)
+#   prod : do NOT install Node or build. Check out the device's STAGE TAG
+#          (beta/prod), which carries the CI-built website/dist/, and verify the
+#          bundle. This keeps webpack's write-churn off prod SD cards.
+# ---------------------------------------------------------------------------
+provision_frontend() {
+    if [[ "$MODE" == "prod" ]]; then
+        local stage; stage=$(read_update_stage)
+        echo "--- Provisioning prebuilt website bundle (prod, stage: $stage — no on-device build)..."
+        git -C "$SCRIPT_DIR" fetch origin --tags --force 2>&1
+        if ! git -C "$SCRIPT_DIR" rev-parse -q --verify "refs/tags/$stage^{commit}" >/dev/null 2>&1; then
+            echo "!!! Release tag '$stage' does not exist yet. Push to main once so CI" >&2
+            echo "    publishes 'beta' (and approve 'prod' if stage=prod), then re-run --prod." >&2
+            exit 1
+        fi
+        git -C "$SCRIPT_DIR" reset --hard "refs/tags/$stage"
+        restore_tree_ownership
+        if [[ ! -f "$SCRIPT_DIR/website/dist/index.html" ]] || ! ls "$SCRIPT_DIR/website/dist/"*.js >/dev/null 2>&1; then
+            echo "!!! tag '$stage' is missing a built website/dist/. CI must publish it." >&2
+            exit 1
+        fi
+        chown -R "$USER":"$USER" "$SCRIPT_DIR/website/dist" 2>/dev/null || true
+        echo "Prebuilt bundle verified."
+    else
+        # Dev: full local toolchain.
+        install_node
+        install_frontend
+        build_frontend
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -756,74 +808,141 @@ verify_permissions() {
 # ---------------------------------------------------------------------------
 # Update — pull latest code, reinstall deps, reapply sudoers
 # ---------------------------------------------------------------------------
-run_update() {
-    echo "========================================="
-    echo " Nuggies Pi Displays — update [$(date '+%Y-%m-%d %H:%M:%S')]"
-    echo "========================================="
+# Prod detection: the systemd unit FILE exists. NOT `systemctl is-enabled
+# --quiet`, which is unreliable (non-zero for enabled-runtime/alias and during
+# transient mid-update states) and historically sent prod devices down the dev
+# branch, leaving the API on stale in-memory code. Unit-file existence is
+# unambiguous and is the single source of truth for prod-vs-dev everywhere below.
+is_prod() {
+    systemctl list-unit-files nuggies-api.service >/dev/null 2>&1 \
+        && [[ -f /etc/systemd/system/nuggies-api.service ]]
+}
 
-    # Failure sentinel via EXIT trap: if run_update exits before writing the
-    # COMPLETE sentinel (any `exit 1`, or a `set -e` abort on a failed step),
-    # emit a FAILED marker so the web UI's update modal can show "update failed"
-    # instead of spinning on "updating" forever. _UPDATE_DONE is set to 1 right
-    # after the COMPLETE sentinel so the trap stays quiet on the success path.
-    _UPDATE_DONE=0
-    trap '[[ "$_UPDATE_DONE" == "1" ]] || echo "=== NUGGIES UPDATE FAILED ==="' EXIT
+# Which release stage this device tracks: "beta" or "prod" (default prod). Read
+# from api/settings.json (the SAME key the API/UI use via config.read_update_stage)
+# so the updater and the UI always agree. Falls back to prod on any problem.
+read_update_stage() {
+    local f="$SCRIPT_DIR/api/settings.json" stage=""
+    if [[ -f "$f" ]]; then
+        # Prefer python (handles JSON robustly); fall back to grep if unavailable.
+        stage=$(python3 -c "import json,sys; print(str(json.load(open('$f')).get('update_stage','prod')).strip().lower())" 2>/dev/null) \
+            || stage=$(grep -oE '"update_stage"[[:space:]]*:[[:space:]]*"[^"]*"' "$f" 2>/dev/null | sed -E 's/.*"([^"]*)"$/\1/' | tr 'A-Z' 'a-z')
+    fi
+    case "$stage" in
+        beta|prod) echo "$stage" ;;
+        *)         echo "prod" ;;
+    esac
+}
 
-    echo "--- Pulling latest code..."
-    # A plain `git pull` aborts if the tree has drifted — setup.sh itself
-    # rewrites tracked file modes (chmod/chown) and a prior root-level pull can
-    # leave a dirty/diverged tree. Fetch + hard-reset onto the tracked remote
-    # branch so the update lands regardless of local mode/content drift.
-    if ! git -C "$SCRIPT_DIR" fetch origin --prune; then
+# Did the just-pulled update range touch any of the given paths? Compares the
+# pre-pull SHA ($_PRE_PULL_SHA, captured by pull_latest) to the new HEAD, scoped
+# to those paths. Returns 0 (true = "needs update") when any path changed, OR
+# when FORCE is set, OR when we have no pre-pull SHA to compare against (first
+# run / unknown => be safe and update). Non-zero (false = "skip") otherwise.
+component_behind() {
+    [[ -n "$FORCE" ]] && return 0
+    [[ -z "$_PRE_PULL_SHA" ]] && return 0
+    # If nothing moved at all, nothing changed.
+    [[ "$_PRE_PULL_SHA" == "$(git -C "$SCRIPT_DIR" rev-parse HEAD)" ]] && return 1
+    local changed
+    changed=$(git -C "$SCRIPT_DIR" diff --name-only "$_PRE_PULL_SHA" HEAD -- "$@" 2>/dev/null)
+    [[ -n "$changed" ]]
+}
+
+# Shared git fetch + checkout of the STAGE TAG. Captures the pre-pull SHA first
+# so component_behind can diff old..new. Every device pulls a tag named by its
+# update_stage ("beta" or "prod"): beta gets each CI build immediately, prod gets
+# only builds you approved. The tag carries the CI-built website/dist/, so a prod
+# box never builds on-device. Dev boxes still build locally (see update_website).
+# Runs once per update regardless of how many components are selected.
+_PRE_PULL_SHA=""
+_UPDATE_STAGE=""
+pull_latest() {
+    _UPDATE_STAGE=$(read_update_stage)
+    echo "--- Pulling latest code (stage: $_UPDATE_STAGE)..."
+    _PRE_PULL_SHA=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "")
+
+    if ! git -C "$SCRIPT_DIR" fetch origin --prune --tags --force; then
         echo "!!! git fetch failed. Aborting update." >&2
         exit 1
     fi
-    # Resolve upstream (e.g. origin/main), falling back to origin/<branch>.
-    if UPSTREAM=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null) && [[ -n "$UPSTREAM" ]]; then
-        TARGET="$UPSTREAM"
-    else
-        BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
-        TARGET="origin/$BRANCH"
-        echo "No upstream configured; falling back to $TARGET"
+
+    # The stage tag must exist (CI publishes beta on every push; prod after your
+    # approval). If it doesn't yet, abort cleanly rather than resetting to nothing.
+    if ! git -C "$SCRIPT_DIR" rev-parse -q --verify "refs/tags/$_UPDATE_STAGE^{commit}" >/dev/null 2>&1; then
+        echo "!!! Release tag '$_UPDATE_STAGE' does not exist yet." >&2
+        echo "    CI publishes 'beta' on each push to main; 'prod' after you approve." >&2
+        echo "    Push to main (and approve prod, if stage=prod) first. Aborting." >&2
+        exit 1
     fi
+    TARGET="refs/tags/$_UPDATE_STAGE"
+
     if ! git -C "$SCRIPT_DIR" reset --hard "$TARGET"; then
         echo "!!! git reset --hard $TARGET failed. Aborting update." >&2
         exit 1
     fi
-    echo "Updated working tree to $TARGET."
+    echo "Updated working tree to $TARGET ($_PRE_PULL_SHA -> $(git -C "$SCRIPT_DIR" rev-parse --short HEAD))."
 
-    # The reset just ran as root; hand the tree back before anything else so the
-    # $USER-level `git fetch origin` in api/helpers/update_check.py keeps working.
+    # The reset ran as root; hand the tree back so $USER-level git (used by
+    # api/helpers/update_check.py) keeps working.
     restore_tree_ownership
+}
 
-    echo "--- Installing Python dependencies..."
-    pip3 install --break-system-packages --ignore-installed -r "$SCRIPT_DIR/requirements-api.txt"
-    pip3 install --break-system-packages --ignore-installed -r "$SCRIPT_DIR/requirements-display.txt"
+# ---- Per-component update steps. Each is a no-op when its paths did not change
+# ---- in the pulled range, unless --force was given. Each restarts only what it
+# ---- touched, so a scoped update is cheap and does not reboot the whole Pi.
 
-    echo "--- Installing frontend dependencies..."
-    cd "$SCRIPT_DIR/website"
-    npm install
-    # Prod serves the built bundle from website/dist, so it must be rebuilt on
-    # update or the served UI stays stale. Dev serves from the webpack dev
-    # server (no dist to refresh), so skip the build there to save time on the Pi.
-    if systemctl list-unit-files nuggies-api.service &>/dev/null \
-       && systemctl is-enabled --quiet nuggies-api.service 2>/dev/null; then
-        echo "--- Building frontend (prod)..."
-        npm run build
-        # The build ran as root (setup.sh re-execs as root), so dist/ is now
-        # root-owned — but restore_tree_ownership already ran before this point.
-        # Hand the built bundle back to $USER so the tree stays consistently
-        # $USER-owned (webpack's clean:true and $USER-level git both need it).
-        chown -R "$USER":"$USER" "$SCRIPT_DIR/website/dist"
-    else
-        echo "--- Skipping frontend build (dev mode: served by webpack dev server)."
+update_api() {
+    if ! component_behind api/ requirements-api.txt; then
+        echo "--- API unchanged — skipping (use --force to reinstall)."; return 0
     fi
-    cd "$SCRIPT_DIR"
+    echo "--- Updating API dependencies..."
+    pip3 install --break-system-packages --ignore-installed -r "$SCRIPT_DIR/requirements-api.txt"
+    _RESTART_API=1
+}
 
-    echo "--- Reapplying sudoers..."
+update_display() {
+    if ! component_behind display/ requirements-display.txt; then
+        echo "--- Display unchanged — skipping (use --force to reinstall)."; return 0
+    fi
+    echo "--- Updating display dependencies..."
+    pip3 install --break-system-packages --ignore-installed -r "$SCRIPT_DIR/requirements-display.txt"
+    _RESTART_DISPLAY=1
+}
+
+update_website() {
+    if ! component_behind website/; then
+        echo "--- Website unchanged — skipping (use --force to rebuild/refresh)."; return 0
+    fi
+    if is_prod; then
+        # A1: the bundle was built in CI and arrived with the pull. Never build
+        # on a prod Pi (that write-churn corrupted SD cards). Just verify it.
+        echo "--- Verifying prebuilt website bundle (prod — no on-device build)..."
+        if [[ ! -f "$SCRIPT_DIR/website/dist/index.html" ]] || ! ls "$SCRIPT_DIR/website/dist/"*.js >/dev/null 2>&1; then
+            echo "!!! release branch is missing a built website/dist/. CI must publish it." >&2
+            exit 1
+        fi
+        chown -R "$USER":"$USER" "$SCRIPT_DIR/website/dist" 2>/dev/null || true
+        echo "Prebuilt bundle OK."
+    else
+        # Dev: build locally (healthy disk, wants live reload). npm ci with a
+        # corruption-aware fallback, then build.
+        echo "--- Building website (dev)..."
+        cd "$SCRIPT_DIR/website"
+        npm ci || { rm -rf node_modules; npm install; }
+        npm run build
+        chown -R "$USER":"$USER" "$SCRIPT_DIR/website/dist" 2>/dev/null || true
+        cd "$SCRIPT_DIR"
+    fi
+    _RESTART_WEBSITE=1
+}
+
+update_system() {
+    if ! component_behind setup.sh scripts/; then
+        echo "--- System config unchanged — skipping (use --force to reapply)."; return 0
+    fi
+    echo "--- Reapplying system config (sudoers + hardware)..."
     setup_sudoers
-
-    echo "--- Checking hardware config..."
     setup_avahi
     setup_isolcpus
     disable_onboard_audio
@@ -831,57 +950,89 @@ run_update() {
     ensure_wifi_flag
     normalize_marker_ownership
     init_settings
+}
 
-    # Verify the grants and ownership this update just (re)applied, and fail
-    # loudly if any of it is missing. Done BEFORE restart/reboot so a gap is
-    # surfaced in the update log rather than lost to the restart.
+run_update() {
+    echo "========================================="
+    echo " Nuggies Pi Displays — update [${COMPONENTS// /, }${FORCE:+ (force)}] [$(date '+%Y-%m-%d %H:%M:%S')]"
+    echo "========================================="
+
+    # Failure sentinel via EXIT trap (see history): emit FAILED unless we reach
+    # the COMPLETE sentinel, so the web UI's modal can show failure, not spin.
+    _UPDATE_DONE=0
+    _RESTART_API=0; _RESTART_DISPLAY=0; _RESTART_WEBSITE=0
+    trap '[[ "$_UPDATE_DONE" == "1" ]] || echo "=== NUGGIES UPDATE FAILED ==="' EXIT
+
+    # One pull for the whole run; per-component skip logic keys off its diff.
+    pull_latest
+
+    # Run only the requested components (plain --update selects all four). Order:
+    # system first (config), then api/display (deps), then website (bundle).
+    case " $COMPONENTS " in *" system "*)  update_system  ;; esac
+    case " $COMPONENTS " in *" api "*)     update_api     ;; esac
+    case " $COMPONENTS " in *" display "*) update_display ;; esac
+    case " $COMPONENTS " in *" website "*) update_website ;; esac
+
+    # Verify grants/ownership BEFORE restart so a gap shows in the log.
     verify_permissions
 
     echo ""
     echo "[$(date '+%H:%M:%S')] Update complete — applying to running processes."
-    # Completion sentinel: written BEFORE any reboot/restart so it is always in
-    # the log regardless of path. The web UI's update modal watches for this to
-    # tell the user the update finished and the modal is safe to close. If a
-    # reboot follows, the connection drops (which the modal already treats as
-    # "rebooting"); if not (dev / no-reboot), this is the clean "done" signal.
     echo "=== NUGGIES UPDATE COMPLETE ==="
-    _UPDATE_DONE=1  # suppress the EXIT-trap failure sentinel on the success path
+    _UPDATE_DONE=1
 
-    # Forced reboot (passed by callers that MUST come up fresh regardless of
-    # environment — e.g. factory reset, which wiped settings/WiFi and needs to
-    # boot into the setup portal). This bypasses the dev/prod detection below so
-    # it reboots even on a dev device (where the plain update would not).
+    # Forced reboot (factory reset etc.) bypasses the targeted-restart logic.
     if [[ -n "$FORCE_REBOOT" ]]; then
         echo "[$(date '+%H:%M:%S')] --reboot requested — rebooting now..."
         reboot
         exit 0
     fi
 
-    # Apply the new code to the running processes.
-    #
-    # Detect prod by whether the systemd unit FILE exists, NOT by
-    # `systemctl is-enabled --quiet`. The latter is unreliable: it exits non-zero
-    # for states like "enabled-runtime"/"alias" and during transient states mid
-    # update, which silently sent prod devices down the dev branch — leaving the
-    # API running stale in-memory code after a "successful" update (new code on
-    # disk, old process never restarted). Unit-file existence is unambiguous.
-    if systemctl list-unit-files nuggies-api.service >/dev/null 2>&1 && \
-       [[ -f /etc/systemd/system/nuggies-api.service ]]; then
-        echo "[$(date '+%H:%M:%S')] Prod detected — rebooting to apply update..."
-        # Reboot brings up API, display, and the freshly-built bundle on the new
-        # code in one clean step. The API invoked this script detached
-        # (start_new_session), so this reboot does not race the caller.
-        #
-        # Belt-and-suspenders: if `reboot` fails to take effect (returns), fall
-        # back to an explicit service restart so the new code still loads rather
-        # than leaving a stale process — the exact failure that made earlier
-        # web-UI updates appear to do nothing.
-        if ! reboot; then
-            echo "[$(date '+%H:%M:%S')] reboot failed — restarting services directly" >&2
-            systemctl restart nuggies-api.service || true
-        fi
-    else
+    if ! is_prod; then
         echo "[$(date '+%H:%M:%S')] Dev mode: API runs --reload and webpack rebuilds; no restart."
+        return 0
+    fi
+
+    # Prod: restart only what changed. A full/system/multi-component update still
+    # reboots (cleanest way to pick up hardware config + every service at once);
+    # a single-component update restarts just that service, no reboot.
+    local only_component=""
+    # Count selected components; if exactly one and it's not system, do a targeted restart.
+    local n=0 c
+    for c in $COMPONENTS; do n=$((n+1)); only_component="$c"; done
+
+    if [[ "$n" -eq 1 && "$only_component" != "system" ]]; then
+        case "$only_component" in
+            api|website)
+                if [[ "$_RESTART_API" == "1" || "$_RESTART_WEBSITE" == "1" ]]; then
+                    echo "[$(date '+%H:%M:%S')] Restarting nuggies-api.service (serves API + website)..."
+                    systemctl restart nuggies-api.service || true
+                else
+                    echo "[$(date '+%H:%M:%S')] Nothing changed — no restart needed."
+                fi
+                ;;
+            display)
+                if [[ "$_RESTART_DISPLAY" == "1" ]]; then
+                    echo "[$(date '+%H:%M:%S')] Restarting display..."
+                    systemctl restart nuggies-api.service || true
+                else
+                    echo "[$(date '+%H:%M:%S')] Display unchanged — no restart needed."
+                fi
+                ;;
+        esac
+        return 0
+    fi
+
+    # Full / system / multi-component prod update -> reboot to apply everything.
+    if [[ "$_RESTART_API" == "0" && "$_RESTART_DISPLAY" == "0" && "$_RESTART_WEBSITE" == "0" && -z "$FORCE" ]] \
+       && ! printf '%s\n' $COMPONENTS | grep -qx system; then
+        echo "[$(date '+%H:%M:%S')] Nothing changed across selected components — no reboot."
+        return 0
+    fi
+    echo "[$(date '+%H:%M:%S')] Prod — rebooting to apply update..."
+    if ! reboot; then
+        echo "[$(date '+%H:%M:%S')] reboot failed — restarting services directly" >&2
+        systemctl restart nuggies-api.service || true
     fi
 }
 
@@ -895,15 +1046,15 @@ fi
 # ---------------------------------------------------------------------------
 install_system_packages
 setup_avahi
-install_node
 install_python_packages
 setup_rgbmatrix
 copy_fonts
 setup_port_forwarding
 setup_sudoers
 setup_logs
-install_frontend
-build_frontend
+# Frontend: dev installs Node + builds locally; prod pulls the CI-built bundle
+# from the release branch (no Node/webpack on a prod device — A1).
+provision_frontend
 install_wifi_setup_service
 disable_wifi_power_save
 setup_isolcpus

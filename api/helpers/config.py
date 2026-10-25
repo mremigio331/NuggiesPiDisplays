@@ -43,6 +43,33 @@ def write_section(key: str, section: dict) -> None:
     write_settings(settings)
 
 
+# --- Update stage ----------------------------------------------------------- #
+# Which release tag this device tracks: "beta" (gets each build immediately) or
+# "prod" (gets only builds you approved). Default "prod". setup.sh reads the
+# same key to decide which git tag to pull, so UI and updater always agree.
+VALID_UPDATE_STAGES = ("beta", "prod")
+
+
+def read_update_stage() -> str:
+    try:
+        stage = str(read_settings().get("update_stage", "prod")).strip().lower()
+    except Exception:
+        return "prod"
+    return stage if stage in VALID_UPDATE_STAGES else "prod"
+
+
+def write_update_stage(stage: str) -> str:
+    stage = str(stage).strip().lower()
+    if stage not in VALID_UPDATE_STAGES:
+        raise ValueError(
+            f"update_stage must be one of {VALID_UPDATE_STAGES}, got {stage!r}"
+        )
+    settings = read_settings()
+    settings["update_stage"] = stage
+    write_settings(settings)
+    return stage
+
+
 # --- Display overlay -------------------------------------------------------- #
 # A transient full-screen message any display mode renders over its normal
 # content, driven entirely through settings so it uses the display's existing

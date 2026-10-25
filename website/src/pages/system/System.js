@@ -21,6 +21,8 @@ import {
   getUpdateStatus,
   checkUpdate,
   getUpdateLog,
+  getUpdateStage,
+  setUpdateStage,
   getWifiStatus,
 } from "../../services/API";
 import Modal from "../../components/shared/Modal";
@@ -46,7 +48,11 @@ function useSystem() {
   const factoryResetMut = useMutation({ mutationFn: factoryReset, onSuccess: invalidate });
   const factoryResetWifiMut = useMutation({ mutationFn: factoryResetWifi });
   const forgetWifiMut = useMutation({ mutationFn: forgetWifi });
-  const updateAppMut = useMutation({ mutationFn: () => updateApp(true) });
+  // Accepts an optional { component, force }. No args => full update + reboot
+  // (classic behaviour). component scopes to one part; force reinstalls anyway.
+  const updateAppMut = useMutation({
+    mutationFn: (opts = {}) => updateApp(true, opts.component ?? null, opts.force ?? false),
+  });
   const { data: updateStatus, isFetching: updateChecking } = useQuery({
     queryKey: ["updateStatus"],
     queryFn: getUpdateStatus,
@@ -56,6 +62,17 @@ function useSystem() {
   const checkUpdateMut = useMutation({
     mutationFn: checkUpdate,
     onSuccess: (data) => qc.setQueryData(["updateStatus"], data),
+  });
+  // Release stage (beta/prod) this device tracks. Changing it re-checks updates
+  // so the per-component "behind" counts reflect the newly selected stream.
+  const { data: stageData } = useQuery({ queryKey: ["updateStage"], queryFn: getUpdateStage });
+  const updateStage = stageData?.stage ?? "prod";
+  const setStageMut = useMutation({
+    mutationFn: (stage) => setUpdateStage(stage),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["updateStage"] });
+      checkUpdateMut.mutate();
+    },
   });
   const { data: devConfig } = useQuery({ queryKey: ["devMode"], queryFn: getDevMode });
   const devMode = devConfig?.dev_mode ?? false;
@@ -96,6 +113,8 @@ function useSystem() {
     updateStatus,
     updateChecking,
     checkUpdateMut,
+    updateStage,
+    setStageMut,
     devMode,
     currentLogLevel,
     setLogLevelMut,
@@ -133,11 +152,109 @@ function formatChecked(iso) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+// Order + labels for the per-component update rows. Keys match the API's
+// updateStatus.components and setup.sh's --update-<component> flags.
+const UPDATE_COMPONENTS = [
+  { key: "website", label: "Website" },
+  { key: "api", label: "API" },
+  { key: "display", label: "Display" },
+  { key: "system", label: "System" },
+];
+
+// Per-component update controls. Reads updateStatus.components (added by the API)
+// and renders one row per component: a badge (up to date / N behind) and, when
+// behind, a scoped "Update" button that updates only that part. Always offers a
+// "Force full reinstall" that reinstalls everything regardless of the diff.
+function ComponentUpdates({ updateStatus, updateAppMut }) {
+  const components = updateStatus?.components ?? null;
+  const pending = updateAppMut.isPending || updateAppMut.isSuccess;
+  // Older API with no per-component data: render nothing (the full button above
+  // still works). This keeps the UI functional mid-deploy before the API ships.
+  if (!components) return null;
+
+  const behindKeys = UPDATE_COMPONENTS.filter((c) => (components[c.key]?.behind ?? 0) > 0).map(
+    (c) => c.key
+  );
+  const multiple = behindKeys.length > 1;
+
+  return (
+    <div
+      style={{
+        border: "1px solid #333",
+        borderRadius: 8,
+        padding: "0.5rem 0.65rem",
+        margin: "0.25rem 0 0.6rem",
+        background: "#161616",
+      }}
+    >
+      <div style={{ color: "#aaa", fontSize: "0.75rem", marginBottom: 6, fontWeight: 600 }}>
+        By component
+      </div>
+      {UPDATE_COMPONENTS.map(({ key, label }) => {
+        const behind = components[key]?.behind ?? 0;
+        const isBehind = behind > 0;
+        return (
+          <div
+            key={key}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              padding: "3px 0",
+            }}
+          >
+            <span style={{ color: "#ddd", fontSize: "0.82rem" }}>
+              {label}{" "}
+              <span style={{ color: isBehind ? "#f0a800" : "#6a6a6a", fontSize: "0.75rem" }}>
+                {isBehind ? `· ${behind} behind` : "· up to date"}
+              </span>
+            </span>
+            <button
+              className={isBehind ? "m-btn m-btn-primary" : "m-btn m-btn-neutral"}
+              style={{
+                padding: "2px 10px",
+                fontSize: "0.75rem",
+                opacity: isBehind ? 1 : 0.5,
+                ...(isBehind ? { background: "#c47d00", borderColor: "#c47d00" } : {}),
+              }}
+              disabled={!isBehind || pending}
+              onClick={() => updateAppMut.mutate({ component: key })}
+            >
+              Update
+            </button>
+          </div>
+        );
+      })}
+
+      {multiple && (
+        <div style={{ color: "#f0a800", fontSize: "0.72rem", marginTop: 6, lineHeight: 1.4 }}>
+          ⚠️ {behindKeys.length} components changed in this release. Updating one alone can leave
+          parts out of sync (e.g. the website calling an API endpoint that isn&apos;t updated yet).
+          Updating together is recommended.
+        </div>
+      )}
+
+      <button
+        className="m-btn m-btn-neutral"
+        style={{ width: "100%", marginTop: 8, padding: "4px 10px", fontSize: "0.75rem" }}
+        disabled={pending}
+        onClick={() => updateAppMut.mutate({ component: "all", force: true })}
+        title="Pull latest and reinstall every component, even ones that did not change."
+      >
+        ♻️ Force full reinstall
+      </button>
+    </div>
+  );
+}
+
 function UpdateSection({
   updateStatus,
   updateChecking,
   checkUpdateMut,
   updateAppMut,
+  updateStage,
+  setStageMut,
   onConfirmUpdate,
 }) {
   const updateAvailable = updateStatus?.update_available ?? false;
@@ -149,6 +266,55 @@ function UpdateSection({
 
   return (
     <div>
+      {updateStage && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: "0.6rem",
+            padding: "0.4rem 0.55rem",
+            border: "1px solid #333",
+            borderRadius: 8,
+            background: "#161616",
+          }}
+        >
+          <span style={{ color: "#aaa", fontSize: "0.78rem", fontWeight: 600 }}>
+            Release stream
+          </span>
+          <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+            {["prod", "beta"].map((s) => {
+              const active = updateStage === s;
+              return (
+                <button
+                  key={s}
+                  className={active ? "m-btn m-btn-primary" : "m-btn m-btn-neutral"}
+                  style={{
+                    padding: "2px 12px",
+                    fontSize: "0.75rem",
+                    textTransform: "capitalize",
+                    ...(active
+                      ? { background: "#2f6f3e", borderColor: "#2f6f3e" }
+                      : { opacity: 0.7 }),
+                  }}
+                  disabled={active || setStageMut.isPending}
+                  onClick={() => setStageMut.mutate(s)}
+                >
+                  {s}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {updateStage === "beta" && (
+        <div
+          style={{ color: "#f0a800", fontSize: "0.72rem", marginBottom: "0.5rem", lineHeight: 1.4 }}
+        >
+          This device is on the <strong>beta</strong> stream — it gets each build immediately,
+          before prod approval. Switch to <strong>prod</strong> for approved-only updates.
+        </div>
+      )}
       {updateAvailable ? (
         <>
           <button
@@ -238,6 +404,7 @@ function UpdateSection({
           Update started — Pi will reboot shortly.
         </div>
       )}
+      <ComponentUpdates updateStatus={updateStatus} updateAppMut={updateAppMut} />
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: "0.25rem" }}>
         <button
           className="m-btn m-btn-neutral"
@@ -427,6 +594,8 @@ export default function System() {
     updateStatus,
     updateChecking,
     checkUpdateMut,
+    updateStage,
+    setStageMut,
     devMode,
     currentLogLevel,
     setLogLevelMut,
@@ -510,6 +679,8 @@ export default function System() {
           updateChecking={updateChecking}
           checkUpdateMut={checkUpdateMut}
           updateAppMut={updateAppMut}
+          updateStage={updateStage}
+          setStageMut={setStageMut}
           onConfirmUpdate={() => setConfirmUpdate(true)}
         />
 

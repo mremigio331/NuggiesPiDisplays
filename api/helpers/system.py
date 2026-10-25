@@ -348,31 +348,56 @@ class SystemManager:
         logger.info(f"Updated working tree to {target}: {reset.stdout.strip()}")
         return True
 
-    async def update_app(self, run_setup: bool = True, mode: str | None = None) -> None:
+    async def update_app(
+        self,
+        run_setup: bool = True,
+        mode: str | None = None,
+        component: str | None = None,
+        force: bool = False,
+    ) -> None:
         """Pull latest code, optionally re-run setup, then reboot.
 
         *mode* is the setup.sh flag ("--dev"/"--prod"). When the caller resolves it
         (the /update-app endpoint does, so the reported mode matches the executed
         one), it is passed through here; otherwise it is resolved from dev_config.
+
+        *component* scopes the update to one part (api/display/website/system) via
+        setup.sh's --update-<component> flag; None/"all" runs the full --update.
+        *force* adds --force so setup.sh reinstalls even if that part didn't change.
         """
         await asyncio.sleep(1)  # let HTTP response flush before blocking
 
-        logger.info("Updating to latest code...")
-        if not self._pull_latest_code():
-            logger.error("Aborting update: could not update code. NOT rebooting.")
-            return
+        scoped = bool(component) and component != "all"
+
+        # For a SCOPED update, do NOT pull here: setup.sh must own the single pull
+        # so its skip-if-unchanged diff (pre-pull SHA vs new HEAD) is accurate. An
+        # API-side pull would advance HEAD first, hiding the change and skipping
+        # everything. For a full --update (legacy path) keep the pre-pull as a
+        # belt-and-suspenders refresh of setup.sh itself.
+        if not scoped:
+            logger.info("Updating to latest code...")
+            if not self._pull_latest_code():
+                logger.error("Aborting update: could not update code. NOT rebooting.")
+                return
 
         if run_setup:
             # Always use the lightweight updater. The full --dev/--prod installer
             # re-runs apt upgrades / node install / display verification and
             # self-reboots — too heavy and failure-prone for an in-field update.
-            # Run it DETACHED: setup.sh --update restarts the API service, which
-            # would kill this process (and setup.sh with it) if run as a child.
-            # Because it's detached, we hand reboot/restart duty to setup.sh and
-            # do NOT reboot here (the old reboot would race the detached update).
-            flag = mode or "--update"
-            logger.info(f"Launching setup.sh {flag} (detached) to apply update")
-            self._run_setup_detached(flag)
+            # Run it DETACHED: setup.sh restarts the API service, which would kill
+            # this process (and setup.sh with it) if run as a child. Detached, we
+            # hand reboot/restart duty to setup.sh and do NOT reboot here.
+            flags: list[str] = []
+            if scoped:
+                flags.append(f"--update-{component}")
+            else:
+                flags.append(mode or "--update")
+            if force:
+                flags.append("--force")
+            logger.info(
+                f"Launching setup.sh {' '.join(flags)} (detached) to apply update"
+            )
+            self._run_setup_detached(*flags)
             return
 
         logger.info("Rebooting Pi after update (no setup requested)...")

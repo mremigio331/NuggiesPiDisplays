@@ -27,11 +27,24 @@ export const restartWifiService = () => handle(api.post("/system/restart-wifi-se
 // detached so the setup AP reappears. This is how a connected device is
 // reconfigured. See POST /api/system/force-wifi-portal (task 5.1).
 export const forceWifiPortal = () => handle(api.post("/system/force-wifi-portal"));
-export const updateApp = (runSetup = true) =>
-  handle(api.post("/system/update-app", { run_setup: runSetup }));
+// Trigger an update. With no component (or "all") this is the classic full
+// update + reboot. A component ("api"|"display"|"website"|"system") scopes it
+// to that part (restarts only the affected service). force=true reinstalls even
+// if that part did not change in the pulled range.
+export const updateApp = (runSetup = true, component = null, force = false) =>
+  handle(
+    api.post("/system/update-app", {
+      run_setup: runSetup,
+      component,
+      force,
+    })
+  );
 export const getLogLevel = () => handle(api.get("/system/log-level"));
 export const setLogLevel = (log_level) => handle(api.put("/system/log-level", { log_level }));
 export const getUpdateStatus = () => handle(api.get("/system/update-status"));
+// Release stage this device tracks: { stage: "beta"|"prod", valid: [...] }.
+export const getUpdateStage = () => handle(api.get("/system/update-stage"));
+export const setUpdateStage = (stage) => handle(api.put("/system/update-stage", { stage }));
 export const checkUpdate = () => handle(api.post("/system/check-update"));
 export const getUpdateLog = (offset = 0) =>
   handle(api.get("/system/update-log", { params: { offset } }));
