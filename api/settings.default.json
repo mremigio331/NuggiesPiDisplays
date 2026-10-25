@@ -3,6 +3,7 @@
   "auto_start_display": true,
   "log_level": "INFO",
   "update_stage": "prod",
+  "display_brightness": 100,
 
   "stocks": {
     "stock_abbrs": ["AAPL", "MSFT"],
@@ -13,7 +14,7 @@
       { "key": "1year",    "period": "1y",  "interval": "1d", "label": "1 Year",       "enabled": true }
     ],
     "interval_seconds": 60,
-    "display_brightness": 80,
+    "display_brightness": 100,
     "market_hours_only": false,
     "timezone": "America/Los_Angeles"
   },

@@ -7,6 +7,7 @@ try:
     if HEADLESS:
         raise ImportError("headless mode")
     from rgbmatrix import RGBMatrix, RGBMatrixOptions
+    from config import get_brightness
 
     USING_HARDWARE = True
 
@@ -19,6 +20,7 @@ try:
         options.hardware_mapping = "adafruit-hat"
         options.gpio_slowdown = 4
         options.pwm_lsb_nanoseconds = 300
+        options.brightness = get_brightness()
         return RGBMatrix(options=options)
 
 except ImportError:

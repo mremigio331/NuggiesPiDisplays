@@ -95,6 +95,24 @@ mean to.
 
 ---
 
+## Brightness
+
+You can dim the whole display from **System** on the website. This applies
+to every mode (clock, sports, stocks, weather, MTA) at once.
+
+Under **Brightness**, pick one:
+
+| Setting | Brightness |
+|---------|-----------|
+| **Full** | 100% (default) |
+| **Medium** | 60% |
+| **Low** | 25% |
+
+The display restarts automatically when you change it, so it may go dark
+for a few seconds before coming back at the new brightness.
+
+---
+
 ## Settings
 
 Each mode has its own settings page accessible from the navigation menu:

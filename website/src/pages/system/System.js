@@ -23,6 +23,8 @@ import {
   getUpdateLog,
   getUpdateStage,
   setUpdateStage,
+  getBrightness,
+  setBrightness,
   getWifiStatus,
 } from "../../services/API";
 import Modal from "../../components/shared/Modal";
@@ -33,6 +35,16 @@ const SETUP_AP_PASSWORD = "SetUpNuggies";
 // resolve to the setup page — only the fixed portal IP works. This matches the
 // address discipline used on the WiFi setup page.
 const PORTAL_ADDRESS = "10.42.0.1";
+
+// Pinned brightness presets. The backend accepts any 1-100; the UI offers
+// just these three so the control is a simple pick, not a finicky slider.
+const BRIGHTNESS_PRESETS = [
+  { name: "full", value: 100 },
+  { name: "medium", value: 60 },
+  { name: "low", value: 25 },
+];
+// Display labels for preset names (backend sends names; UI titles them).
+const PRESET_LABELS = { full: "Full", medium: "Medium", low: "Low" };
 
 function useSystem() {
   const qc = useQueryClient();
@@ -72,6 +84,22 @@ function useSystem() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["updateStage"] });
       checkUpdateMut.mutate();
+    },
+  });
+  // Universal LED brightness (1-100). Applied by the matrix at build time,
+  // so saving a new value restarts the display to make it take effect.
+  const { data: brightnessData } = useQuery({
+    queryKey: ["brightness"],
+    queryFn: getBrightness,
+  });
+  const brightness = brightnessData?.brightness ?? 100;
+  const activePreset = brightnessData?.preset ?? null;
+  const presets = brightnessData?.presets ?? BRIGHTNESS_PRESETS;
+  const setBrightnessMut = useMutation({
+    mutationFn: (preset) => setBrightness(preset),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["brightness"] });
+      restartDisplayMut.mutate();
     },
   });
   const { data: devConfig } = useQuery({ queryKey: ["devMode"], queryFn: getDevMode });
@@ -115,6 +143,10 @@ function useSystem() {
     checkUpdateMut,
     updateStage,
     setStageMut,
+    brightness,
+    activePreset,
+    presets,
+    setBrightnessMut,
     devMode,
     currentLogLevel,
     setLogLevelMut,
@@ -617,6 +649,10 @@ export default function System() {
     checkUpdateMut,
     updateStage,
     setStageMut,
+    brightness,
+    activePreset,
+    presets,
+    setBrightnessMut,
     devMode,
     currentLogLevel,
     setLogLevelMut,
@@ -690,6 +726,30 @@ export default function System() {
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="m-card">
+        <div className="m-card-title">Brightness</div>
+        <div style={{ color: "#888", fontSize: "0.72rem", marginBottom: "0.6rem" }}>
+          Dims every display mode. Changing it restarts the display to apply.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          {presets.map((preset) => (
+            <button
+              key={preset.name}
+              className={`m-btn ${activePreset === preset.name ? "m-btn-active" : "m-btn-neutral"}`}
+              disabled={setBrightnessMut.isPending}
+              onClick={() => setBrightnessMut.mutate(preset.name)}
+            >
+              {preset.label ?? PRESET_LABELS[preset.name] ?? preset.name}
+            </button>
+          ))}
+        </div>
+        {setBrightnessMut.isPending && (
+          <div style={{ color: "#f0a800", fontSize: "0.7rem", marginTop: "0.5rem" }}>
+            Applying… the display will restart.
+          </div>
+        )}
       </div>
 
       <div className="m-card">

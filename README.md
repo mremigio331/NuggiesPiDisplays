@@ -35,6 +35,9 @@ The **System** page manages the device itself:
   showing a "reconnecting" state until the device returns).
 - **Restart Services** — restart the API, display, or website service
   individually without rebooting the whole Pi.
+- **Brightness** — a universal Full / Medium / Low control that dims every
+  display mode at once (100 / 60 / 25%). The preset values are owned by the
+  API; changing it restarts the display to apply.
 - **Restart Pi** — full reboot.
 - **Danger Zone** — reset settings, or a full factory reset + WiFi wipe.
 

@@ -92,3 +92,40 @@ def write_overlay(overlay: dict | None) -> None:
     else:
         settings["overlay"] = overlay
     write_settings(settings)
+
+
+# --- Display brightness ----------------------------------------------------- #
+# Universal LED brightness (0-100) applied to every display mode. The matrix
+# library scales all colors by this before they reach the panel, so it dims the
+# whole display uniformly. Default 100 (full). setup.sh does not read this;
+# each mode's build_matrix() fetches it from the API at startup, so a change
+# takes effect on the next display restart.
+BRIGHTNESS_MIN = 1
+BRIGHTNESS_MAX = 100
+DEFAULT_BRIGHTNESS = 100
+# Named presets the UI offers. The backend owns these values so UI and device
+# always agree; write_display_brightness still accepts any raw 1-100 too.
+BRIGHTNESS_PRESETS = {"full": 100, "medium": 60, "low": 25}
+
+
+def read_display_brightness() -> int:
+    try:
+        val = int(read_settings().get("display_brightness", DEFAULT_BRIGHTNESS))
+    except (TypeError, ValueError):
+        return DEFAULT_BRIGHTNESS
+    return max(BRIGHTNESS_MIN, min(BRIGHTNESS_MAX, val))
+
+
+def write_display_brightness(value: int) -> int:
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("display_brightness must be an integer 1-100")
+    if not (BRIGHTNESS_MIN <= value <= BRIGHTNESS_MAX):
+        raise ValueError(
+            f"display_brightness must be {BRIGHTNESS_MIN}-{BRIGHTNESS_MAX}, got {value}"
+        )
+    settings = read_settings()
+    settings["display_brightness"] = value
+    write_settings(settings)
+    return value

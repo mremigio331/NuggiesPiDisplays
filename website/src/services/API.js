@@ -53,6 +53,13 @@ export const getUpdateStatus = () => handle(api.get("/system/update-status"));
 // Release stage this device tracks: { stage: "beta"|"prod", valid: [...] }.
 export const getUpdateStage = () => handle(api.get("/system/update-stage"));
 export const setUpdateStage = (stage) => handle(api.put("/system/update-stage", { stage }));
+// Universal LED brightness (1-100) applied to every display mode.
+export const getBrightness = () => handle(api.get("/system/brightness"));
+// Accepts a preset name ("full"|"medium"|"low") or a raw 1-100 number.
+export const setBrightness = (arg) =>
+  handle(
+    api.put("/system/brightness", typeof arg === "string" ? { preset: arg } : { brightness: arg })
+  );
 export const checkUpdate = () => handle(api.post("/system/check-update"));
 export const getUpdateLog = (offset = 0, runId = "") =>
   handle(api.get("/system/update-log", { params: { offset, run_id: runId } }));
