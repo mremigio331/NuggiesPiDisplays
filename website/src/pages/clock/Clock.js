@@ -25,6 +25,25 @@ function findPresetHex(rgb) {
   return preset ? rgbToHex(preset.rgb) : rgbToHex(rgb);
 }
 
+// "Caitlin Mode" (color_mode === "rainbow"): an animated rainbow that slides to
+// the right, matching the board and the Settings-page preview. Uses
+// background-clip so the gradient fills the glyphs.
+const RAINBOW_GRADIENT =
+  "linear-gradient(90deg, #ff0000, #ff8800, #ffee00, #00cc44, #0088ff, #8800ff, #ff0000)";
+
+function rainbowTextStyle(extra = {}) {
+  return {
+    background: RAINBOW_GRADIENT,
+    backgroundSize: "200% 100%",
+    WebkitBackgroundClip: "text",
+    backgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+    color: "transparent",
+    animation: "clockRainbowSlide 2.5s linear infinite",
+    ...extra,
+  };
+}
+
 function useLiveClock(timezone, use24h = false) {
   const [now, setNow] = React.useState(() => new Date());
   React.useEffect(() => {
@@ -44,7 +63,7 @@ function useLiveClock(timezone, use24h = false) {
   }
 }
 
-function ClockRow({ tz, use24h, color }) {
+function ClockRow({ tz, use24h, colorStyle }) {
   const liveTime = useLiveClock(tz, use24h);
   const label = tz.split("/").pop().replace(/_/g, " ");
   return (
@@ -62,8 +81,8 @@ function ClockRow({ tz, use24h, color }) {
           fontSize: "1.4rem",
           fontWeight: 700,
           fontVariantNumeric: "tabular-nums",
-          color,
           whiteSpace: "nowrap",
+          ...colorStyle,
         }}
       >
         {liveTime}
@@ -78,6 +97,8 @@ export default function Clock() {
 
   const use24h = settings?.use_24h ?? false;
   const colorHex = settings ? findPresetHex(settings.color) : "#ffffff";
+  const rainbow = settings?.color_mode === "rainbow";
+  const timeColorStyle = rainbow ? rainbowTextStyle() : { color: colorHex };
   const timezones =
     Array.isArray(settings?.timezones) && settings.timezones.length
       ? settings.timezones
@@ -87,6 +108,7 @@ export default function Clock() {
 
   return (
     <div>
+      <style>{`@keyframes clockRainbowSlide { from { background-position: 0% 0; } to { background-position: -200% 0; } }`}</style>
       <div
         style={{
           display: "flex",
@@ -126,7 +148,7 @@ export default function Clock() {
           {timezones.length > 1 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {timezones.map((tz) => (
-                <ClockRow key={tz} tz={tz} use24h={use24h} color={colorHex} />
+                <ClockRow key={tz} tz={tz} use24h={use24h} colorStyle={timeColorStyle} />
               ))}
             </div>
           ) : (
@@ -136,9 +158,9 @@ export default function Clock() {
                   fontSize: "2.8rem",
                   fontWeight: 700,
                   fontVariantNumeric: "tabular-nums",
-                  color: colorHex,
                   letterSpacing: 3,
                   lineHeight: 1,
+                  ...timeColorStyle,
                 }}
               >
                 {primaryTime}

@@ -19,7 +19,7 @@ class ClockSettings(BaseModel):
     # Seconds each timezone (focus) or page of three (multi) stays on screen.
     cycle_seconds: Optional[int] = None
     color: Optional[List[int]] = None
-    # "solid" uses `color`; "rainbow" (aka Caitlyn Mode) animates a horizontal
+    # "solid" uses `color`; "rainbow" (aka Caitlin Mode) animates a horizontal
     # rainbow that slides to the right.
     color_mode: Optional[str] = None
     use_24h: Optional[bool] = None

@@ -24,7 +24,7 @@ FOCUS_DATE_Y = 20
 FOCUS_TZ_Y = 30
 COLOR_BG = (0, 0, 0)
 
-# Rainbow ("Caitlyn Mode"): how many full hue cycles span the 64px width.
+# Rainbow ("Caitlin Mode"): how many full hue cycles span the 64px width.
 _RAINBOW_CYCLES = 1.5
 
 _gfx = None
@@ -69,7 +69,7 @@ def _tz_abbr(dt: datetime, tz_name: str) -> str:
     return abbr
 
 
-# --- Rainbow ("Caitlyn Mode") ----------------------------------------------- #
+# --- Rainbow ("Caitlin Mode") ----------------------------------------------- #
 
 
 def _rainbow_columns(phase: float):

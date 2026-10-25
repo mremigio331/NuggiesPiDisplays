@@ -19,11 +19,11 @@ const COLOR_PRESETS = [
   { label: "Yellow", value: "255,255,0", rgb: [255, 255, 0] },
 ];
 
-// Dropdown choices = solid presets plus Caitlyn Mode, sorted alphabetically by
+// Dropdown choices = solid presets plus Caitlin Mode, sorted alphabetically by
 // label (the emoji is ignored for sorting so it lands after "Blue").
 const COLOR_OPTIONS = [
   ...COLOR_PRESETS.map((p) => ({ label: p.label, value: p.value, sortKey: p.label })),
-  { label: "🌈 Caitlyn Mode", value: "rainbow", sortKey: "Caitlyn Mode" },
+  { label: "🌈 Caitlin Mode", value: "rainbow", sortKey: "Caitlin Mode" },
 ].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
 const CYCLE_OPTIONS = [3, 5, 10, 15, 30, 60];
@@ -82,7 +82,7 @@ const RAINBOW_GRADIENT =
   "linear-gradient(90deg, #ff0000, #ff8800, #ffee00, #00cc44, #0088ff, #8800ff, #ff0000)";
 
 // Text styled as an animated rainbow sliding to the right (matches the board's
-// "Caitlyn Mode"). Uses background-clip so the gradient fills the glyphs.
+// "Caitlin Mode"). Uses background-clip so the gradient fills the glyphs.
 function rainbowTextStyle(extra = {}) {
   return {
     background: RAINBOW_GRADIENT,
@@ -519,7 +519,7 @@ export default function ClockSettings() {
     save({ timezones: next });
   };
 
-  // The color dropdown offers the solid presets plus "Caitlyn Mode" (rainbow).
+  // The color dropdown offers the solid presets plus "Caitlin Mode" (rainbow).
   // Picking a solid preset also flips color_mode back to solid.
   const handleColorChoice = (choice) => {
     if (choice === "rainbow") {

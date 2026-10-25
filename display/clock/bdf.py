@@ -2,7 +2,7 @@
 
 Just enough of the BDF format to draw text into a PIL image using the exact
 same glyphs as the LED matrix library's `graphics.DrawText`. This lets the
-rainbow ("Caitlyn Mode") path recolor pixels while keeping the bitmap font
+rainbow ("Caitlin Mode") path recolor pixels while keeping the bitmap font
 identical to the solid-color path (Pillow's FreeType can't load all three of
 our BDF files, so we parse them ourselves).
 
