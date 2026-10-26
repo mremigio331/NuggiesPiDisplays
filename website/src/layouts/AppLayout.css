@@ -576,3 +576,22 @@
     opacity: 1;
   }
 }
+
+/* Small LED-board data loader (website-only), matching the panel aesthetic. */
+@keyframes ledLoaderSweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+@keyframes ledLoaderPulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}

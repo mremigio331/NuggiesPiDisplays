@@ -2,6 +2,7 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { useApiCheck, INCREMENT_RETRIES, RESET_RETRIES } from "../../providers/APICheckProvider";
 import SwitchDisplayButton from "../../components/shared/SwitchDisplayButton";
+import { LedFetchingIndicator } from "../../components/shared/LoadingSpinner";
 import { useMTATrains } from "../../hooks/useMTATrains";
 import { TrainLogos, getRandomTrainLogos } from "../../utility/SubwayLogos";
 import { AllStations } from "../../constants/SubwayStations";
@@ -88,7 +89,7 @@ export default function MTA() {
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <SwitchDisplayButton mode="mta" />
           <button style={ICON_BTN} aria-label="Refresh" onClick={() => refetch()}>
-            {isFetching ? "⏳" : "🔄"}
+            {isFetching ? <LedFetchingIndicator /> : "🔄"}
           </button>
           <button style={ICON_BTN} aria-label="Settings" onClick={() => navigate("/mta/settings")}>
             ⚙️
