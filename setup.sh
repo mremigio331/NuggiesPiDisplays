@@ -672,7 +672,9 @@ verify_permissions() {
     _probe_nopasswd() {
         local label="$1"; shift
         local err
-        err=$(sudo -u "$USER" sudo -n "$@" 2>&1 >/dev/null)
+        # `|| true`: do not let the substitution's non-zero exit (a refused
+        # `sudo -n`) trip the script's `set -e` before we classify it below.
+        err=$(sudo -u "$USER" sudo -n "$@" 2>&1 >/dev/null) || true
         if printf '%s' "$err" | grep -q "a password is required"; then
             echo "    [PROBED ] FAIL  $label — sudo refused (no matching NOPASSWD grant): $*"
             failures=$((failures + 1))
@@ -694,7 +696,9 @@ verify_permissions() {
     _probe_setup_sh() {
         local label="bash setup.sh <arg> (argument-bearing form, usage-banner exit)"
         local err
-        err=$(sudo -u "$USER" sudo -n "$BASH" "$SCRIPT_DIR/setup.sh" --verify-noop 2>&1 >/dev/null)
+        # `|| true`: same set -e guard as _probe_nopasswd — the refusal is the
+        # signal, not a script-fatal error.
+        err=$(sudo -u "$USER" sudo -n "$BASH" "$SCRIPT_DIR/setup.sh" --verify-noop 2>&1 >/dev/null) || true
         if printf '%s' "$err" | grep -q "a password is required"; then
             echo "    [PROBED ] FAIL  $label — sudo refused (no matching NOPASSWD grant)"
             failures=$((failures + 1))
@@ -797,9 +801,23 @@ verify_permissions() {
     fi
 
     if [[ "$failures" -ne 0 ]]; then
+        # Self-heal (once): a device whose sudoers drifted (e.g. the file went
+        # empty, dropping the setup.sh grant) can otherwise never repair itself
+        # through an update — every run dies here. Reapply the sudoers as root
+        # and re-verify a single time before failing for real. setup_sudoers
+        # needs no pre-existing grant (it runs as root during setup), so this
+        # path works even when every $USER grant is missing.
+        if [[ -z "$_PERM_HEALED" ]]; then
+            echo ""
+            echo "!!! verify_permissions: $failures item(s) FAILED — attempting one-time self-heal (reapplying sudoers)..."
+            _PERM_HEALED=1
+            setup_sudoers
+            verify_permissions
+            return
+        fi
         echo ""
-        echo "!!! verify_permissions: $failures item(s) FAILED. Provisioning is incomplete."
-        echo "!!! Fix the grants/ownership above and re-run: sudo bash setup.sh --update"
+        echo "!!! verify_permissions: $failures item(s) FAILED after self-heal. Provisioning is incomplete."
+        echo "!!! Fix the grants/ownership above and re-run: sudo bash setup.sh --update --force"
         exit 1
     fi
     echo "--- verify_permissions: all items passed."
