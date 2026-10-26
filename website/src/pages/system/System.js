@@ -464,6 +464,194 @@ function UpdateSection({
 }
 
 const UPDATE_LOG_START = "=== NUGGIES UPDATE START ===";
+// ---------------------------------------------------------------------------
+// LED board mockup animation (shown while the Pi reboots after an update).
+// Renders a stylised 64x32 LED matrix and cycles through fake mockups of each
+// display mode — clock, MTA, sports, stocks, weather — drawing one in, holding
+// ~5s, then picking another at random (never the same twice in a row).
+// Pure presentation: no data, no network. It exists to make the reboot wait
+// feel intentional instead of broken.
+// ---------------------------------------------------------------------------
+
+// The real panel is 64x32. We render each mockup as an SVG on that exact
+// viewBox so proportions match the hardware; CSS scales it up crisply.
+const LED_W = 64;
+const LED_H = 32;
+
+// A tiny 3x5 pixel font would be overkill here — each mockup is hand-placed
+// SVG using blocky rects/text so it reads as "LED art" at a glance.
+const MOCK_MODES = ["clock", "mta", "sports", "stocks", "weather"];
+const MOCK_LABEL = {
+  clock: "Clock",
+  mta: "MTA",
+  sports: "Sports",
+  stocks: "Stocks",
+  weather: "Weather",
+};
+
+function MockClock() {
+  return (
+    <g fontFamily="monospace" fontWeight="bold" textAnchor="middle">
+      <text x="32" y="13" fontSize="11" fill="#ffffff">
+        9:41
+      </text>
+      <text x="32" y="21" fontSize="6" fill="#4fc3f7">
+        SUN OCT 25
+      </text>
+      <text x="32" y="29" fontSize="5" fill="#7cff7c">
+        LOS ANGELES
+      </text>
+    </g>
+  );
+}
+
+function MockMTA() {
+  return (
+    <g fontFamily="monospace" fontWeight="bold">
+      <circle cx="9" cy="10" r="6" fill="#009e4f" />
+      <text x="9" y="13" fontSize="7" fill="#000" textAnchor="middle">
+        4
+      </text>
+      <text x="19" y="9" fontSize="5" fill="#fff">
+        YANKEE ST
+      </text>
+      <text x="19" y="17" fontSize="7" fill="#ffd400">
+        3 min
+      </text>
+      <text x="19" y="27" fontSize="6" fill="#aaa">
+        8 min
+      </text>
+    </g>
+  );
+}
+
+function MockSports() {
+  return (
+    <g fontFamily="monospace" fontWeight="bold" textAnchor="middle">
+      <text x="16" y="9" fontSize="6" fill="#ff5252">
+        LAL
+      </text>
+      <text x="48" y="9" fontSize="6" fill="#4fc3f7">
+        BOS
+      </text>
+      <text x="32" y="22" fontSize="12" fill="#fff">
+        98-95
+      </text>
+      <text x="32" y="30" fontSize="5" fill="#ffd400">
+        Q4 2:11
+      </text>
+    </g>
+  );
+}
+
+function MockStocks() {
+  return (
+    <g fontFamily="monospace" fontWeight="bold">
+      <text x="3" y="10" fontSize="7" fill="#fff">
+        AAPL
+      </text>
+      <text x="34" y="10" fontSize="7" fill="#7cff7c">
+        +1.8%
+      </text>
+      {/* little upward chart */}
+      <polyline
+        points="3,28 14,24 24,26 34,18 44,20 54,12 61,9"
+        fill="none"
+        stroke="#7cff7c"
+        strokeWidth="1.5"
+      />
+    </g>
+  );
+}
+
+function MockWeather() {
+  return (
+    <g fontFamily="monospace" fontWeight="bold">
+      {/* sun */}
+      <circle cx="13" cy="13" r="6" fill="#ffd400" />
+      <text x="30" y="16" fontSize="13" fill="#fff">
+        72°
+      </text>
+      <text x="3" y="29" fontSize="6" fill="#4fc3f7">
+        SUNNY · LA
+      </text>
+    </g>
+  );
+}
+
+const MOCK_RENDER = {
+  clock: MockClock,
+  mta: MockMTA,
+  sports: MockSports,
+  stocks: MockStocks,
+  weather: MockWeather,
+};
+
+function LedBoardMockup() {
+  const [idx, setIdx] = React.useState(() => Math.floor(Math.random() * MOCK_MODES.length));
+  // `drawKey` bumps on every switch so the draw-in animation restarts.
+  const [drawKey, setDrawKey] = React.useState(0);
+
+  React.useEffect(() => {
+    const t = setInterval(() => {
+      setIdx((cur) => {
+        // Pick a different mode at random (no immediate repeat).
+        let next = cur;
+        while (next === cur) next = Math.floor(Math.random() * MOCK_MODES.length);
+        return next;
+      });
+      setDrawKey((k) => k + 1);
+    }, 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  const mode = MOCK_MODES[idx];
+  const Render = MOCK_RENDER[mode];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div
+        style={{
+          // The bezel around the panel.
+          background: "#111",
+          padding: 10,
+          borderRadius: 10,
+          boxShadow: "0 0 0 2px #2a2a2a, 0 6px 18px rgba(0,0,0,0.6)",
+        }}
+      >
+        <svg
+          key={drawKey}
+          viewBox={`0 0 ${LED_W} ${LED_H}`}
+          width={256}
+          height={128}
+          style={{
+            display: "block",
+            background: "#050505",
+            borderRadius: 4,
+            imageRendering: "pixelated",
+            animation: "ledDrawIn 0.6s ease-out",
+          }}
+        >
+          {/* faint LED grid so it reads as a matrix */}
+          <defs>
+            <pattern id="ledgrid" width="2" height="2" patternUnits="userSpaceOnUse">
+              <rect width="2" height="2" fill="#050505" />
+              <circle cx="1" cy="1" r="0.35" fill="#111" />
+            </pattern>
+          </defs>
+          <rect width={LED_W} height={LED_H} fill="url(#ledgrid)" />
+          <g style={{ animation: "ledContentFade 0.5s ease-out 0.25s both" }}>
+            <Render />
+          </g>
+        </svg>
+      </div>
+      <div style={{ color: "#888", fontSize: "0.72rem" }}>
+        Preview: <span style={{ color: "#ccc" }}>{MOCK_LABEL[mode]}</span>
+      </div>
+    </div>
+  );
+}
+
 const UPDATE_LOG_COMPLETE = "=== NUGGIES UPDATE COMPLETE ===";
 const UPDATE_LOG_FAILED = "=== NUGGIES UPDATE FAILED ===";
 
@@ -607,6 +795,36 @@ function UpdateProgressModal({ visible, onClose, runId = "", alreadyRunning = fa
       <div style={{ color: statusLine.color, fontSize: "0.9rem", marginBottom: 8 }}>
         {statusLine.text}
       </div>
+
+      {/* While the Pi reboots, fill the wait with the LED board animation. */}
+      {(phase === "reconnecting" || phase === "rebooting") && (
+        <div style={{ margin: "4px 0 12px" }}>
+          <LedBoardMockup />
+        </div>
+      )}
+
+      {/* On success, prompt a page refresh so the browser loads the new bundle. */}
+      {phase === "complete" && (
+        <div
+          style={{
+            margin: "4px 0 12px",
+            padding: "0.8rem",
+            borderRadius: 6,
+            background: "#12301a",
+            border: "1px solid #2f7a44",
+            color: "#9be7a9",
+            fontSize: "0.82rem",
+          }}
+        >
+          The device updated successfully. Refresh this page so it loads the new version.
+          <div className="m-btn-row" style={{ marginTop: "0.6rem" }}>
+            <button className="m-btn m-btn-primary" onClick={() => window.location.reload()}>
+              Refresh Now
+            </button>
+          </div>
+        </div>
+      )}
+
       <pre
         ref={preRef}
         style={{
@@ -629,10 +847,70 @@ function UpdateProgressModal({ visible, onClose, runId = "", alreadyRunning = fa
   );
 }
 
-// Display schedule editor. Rules are { time: "HH:MM", mode }. At each rule time
-// the device (in its OWN local timezone) switches to that mode; the rule stays
-// active until the next rule time, wrapping at midnight. A manual mode switch
-// after the schedule has taken over turns the schedule off until re-enabled.
+// Display schedule editor. Rules are { time, action, ... } run at their time in
+// the device's OWN local timezone. Edge-triggered: a rule fires when its minute
+// arrives; enabling the schedule moves nothing on its own and a manual switch
+// is left alone until the next rule. Actions: mode (+ sports league), power
+// on/off, brightness.
+// Dev-only: preview the reboot loading screen (the LED board animation + the
+// success state) without running a real update. Opened from the Dev Mode card.
+// Purely visual — it never touches the device or triggers an update.
+function LoadingPreviewModal({ visible, onClose }) {
+  const [phase, setPhase] = React.useState("reconnecting");
+
+  React.useEffect(() => {
+    if (!visible) {
+      setPhase("reconnecting");
+      return;
+    }
+    // Demo the flow: ~12s of "rebooting" animation, then the success panel.
+    const t = setTimeout(() => setPhase("complete"), 12000);
+    return () => clearTimeout(t);
+  }, [visible]);
+
+  return (
+    <Modal
+      visible={visible}
+      onDismiss={onClose}
+      header="Preview: Loading Screen"
+      footer={
+        <div className="m-btn-row">
+          <button className="m-btn m-btn-primary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      }
+    >
+      <div style={{ color: "#f0a800", fontSize: "0.9rem", marginBottom: 8 }}>
+        {phase === "complete"
+          ? "✓ Update complete — (preview)"
+          : "Pi is restarting — reconnecting… (preview)"}
+      </div>
+      {phase !== "complete" ? (
+        <div style={{ margin: "4px 0 12px" }}>
+          <LedBoardMockup />
+        </div>
+      ) : (
+        <div
+          style={{
+            margin: "4px 0 12px",
+            padding: "0.8rem",
+            borderRadius: 6,
+            background: "#12301a",
+            border: "1px solid #2f7a44",
+            color: "#9be7a9",
+            fontSize: "0.82rem",
+          }}
+        >
+          This is the success state the real update shows. On a real update a
+          <strong> Refresh Now </strong> button appears here to load the new version.
+        </div>
+      )}
+      <div style={{ color: "#666", fontSize: "0.72rem" }}>Preview only — no update is running.</div>
+    </Modal>
+  );
+}
+
 function ScheduleSection() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["schedule"], queryFn: getSchedule });
@@ -918,6 +1196,7 @@ export default function System() {
   const [confirmForgetWifi, setConfirmForgetWifi] = React.useState(false);
   const [confirmUpdate, setConfirmUpdate] = React.useState(false);
   const [showUpdateProgress, setShowUpdateProgress] = React.useState(false);
+  const [showLoadingPreview, setShowLoadingPreview] = React.useState(false);
   const [showResetWifiInstructions, setShowResetWifiInstructions] = React.useState(false);
 
   return (
@@ -1129,6 +1408,18 @@ export default function System() {
             Removes saved WiFi connections and resets the setup flag. Settings untouched. Reboot to
             trigger the captive portal.
           </div>
+
+          <button
+            className="m-btn m-btn-neutral"
+            style={{ width: "100%", marginTop: 10 }}
+            onClick={() => setShowLoadingPreview(true)}
+          >
+            Preview Loading Screen
+          </button>
+          <div className="m-form-desc" style={{ marginTop: 8 }}>
+            Shows the post-update reboot animation (the LED board cycling through each display)
+            without running a real update.
+          </div>
         </div>
       )}
 
@@ -1215,6 +1506,11 @@ export default function System() {
         runId={updateAppMut.data?.run_id ?? ""}
         alreadyRunning={updateAppMut.data?.already_running ?? false}
         onClose={() => setShowUpdateProgress(false)}
+      />
+
+      <LoadingPreviewModal
+        visible={showLoadingPreview}
+        onClose={() => setShowLoadingPreview(false)}
       />
 
       <Modal

@@ -556,3 +556,23 @@
   color: #5a7a9a;
   margin-bottom: 8px;
 }
+
+/* Update-modal LED board mockup animation (website-only reboot filler). */
+@keyframes ledDrawIn {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0.4;
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+@keyframes ledContentFade {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
