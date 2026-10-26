@@ -129,3 +129,124 @@ def write_display_brightness(value: int) -> int:
     settings["display_brightness"] = value
     write_settings(settings)
     return value
+
+
+# --- Display schedule ------------------------------------------------------- #
+# Time-of-day automation: at each "time" (device-local HH:MM, 24h) the display
+# switches to "mode". The scheduler loop (helpers/schedule.py) applies the rule
+# whose time is the latest one at or before the current local time, so one rule
+# stays active until the next rule time arrives, wrapping at midnight.
+#
+# Timezone is ALWAYS the device's own local time (the Pi ships worldwide and is
+# provisioned to its owner's zone), so no timezone is stored here.
+#
+# A MANUAL switch (web UI, button, or /system/display) after the schedule has
+# taken over turns the schedule OFF (enabled=false) until the user re-enables
+# it. The scheduler detects this by comparing active_display against the mode it
+# last set itself; see helpers/schedule.py.
+#
+# Shape:
+#   { "enabled": bool, "rules": [ { "time": "HH:MM", "mode": <display mode> } ] }
+import re as _re
+
+from constants import DISPLAY_MODES as _DISPLAY_MODES
+
+_TIME_RE = _re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+
+
+def schedule_mode_options() -> dict:
+    """Map of display mode -> [{key,label}] of its schedule sub-options.
+
+    Each mode's options come from that mode's OWN module (its source of truth),
+    so a league added to the sports dicts shows up here with no second edit.
+    Imported lazily because those modules import this one. A mode with no
+    sub-option is simply absent from the map.
+    """
+    options: dict[str, list[dict]] = {}
+    try:
+        from endpoints.sports.update_settings import sport_options
+
+        options["sports"] = sport_options()
+    except Exception:
+        # Never let a sub-module import problem break schedule loading.
+        pass
+    return options
+
+
+def normalize_schedule(raw: dict | None) -> dict:
+    """Coerce an on-disk schedule block into the canonical shape.
+
+    Tolerates missing keys and old settings files that predate the feature
+    (a user device upgrading keeps its other settings and gains a disabled,
+    empty schedule). Invalid rules are dropped rather than raising, so one bad
+    row can never stop the whole schedule from loading. Rules are returned
+    sorted by time.
+    """
+    raw = raw if isinstance(raw, dict) else {}
+    rules: list[dict] = []
+    for r in raw.get("rules", []) or []:
+        if not isinstance(r, dict):
+            continue
+        t = str(r.get("time", "")).strip()
+        if not _TIME_RE.match(t):
+            continue
+
+        # Action kind. Default "mode" so a legacy rule saved before actions
+        # existed (just {time, mode[, option]}) still loads and behaves the same.
+        action = str(r.get("action", "mode")).strip().lower() or "mode"
+
+        if action == "mode":
+            mode = str(r.get("mode", "")).strip()
+            if mode not in _DISPLAY_MODES:
+                continue
+            rule = {"time": t, "action": "mode", "mode": mode}
+            # Optional per-mode sub-option (e.g. sports league), validated
+            # against the mode's own whitelist; unknown/absent is dropped.
+            valid_opts = {o["key"] for o in schedule_mode_options().get(mode, [])}
+            opt = str(r.get("option", "")).strip()
+            if opt and opt in valid_opts:
+                rule["option"] = opt
+
+        elif action == "power":
+            power = str(r.get("power", "")).strip().lower()
+            if power not in ("on", "off"):
+                continue
+            rule = {"time": t, "action": "power", "power": power}
+
+        elif action == "brightness":
+            # Accept a raw 1-100 value. Clamp into range; an unparseable value
+            # drops the rule rather than raising.
+            try:
+                val = int(r.get("brightness"))
+            except (TypeError, ValueError):
+                continue
+            val = max(BRIGHTNESS_MIN, min(BRIGHTNESS_MAX, val))
+            rule = {"time": t, "action": "brightness", "brightness": val}
+
+        else:
+            # Unknown action — drop it rather than guess.
+            continue
+
+        rules.append(rule)
+
+    # Sort by time, then dedupe on time keeping the last-wins entry so a single
+    # minute never maps to two actions.
+    rules.sort(key=lambda r: r["time"])
+    deduped: dict[str, dict] = {}
+    for r in rules:
+        deduped[r["time"]] = r
+    rules = [deduped[t] for t in sorted(deduped)]
+    return {"enabled": bool(raw.get("enabled", False)), "rules": rules}
+
+
+def read_schedule() -> dict:
+    return normalize_schedule(read_settings().get("schedule"))
+
+
+def write_schedule(schedule: dict) -> dict:
+    """Validate + persist the schedule block. Returns the normalized value."""
+    normalized = normalize_schedule(schedule)
+    settings = read_settings()
+    settings["schedule"] = normalized
+    write_settings(settings)
+    return normalized

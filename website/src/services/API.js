@@ -47,6 +47,10 @@ export const updateApp = (runSetup = true, component = null, force = false) =>
       }
       throw err;
     });
+// Display schedule: time-of-day mode automation. GET returns
+// { enabled, rules:[{time,mode}], modes:[...] }; PUT persists { enabled, rules }.
+export const getSchedule = () => handle(api.get("/system/schedule"));
+export const setSchedule = (schedule) => handle(api.put("/system/schedule", schedule));
 export const getLogLevel = () => handle(api.get("/system/log-level"));
 export const setLogLevel = (log_level) => handle(api.put("/system/log-level", { log_level }));
 export const getUpdateStatus = () => handle(api.get("/system/update-status"));

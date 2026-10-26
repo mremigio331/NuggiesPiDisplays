@@ -25,6 +25,8 @@ import {
   setUpdateStage,
   getBrightness,
   setBrightness,
+  getSchedule,
+  setSchedule,
   getWifiStatus,
 } from "../../services/API";
 import Modal from "../../components/shared/Modal";
@@ -627,6 +629,255 @@ function UpdateProgressModal({ visible, onClose, runId = "", alreadyRunning = fa
   );
 }
 
+// Display schedule editor. Rules are { time: "HH:MM", mode }. At each rule time
+// the device (in its OWN local timezone) switches to that mode; the rule stays
+// active until the next rule time, wrapping at midnight. A manual mode switch
+// after the schedule has taken over turns the schedule off until re-enabled.
+function ScheduleSection() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ["schedule"], queryFn: getSchedule });
+  const saveMut = useMutation({
+    mutationFn: (payload) => setSchedule(payload),
+    onSuccess: (saved) => qc.setQueryData(["schedule"], saved),
+  });
+
+  const modes = data?.modes ?? ["clock", "mta", "sports", "stocks", "weather"];
+  // mode -> [{key,label}] of that mode's sub-options (e.g. sports leagues),
+  // supplied by the backend so the UI never redefines the league list.
+  const modeOptions = data?.mode_options ?? {};
+  const actions = data?.actions ?? ["mode", "power", "brightness"];
+  const powerOptions = data?.power_options ?? ["on", "off"];
+  const brightnessCfg = data?.brightness ?? { min: 1, max: 100, presets: [] };
+  const enabled = data?.enabled ?? false;
+  const rules = data?.rules ?? [];
+
+  const [draft, setDraft] = React.useState(null);
+  // Local editing copy of the rules; seeded from the server, flushed on save.
+  const rows = draft ?? rules;
+
+  const beginEdit = () => setDraft(rules.map((r) => ({ ...r })));
+  const cancelEdit = () => setDraft(null);
+  const editing = draft !== null;
+
+  const addRow = () => {
+    const m = modes[0];
+    const opts = modeOptions[m] || [];
+    setDraft([
+      ...(draft ?? []),
+      { time: "08:00", action: "mode", mode: m, option: opts.length ? opts[0].key : undefined },
+    ]);
+  };
+  const removeRow = (i) => setDraft(draft.filter((_, idx) => idx !== i));
+  const setRow = (i, patch) =>
+    setDraft(draft.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+
+  // Switching a row's ACTION resets it to that action's sensible defaults, so a
+  // stale mode/league/power/brightness can't ride along into the new shape.
+  const setRowAction = (i, action) => {
+    if (action === "mode") {
+      const m = modes[0];
+      const opts = modeOptions[m] || [];
+      setRow(i, {
+        action,
+        mode: m,
+        option: opts.length ? opts[0].key : undefined,
+        power: undefined,
+        brightness: undefined,
+      });
+    } else if (action === "power") {
+      setRow(i, {
+        action,
+        power: "off",
+        mode: undefined,
+        option: undefined,
+        brightness: undefined,
+      });
+    } else {
+      setRow(i, { action, brightness: 25, mode: undefined, option: undefined, power: undefined });
+    }
+  };
+  // Changing a mode row's mode: adopt the new mode's first sub-option if any.
+  const setRowMode = (i, mode) => {
+    const opts = modeOptions[mode] || [];
+    setRow(i, { mode, option: opts.length ? opts[0].key : undefined });
+  };
+
+  const saveRules = () => {
+    saveMut.mutate({ enabled, rules: draft }, { onSuccess: () => setDraft(null) });
+  };
+  const toggleEnabled = () => saveMut.mutate({ enabled: !enabled, rules });
+
+  const labelFor = (m) => (DISPLAY_MODES.find((d) => d.key === m) || {}).label || m.toUpperCase();
+  const optionLabelFor = (mode, opt) =>
+    ((modeOptions[mode] || []).find((o) => o.key === opt) || {}).label || opt;
+  const actionLabel = { mode: "Mode", power: "Power", brightness: "Brightness" };
+
+  // Human summary of a rule for the read-only list.
+  const summarize = (r) => {
+    const a = r.action || "mode";
+    if (a === "power") return `Power ${r.power === "off" ? "Off" : "On"}`;
+    if (a === "brightness") return `Brightness ${r.brightness}`;
+    return labelFor(r.mode) + (r.option ? ` · ${optionLabelFor(r.mode, r.option)}` : "");
+  };
+
+  return (
+    <div className="m-card">
+      <div className="m-card-title">Schedule</div>
+      <div style={{ color: "#888", fontSize: "0.72rem", marginBottom: "0.6rem" }}>
+        Run an action automatically at a set time, in this device&apos;s local time: switch mode,
+        turn the display off/on, or set brightness. Rules fire at their time; turning the schedule
+        on does not move anything until the next rule time.
+      </div>
+
+      <div className="m-btn-row" style={{ marginBottom: "0.6rem" }}>
+        <button
+          className={`m-btn ${enabled ? "m-btn-active" : "m-btn-neutral"}`}
+          disabled={isLoading || saveMut.isPending || editing}
+          onClick={toggleEnabled}
+        >
+          {enabled ? "Schedule On" : "Schedule Off"}
+        </button>
+      </div>
+
+      {rows.length === 0 && !editing && (
+        <div style={{ color: "#888", fontSize: "0.72rem", marginBottom: "0.6rem" }}>
+          No times set yet.
+        </div>
+      )}
+
+      {rows.map((r, i) =>
+        editing ? (
+          <div
+            key={i}
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              alignItems: "center",
+              marginBottom: 10,
+            }}
+          >
+            <input
+              type="time"
+              className="m-input"
+              value={r.time}
+              onChange={(e) => setRow(i, { time: e.target.value })}
+              style={{ flex: "0 0 7.5rem" }}
+            />
+            <select
+              className="m-input"
+              value={r.action || "mode"}
+              onChange={(e) => setRowAction(i, e.target.value)}
+              style={{ flex: "0 0 8rem" }}
+            >
+              {actions.map((a) => (
+                <option key={a} value={a}>
+                  {actionLabel[a] || a}
+                </option>
+              ))}
+            </select>
+
+            {(r.action || "mode") === "mode" && (
+              <>
+                <select
+                  className="m-input"
+                  value={r.mode}
+                  onChange={(e) => setRowMode(i, e.target.value)}
+                  style={{ flex: "1 1 8rem" }}
+                >
+                  {modes.map((m) => (
+                    <option key={m} value={m}>
+                      {labelFor(m)}
+                    </option>
+                  ))}
+                </select>
+                {(modeOptions[r.mode] || []).length > 0 && (
+                  <select
+                    className="m-input"
+                    value={r.option ?? (modeOptions[r.mode][0] || {}).key}
+                    onChange={(e) => setRow(i, { option: e.target.value })}
+                    style={{ flex: "1 1 8rem" }}
+                  >
+                    {modeOptions[r.mode].map((o) => (
+                      <option key={o.key} value={o.key}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </>
+            )}
+
+            {r.action === "power" && (
+              <select
+                className="m-input"
+                value={r.power || "off"}
+                onChange={(e) => setRow(i, { power: e.target.value })}
+                style={{ flex: "1 1 8rem" }}
+              >
+                {powerOptions.map((p) => (
+                  <option key={p} value={p}>
+                    {p === "off" ? "Off" : "On"}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {r.action === "brightness" && (
+              <input
+                type="number"
+                className="m-input"
+                min={brightnessCfg.min}
+                max={brightnessCfg.max}
+                value={r.brightness ?? 25}
+                onChange={(e) => setRow(i, { brightness: Number(e.target.value) })}
+                style={{ flex: "1 1 8rem" }}
+              />
+            )}
+
+            <button
+              className="m-btn m-btn-danger"
+              onClick={() => removeRow(i)}
+              style={{ flex: "0 0 auto" }}
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <div key={i} className="m-status-row" style={{ marginBottom: 4 }}>
+            <span className="m-badge m-badge-gray">{r.time}</span>
+            <span className="m-badge m-badge-blue">{summarize(r)}</span>
+          </div>
+        )
+      )}
+
+      <div className="m-btn-row" style={{ marginTop: "0.6rem" }}>
+        {editing ? (
+          <>
+            <button className="m-btn m-btn-neutral" onClick={addRow}>
+              Add Time
+            </button>
+            <button
+              className="m-btn m-btn-primary"
+              disabled={saveMut.isPending}
+              onClick={saveRules}
+            >
+              Save
+            </button>
+            <button className="m-btn m-btn-neutral" onClick={cancelEdit}>
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button className="m-btn m-btn-neutral" disabled={isLoading} onClick={beginEdit}>
+            Edit Times
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function System() {
   const {
     running,
@@ -727,6 +978,8 @@ export default function System() {
           ))}
         </div>
       </div>
+
+      <ScheduleSection />
 
       <div className="m-card">
         <div className="m-card-title">Brightness</div>

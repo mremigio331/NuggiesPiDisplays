@@ -113,6 +113,44 @@ for a few seconds before coming back at the new brightness.
 
 ---
 
+## Schedule
+
+The display can change itself automatically at set times — for example weather
+in the morning, sports in the afternoon, and the screen off overnight. Set it up
+under **Schedule** on the **System** page.
+
+Times use the **device's own local time** — whatever timezone the Pi is set to.
+
+Each rule is a **time** plus one **action**:
+
+| Action | What it does at that time |
+|--------|---------------------------|
+| **Mode** | Switches to a display mode (Clock, MTA, Sports, Stocks, Weather). For **Sports**, you also pick the league. |
+| **Power** | Turns the display **Off** or **On**. |
+| **Brightness** | Sets the brightness (1–100). |
+
+To set it up:
+
+1. Open the website and go to **System → Schedule**.
+2. Tap **Edit Times**.
+3. Tap **Add Time**, pick a time, choose the action, and fill in its option
+   (mode + league, on/off, or a brightness number).
+4. Add as many rules as you like, then tap **Save**.
+5. Tap **Schedule Off** to turn the schedule **On**.
+
+How it behaves:
+
+- A rule runs **only when its time arrives**. Turning the schedule on does **not**
+  move the display right away — it waits for the next rule time.
+- If a rule's time has already passed today, it runs at that time **tomorrow**.
+- You can still switch modes by hand (website or buttons) any time. A manual
+  switch stays until the next rule time comes around; the schedule does not
+  fight you and does not turn itself off.
+- Turn the whole schedule off with the **Schedule On/Off** button — your rules
+  are kept for next time.
+
+---
+
 ## Settings
 
 Each mode has its own settings page accessible from the navigation menu:

@@ -23,6 +23,42 @@ FAVORITES_SPORT = "favorites"
 
 # Sports the display can be switched to — real leagues plus the favourites feed.
 SELECTABLE_SPORTS = VALID_SPORTS | {FAVORITES_SPORT}
+
+
+# Human labels for the four core leagues that are NOT defined in the
+# self-registering FOOTBALL_SPORTS / SOCCER_SPORTS dicts (those carry their own
+# "name"). Keep this to the hardcoded core only — a new football/soccer league
+# brings its own label, so it must NOT be added here.
+_CORE_LEAGUE_LABELS = {
+    "mlb": "MLB",
+    "nba": "NBA",
+    "wnba": "WNBA",
+    "nhl": "NHL",
+}
+
+
+def sport_options() -> list[dict]:
+    """Canonical {key,label} list of every selectable sport, Favorites first.
+
+    This is THE source of truth for "which leagues can the display show and what
+    are they called." It is assembled from the same self-registering league
+    dicts the rest of sports uses (FOOTBALL_SPORTS / SOCCER_SPORTS carry their
+    own "name"), plus the four core leagues' labels — so adding a league in ONE
+    place (its dict) makes it appear everywhere that consumes this, including the
+    schedule's league picker. Nothing downstream redefines the list.
+    """
+    labels = dict(_CORE_LEAGUE_LABELS)
+    for key, cfg in {**FOOTBALL_SPORTS, **SOCCER_SPORTS}.items():
+        labels[key] = cfg.get("name", key.upper())
+    # Favorites pseudo-league first, then real leagues alphabetically by label.
+    opts = [{"key": FAVORITES_SPORT, "label": "Favorites"}]
+    opts += sorted(
+        ({"key": k, "label": labels.get(k, k.upper())} for k in VALID_SPORTS),
+        key=lambda o: o["label"].lower(),
+    )
+    return opts
+
+
 _VALID_DISPLAY_MODES = {"focus", "overview"}
 
 

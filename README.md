@@ -38,6 +38,12 @@ The **System** page manages the device itself:
 - **Brightness** — a universal Full / Medium / Low control that dims every
   display mode at once (100 / 60 / 25%). The preset values are owned by the
   API; changing it restarts the display to apply.
+- **Schedule** — run an action automatically at a set time in the device's
+  local timezone. Each rule is a time plus one action: **switch mode** (with the
+  sports league when the mode is Sports), **power** the display off/on, or set
+  **brightness**. Rules are edge-triggered — a rule fires when its time arrives,
+  turning the schedule on never moves the display on its own, and a manual
+  switch is left alone until the next rule. Backed by `GET/PUT /api/system/schedule`.
 - **Restart Pi** — full reboot.
 - **Danger Zone** — reset settings, or a full factory reset + WiFi wipe.
 
