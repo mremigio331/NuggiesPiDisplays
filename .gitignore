@@ -39,3 +39,5 @@ website/dist/
 CLAUDE.md
 docs/*
 .kiro/*
+# Local backlog (not shipped)
+BACKLOG.md

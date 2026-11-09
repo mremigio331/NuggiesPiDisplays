@@ -5,7 +5,7 @@ Layout:
   Left panel  (x=0..27, 28px):
     Away section (y=0..9):    team-color bg, white team abbr + score (2px pad each side)
     Home section (y=10..19):  team-color bg, white team abbr + score (2px pad each side)
-    Status zone  (y=20..31):  black bg, Q3 4:42 / Final / tip time
+    Status zone  (y=20..31):  black bg, Q3 4:42, or date above Final / tip time
   Divider     (x=28):         dim vertical line, full height
   Right panel (x=29..63, 35px): cycles every 15s between —
     "players" view: top 5 scorers (both teams), jersey # + pts, colored by team
@@ -417,6 +417,34 @@ def _format_game_date(game_date: str) -> str:
         return ""
 
 
+def _draw_focus_status(canvas, game: dict, status: str, color) -> None:
+    """Stack the game date above ``status`` in the focus left panel's status zone.
+
+    Used for final and upcoming games: "Mar 3" above "Final" or "7:30p". With no
+    date, ``status`` is drawn alone on the centred row.
+    """
+    date_str = _format_game_date(game.get("game_date", ""))[:7]
+    if date_str:
+        _draw_text(canvas, date_str, _center_x(date_str, 0, LEFT_W), 25, color)
+        _draw_text(canvas, status, _center_x(status, 0, LEFT_W), 31, color)
+    else:
+        _draw_text(canvas, status, _center_x(status, 0, LEFT_W), 28, color)
+
+
+def _draw_overview_status(
+    canvas, game: dict, status: str, x0: int, w: int, color
+) -> None:
+    """Alternate the game date and ``status`` every 5s in an overview info strip.
+
+    Only one text row fits cleanly in the strip, so the date ("Mar 3") and the
+    status ("Final" or "7:30p") take turns. With no date, ``status`` stays put.
+    """
+    date_str = _format_game_date(game.get("game_date", ""))[:7]
+    show_status = (int(time.time()) // 5) % 2 == 1
+    text = status if show_status or not date_str else date_str
+    _draw_text(canvas, text, x0 + max(0, (w - len(text) * _CW) // 2), 28, color)
+
+
 def _draw_team_score_row(
     canvas,
     abbr: str,
@@ -571,7 +599,12 @@ def _render_left_panel(canvas, game: dict) -> None:
         )[:7]
         status_col = gray
 
-    _draw_text(canvas, full_status, _center_x(full_status, 0, LEFT_W), 28, status_col)
+    if state == "in":
+        _draw_text(
+            canvas, full_status, _center_x(full_status, 0, LEFT_W), 28, status_col
+        )
+    else:
+        _draw_focus_status(canvas, game, full_status, status_col)
 
 
 def _sorted_leaders(details: dict, stat_key: str) -> list[dict]:
@@ -714,12 +747,12 @@ def _render_nba_overview_panel(canvas, game: dict, x0: int, w: int) -> None:
             st = st.rsplit(" ", 1)[0]
         _draw_text(canvas, st, x0 + max(0, (w - len(st) * _CW) // 2), 28, yellow)
     elif state == "post":
-        _draw_text(canvas, "Final", x0 + max(0, (w - 5 * _CW) // 2), 28, gray)
+        _draw_overview_status(canvas, game, "Final", x0, w, gray)
     else:
         st = (_format_game_time(game.get("game_date", "")) or status_detail or "Soon")[
             :7
         ]
-        _draw_text(canvas, st, x0 + max(0, (w - len(st) * _CW) // 2), 28, gray)
+        _draw_overview_status(canvas, game, st, x0, w, gray)
 
 
 def _render_mlb_overview_panel(canvas, game: dict, x0: int, w: int) -> None:
@@ -761,12 +794,12 @@ def _render_mlb_overview_panel(canvas, game: dict, x0: int, w: int) -> None:
         _draw_text(canvas, inn, x1 - len(inn) * _CW + 1, 31, yellow)
 
     elif state == "post":
-        _draw_text(canvas, "Final", x0 + max(0, (w - 5 * _CW) // 2), 28, gray)
+        _draw_overview_status(canvas, game, "Final", x0, w, gray)
     else:
         st = (_format_game_time(game.get("game_date", "")) or status_detail or "Soon")[
             :7
         ]
-        _draw_text(canvas, st, x0 + max(0, (w - len(st) * _CW) // 2), 28, gray)
+        _draw_overview_status(canvas, game, st, x0, w, gray)
 
 
 def render_game_overview(canvas, game_a: dict, game_b: dict | None) -> None:
@@ -919,12 +952,12 @@ def _render_baseball_left_panel(canvas, game: dict) -> None:
         _draw_text(canvas, "-", cx + _CW, 31, gray)
         _draw_text(canvas, str(strikes), cx + 2 * _CW, 31, _color(*_STRIKE_COL))
     elif state == "post":
-        _draw_text(canvas, "Final", _center_x("Final", 0, LEFT_W), 28, gray)
+        _draw_focus_status(canvas, game, "Final", gray)
     else:
         raw = (_format_game_time(game.get("game_date", "")) or status_detail or "Soon")[
             :7
         ]
-        _draw_text(canvas, raw, _center_x(raw, 0, LEFT_W), 28, gray)
+        _draw_focus_status(canvas, game, raw, gray)
 
 
 def _all_batters(details: dict) -> list[dict]:
@@ -1198,12 +1231,12 @@ def _render_hockey_left_panel(canvas, game: dict, details: dict | None = None) -
         elif d.get("home", {}).get("on_power_play"):
             _draw_pp_marker(canvas, game, "home", 17)
     elif state == "post":
-        _draw_text(canvas, "Final", _center_x("Final", 0, LEFT_W), 28, gray)
+        _draw_focus_status(canvas, game, "Final", gray)
     else:
         st = (_format_game_time(game.get("game_date", "")) or status_detail or "Soon")[
             :7
         ]
-        _draw_text(canvas, st, _center_x(st, 0, LEFT_W), 28, gray)
+        _draw_focus_status(canvas, game, st, gray)
 
 
 def _render_hockey_right_stats(canvas, game: dict, details: dict | None) -> None:
@@ -1391,12 +1424,12 @@ def _render_hockey_overview_panel(canvas, game: dict, x0: int, w: int) -> None:
             st = st.rsplit(" ", 1)[0]
         _draw_text(canvas, st, x0 + max(0, (w - len(st) * _CW) // 2), 28, yellow)
     elif state == "post":
-        _draw_text(canvas, "Final", x0 + max(0, (w - 5 * _CW) // 2), 28, gray)
+        _draw_overview_status(canvas, game, "Final", x0, w, gray)
     else:
         st = (_format_game_time(game.get("game_date", "")) or status_detail or "Soon")[
             :7
         ]
-        _draw_text(canvas, st, x0 + max(0, (w - len(st) * _CW) // 2), 28, gray)
+        _draw_overview_status(canvas, game, st, x0, w, gray)
 
 
 def render_hockey_overview(canvas, game_a: dict, game_b: dict | None) -> None:
@@ -1451,12 +1484,12 @@ def _render_soccer_left_panel(canvas, game: dict) -> None:
             label = label.rsplit(" ", 1)[0]
         _draw_text(canvas, label, _center_x(label, 0, LEFT_W), 28, yellow)
     elif state == "post":
-        _draw_text(canvas, "Final", _center_x("Final", 0, LEFT_W), 28, gray)
+        _draw_focus_status(canvas, game, "Final", gray)
     else:
         st = (_format_game_time(game.get("game_date", "")) or status_detail or "Soon")[
             :7
         ]
-        _draw_text(canvas, st, _center_x(st, 0, LEFT_W), 28, gray)
+        _draw_focus_status(canvas, game, st, gray)
 
 
 def _render_soccer_right_stats(canvas, game: dict, details: dict | None) -> None:
@@ -1555,12 +1588,12 @@ def _render_soccer_overview_panel(canvas, game: dict, x0: int, w: int) -> None:
             label = label.rsplit(" ", 1)[0]
         _draw_text(canvas, label, x0 + max(0, (w - len(label) * _CW) // 2), 28, yellow)
     elif state == "post":
-        _draw_text(canvas, "Final", x0 + max(0, (w - 5 * _CW) // 2), 28, gray)
+        _draw_overview_status(canvas, game, "Final", x0, w, gray)
     else:
         st = (_format_game_time(game.get("game_date", "")) or status_detail or "Soon")[
             :7
         ]
-        _draw_text(canvas, st, x0 + max(0, (w - len(st) * _CW) // 2), 28, gray)
+        _draw_overview_status(canvas, game, st, x0, w, gray)
 
 
 def render_soccer_overview(canvas, game_a: dict, game_b: dict | None) -> None:
@@ -1587,8 +1620,8 @@ def render_soccer_overview(canvas, game_a: dict, game_b: dict | None) -> None:
 #                                   5s between down & distance ("1st&13") and
 #                                   the ball spot ("DEN 25") — drawn in the
 #                                   possessing team's color, red in the red zone
-#                            POST:  "Final" / "Fin OT"
-#                            PRE:   kickoff time
+#                            POST:  date above "Final" / "Fin OT"
+#                            PRE:   date above kickoff time
 #   Divider (x=28):         dim vertical line
 #   Right panel (x=29..63) cycles every PANEL_CYCLE seconds:
 #     "stats"   — YD / PS / RS / TO comparison (away left · label centre ·
@@ -1784,14 +1817,14 @@ def _render_football_left_panel(canvas, game: dict) -> None:
             )
     elif state == "post":
         label = "Final" if period <= 4 else "Fin OT"
-        _draw_text(canvas, label, _center_x(label, 0, LEFT_W), 28, gray)
+        _draw_focus_status(canvas, game, label, gray)
     else:
         st = (
             _format_game_time(game.get("game_date", ""))
             or game.get("status_detail", "")
             or "Soon"
         )[:7]
-        _draw_text(canvas, st, _center_x(st, 0, LEFT_W), 28, gray)
+        _draw_focus_status(canvas, game, st, gray)
 
 
 def _render_football_right_stats(canvas, game: dict, details: dict | None) -> None:
@@ -1938,14 +1971,14 @@ def _render_football_overview_panel(canvas, game: dict, x0: int, w: int) -> None
             if clock and (len(label) + len(clock)) * _CW + 1 <= w:
                 _draw_text(canvas, clock, x1 - len(clock) * _CW + 1, 28, yellow)
     elif state == "post":
-        _draw_text(canvas, "Final", x0 + max(0, (w - 5 * _CW) // 2), 28, gray)
+        _draw_overview_status(canvas, game, "Final", x0, w, gray)
     else:
         st = (
             _format_game_time(game.get("game_date", ""))
             or game.get("status_detail", "")
             or "Soon"
         )[:7]
-        _draw_text(canvas, st, x0 + max(0, (w - len(st) * _CW) // 2), 28, gray)
+        _draw_overview_status(canvas, game, st, x0, w, gray)
 
 
 def render_football_overview(canvas, game_a: dict, game_b: dict | None) -> None:
@@ -1964,11 +1997,7 @@ def render_football_overview(canvas, game_a: dict, game_b: dict | None) -> None:
 # and the two games may be from different leagues, so each panel is drawn by its
 # own sport's overview-panel renderer rather than a single shared one.
 #
-# For an UPCOMING game the single-line kickoff time the panels normally draw is
-# not enough — the next game can be days out — so after drawing the panel we
-# overpaint the info strip with two lines: the date ("Mar 3") above the time
-# ("7:30p"). Final and live games keep their panel's own single-line status
-# (just the result / clock); only upcoming games get the date, as requested.
+# Each panel's info strip alternates the date with the result or kickoff time.
 
 # sport key → overview-panel renderer. Mirrors _SPORT_CONFIG in main.py; the
 # favourites feed tags each game with its sport so we can pick the right one.
@@ -2000,33 +2029,6 @@ _SPORT_FOCUS_LEFT = {
     "laliga": _render_soccer_left_panel,
     "bundesliga": _render_soccer_left_panel,
 }
-
-
-def _draw_overview_upcoming_datetime(canvas, game: dict, x0: int, w: int) -> None:
-    """Overpaint an upcoming panel's info strip, alternating date / time.
-
-    The info strip is y=21..31 (11px) — only one 6px text row fits cleanly — so
-    instead of stacking date above time we show them one at a time on a single
-    centred row (baseline y=28): the date ("Mar 3") for 5 seconds, then the time
-    ("7:30p") for 5 seconds, repeating. Clears the strip first so the panel's
-    own single-line time underneath is replaced, not overlapped.
-    """
-    gray = _color(140, 140, 140)
-    # Clear the info strip (y=21..31) for this panel before redrawing.
-    _fill_rect(canvas, x0, 21, x0 + w - 1, 31, 0, 0, 0)
-
-    date_str = _format_game_date(game.get("game_date", ""))[:7]
-    time_str = _format_game_time(game.get("game_date", ""))[:7]
-
-    # Alternate every 5s. If only one is available it stays put instead of
-    # blinking to blank.
-    show_time = (int(time.time()) // 5) % 2 == 1
-    if date_str and time_str:
-        text = time_str if show_time else date_str
-    else:
-        text = date_str or time_str or "Soon"
-
-    _draw_text(canvas, text, x0 + max(0, (w - len(text) * _CW) // 2), 28, gray)
 
 
 def _draw_overview_upcoming_records(canvas, game: dict, x0: int, w: int) -> None:
@@ -2062,11 +2064,9 @@ def _render_favorites_panel(canvas, game: dict, x0: int, w: int) -> None:
     """
     panel = _SPORT_OVERVIEW_PANEL.get(game.get("sport", ""), _render_nba_overview_panel)
     panel(canvas, game, x0, w)
-    # Upcoming games get the two-line date + time overlay (the whole point of
-    # the favourites view: last result beside when the next game is) plus each
-    # team's record on the right of its row, where the (hidden) score would be.
+    # Upcoming games also get each team's record on the right of its row, where
+    # the (hidden) score would be.
     if game.get("state", "pre") == "pre":
-        _draw_overview_upcoming_datetime(canvas, game, x0, w)
         _draw_overview_upcoming_records(canvas, game, x0, w)
 
 
