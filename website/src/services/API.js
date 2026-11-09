@@ -155,6 +155,8 @@ export const showSportsGame = (eventId) => updateSportsSettings({ force_event_id
 // Clock
 export const getClockSettings = () => handle(api.get("/clock/settings"));
 export const updateClockSettings = (body) => handle(api.put("/clock/settings", body));
+export const getTextSettings = () => handle(api.get("/text/settings"));
+export const updateTextSettings = (body) => handle(api.put("/text/settings", body));
 export const getClockTimezones = (page = 1, search = "") =>
   handle(api.get("/clock/timezones", { params: { page, search } }));
 

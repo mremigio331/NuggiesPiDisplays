@@ -919,7 +919,7 @@ function ScheduleSection() {
     onSuccess: (saved) => qc.setQueryData(["schedule"], saved),
   });
 
-  const modes = data?.modes ?? ["clock", "mta", "sports", "stocks", "weather"];
+  const modes = data?.modes ?? ["clock", "mta", "sports", "stocks", "text", "weather"];
   // mode -> [{key,label}] of that mode's sub-options (e.g. sports leagues),
   // supplied by the backend so the UI never redefines the league list.
   const modeOptions = data?.mode_options ?? {};

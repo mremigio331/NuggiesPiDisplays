@@ -219,6 +219,7 @@ $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/clock/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/mta/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/sports/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/stocks/main.py
+$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/text/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/weather/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/setup/main.py
 # System commands called by the API.
@@ -746,6 +747,8 @@ verify_permissions() {
         "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/sports/main.py"
     _assert_sudoers_line "grant: display/stocks/main.py" \
         "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/stocks/main.py"
+    _assert_sudoers_line "grant: display/text/main.py" \
+        "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/text/main.py"
     _assert_sudoers_line "grant: display/weather/main.py" \
         "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/weather/main.py"
     _assert_sudoers_line "grant: display/setup/main.py" \

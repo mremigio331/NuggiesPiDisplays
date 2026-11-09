@@ -1,6 +1,11 @@
 API_BASE = "http://localhost:8000/api"
 
 
+def scroll_step_seconds() -> float:
+    """Seconds per pixel for scrolling text, shared by MTA and Text."""
+    return 0.5
+
+
 def get_brightness(default: int = 100) -> int:
     """Universal LED brightness (1-100) from the API. Falls back to `default`
     if the API is unreachable, so the display never fails to start over a

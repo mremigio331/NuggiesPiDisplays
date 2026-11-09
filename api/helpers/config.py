@@ -250,3 +250,73 @@ def write_schedule(schedule: dict) -> dict:
     settings["schedule"] = normalized
     write_settings(settings)
     return normalized
+
+
+TEXT_MAX_ROWS = 5
+TEXT_MAX_LENGTH = 100
+TEXT_ALIGNS = ("left", "center", "right")
+TEXT_COLOR_MODES = ("solid", "rainbow")
+TEXT_MIN_SCROLL_SECONDS = 1
+TEXT_MAX_SCROLL_SECONDS = 5
+TEXT_DEFAULT_SCROLL_SECONDS = 2  # per letter; same pace as the MTA scroll
+
+
+def text_char_allowed(ch: str) -> bool:
+    """True if all three display fonts have a glyph for `ch` (no emoji)."""
+    code = ord(ch)
+    return 32 <= code <= 126 or 160 <= code <= 255
+
+
+def _normalize_text_row(raw) -> dict:
+    raw = raw if isinstance(raw, dict) else {}
+    text = "".join(ch for ch in str(raw.get("text") or "") if text_char_allowed(ch))
+
+    color = raw.get("color")
+    valid_color = (
+        isinstance(color, list)
+        and len(color) == 3
+        and all(isinstance(v, int) and 0 <= v <= 255 for v in color)
+    )
+    color_mode = raw.get("color_mode")
+    align = raw.get("align")
+    return {
+        "text": text.strip()[:TEXT_MAX_LENGTH],
+        "color": color if valid_color else [255, 255, 255],
+        "color_mode": color_mode if color_mode in TEXT_COLOR_MODES else "solid",
+        "align": align if align in TEXT_ALIGNS else "center",
+        "scroll": raw.get("scroll") is not False,
+    }
+
+
+def normalize_text(raw: dict | None) -> dict:
+    """Coerce an on-disk text block into the canonical shape.
+
+    Tolerates a missing block and bad values, so a device upgrading from before
+    this mode loads the "Hello" default rather than failing. Always returns all
+    five rows; `row_count` decides how many are on the board.
+    """
+    if not isinstance(raw, dict):
+        raw = {"rows": [{"text": "Hello"}]}
+
+    try:
+        row_count = int(raw.get("row_count", 1))
+    except (TypeError, ValueError):
+        row_count = 1
+
+    try:
+        scroll_seconds = int(raw.get("scroll_seconds", TEXT_DEFAULT_SCROLL_SECONDS))
+    except (TypeError, ValueError):
+        scroll_seconds = TEXT_DEFAULT_SCROLL_SECONDS
+
+    rows = raw.get("rows")
+    rows = rows if isinstance(rows, list) else []
+    return {
+        "row_count": max(1, min(TEXT_MAX_ROWS, row_count)),
+        "scroll_seconds": max(
+            TEXT_MIN_SCROLL_SECONDS, min(TEXT_MAX_SCROLL_SECONDS, scroll_seconds)
+        ),
+        "rows": [
+            _normalize_text_row(rows[i] if i < len(rows) else None)
+            for i in range(TEXT_MAX_ROWS)
+        ],
+    }

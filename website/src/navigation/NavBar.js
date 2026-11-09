@@ -37,6 +37,7 @@ export default function NavBar() {
             { id: "stocks", text: "Stocks" },
             { id: "weather", text: "Weather" },
             { id: "clock", text: "Clock" },
+            { id: "text", text: "Text" },
           ],
           onItemClick: ({ detail }) => {
             const routes = {
@@ -45,6 +46,7 @@ export default function NavBar() {
               stocks: "/stocks",
               weather: "/weather",
               clock: "/clock",
+              text: "/text",
             };
             if (routes[detail.id]) navigate(routes[detail.id]);
           },

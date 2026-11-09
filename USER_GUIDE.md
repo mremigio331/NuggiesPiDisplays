@@ -49,6 +49,7 @@ The display supports five modes, switchable from the **System** page:
 | Mode | What it shows |
 |------|---------------|
 | **Clock** | Current time |
+| **Text** | Your own message, up to five rows, with a color for each row |
 | **MTA** | Next subway departures for your configured NYC station |
 | **Sports** | Live / recent scores for NFL, MLB, NBA, NHL, or soccer |
 | **Stocks** | Stock ticker for your configured watchlist |
@@ -125,7 +126,7 @@ Each rule is a **time** plus one **action**:
 
 | Action | What it does at that time |
 |--------|---------------------------|
-| **Mode** | Switches to a display mode (Clock, MTA, Sports, Stocks, Weather). For **Sports**, you also pick the league. |
+| **Mode** | Switches to a display mode (Clock, MTA, Sports, Stocks, Text, Weather). For **Sports**, you also pick the league. |
 | **Power** | Turns the display **Off** or **On**. |
 | **Brightness** | Sets the brightness (1–100). |
 
@@ -160,6 +161,7 @@ Each mode has its own settings page accessible from the navigation menu:
 - **Sports** — Pick your league and team
 - **Weather** — Set your location
 - **Clock** — Set your timezone
+- **Text** — Type up to five rows and pick each row's color and alignment
 
 ---
 

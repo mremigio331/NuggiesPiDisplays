@@ -3,6 +3,7 @@ export const DISPLAY_MODES = [
   { key: "mta", label: "MTA" },
   { key: "sports", label: "Sports" },
   { key: "stocks", label: "Stocks" },
+  { key: "text", label: "Text" },
   { key: "weather", label: "Weather" },
 ];
 

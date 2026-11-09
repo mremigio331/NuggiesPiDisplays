@@ -1,4 +1,4 @@
-DISPLAY_MODES = ["clock", "mta", "sports", "stocks", "weather"]
+DISPLAY_MODES = ["clock", "mta", "sports", "stocks", "text", "weather"]
 
 # Sport cycle order for the both-button short-hold (sports mode). Matches the
 # display's _SPORT_CONFIG registry and the web UI's alphabetical league order.

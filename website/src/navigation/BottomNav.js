@@ -7,6 +7,7 @@ const TABS = [
   { label: "MTA", icon: "🚇", path: "/mta" },
   { label: "Sports", icon: "🏀", path: "/sports" },
   { label: "Stocks", icon: "📈", path: "/stocks" },
+  { label: "Text", icon: "💬", path: "/text" },
   { label: "Weather", icon: "🌤️", path: "/weather" },
 ];
 

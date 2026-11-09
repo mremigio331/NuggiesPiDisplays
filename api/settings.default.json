@@ -66,6 +66,67 @@
     "color_mode": "solid",
     "use_24h": false
   },
+  "text": {
+    "row_count": 1,
+    "scroll_seconds": 2,
+    "rows": [
+      {
+        "text": "Hello",
+        "color": [
+          255,
+          255,
+          255
+        ],
+        "color_mode": "solid",
+        "align": "center",
+        "scroll": true
+      },
+      {
+        "text": "",
+        "color": [
+          255,
+          255,
+          255
+        ],
+        "color_mode": "solid",
+        "align": "center",
+        "scroll": true
+      },
+      {
+        "text": "",
+        "color": [
+          255,
+          255,
+          255
+        ],
+        "color_mode": "solid",
+        "align": "center",
+        "scroll": true
+      },
+      {
+        "text": "",
+        "color": [
+          255,
+          255,
+          255
+        ],
+        "color_mode": "solid",
+        "align": "center",
+        "scroll": true
+      },
+      {
+        "text": "",
+        "color": [
+          255,
+          255,
+          255
+        ],
+        "color_mode": "solid",
+        "align": "center",
+        "scroll": true
+      }
+    ]
+  },
   "weather": {
     "latitude": null,
     "longitude": null,
