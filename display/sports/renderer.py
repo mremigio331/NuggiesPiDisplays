@@ -8,7 +8,7 @@ Layout:
     Status zone  (y=20..31):  black bg, Q3 4:42, or date above Final / tip time
   Divider     (x=28):         dim vertical line, full height
   Right panel (x=29..63, 35px): cycles every 15s between —
-    "players" view: top 5 scorers (both teams), jersey # + pts, colored by team
+    "players" view: top 5 scorers (both teams), name + pts, colored by team
     "fouls"   view: top 4 scorers with personal foul counts + team foul totals
 
 Colors:
@@ -639,7 +639,7 @@ def _render_right_stat(
       y=5           stat label header, centered
       y=7           thin separator
       y=14,22,30    top 3 leaders:
-                      jersey (x=37, team color)
+                      name   (x=30, team color)
                       value  (right-aligned to x=62, white)
       x=63          possession column:
                       y=0..4  lit in away color if away has ball
@@ -663,18 +663,24 @@ def _render_right_stat(
 
     leaders = _sorted_leaders(details, stat_key)[:3]
 
-    x_jersey = RIGHT_X + 8  # jersey left-anchored
     x_val_end = MATRIX_W - 1  # value right-aligns so rightmost pixel is at x=62
 
     for player, text_y in zip(leaders, [14, 22, 30]):
-        jersey = str(player.get("jersey", "?"))[:2]
         val = player.get(stat_key, 0)
         side = player.get("side", "away")
         team_col = away_col if side == "away" else home_col
         val_str = str(val)
 
-        _draw_text(canvas, jersey, x_jersey, text_y, team_col)
-        _draw_text(canvas, val_str, x_val_end - len(val_str) * _CW, text_y, white)
+        val_x = x_val_end - len(val_str) * _CW
+        _draw_player_name(
+            canvas,
+            player.get("name", ""),
+            RIGHT_X + 1,
+            text_y,
+            team_col,
+            max_x=val_x - 1,
+        )
+        _draw_text(canvas, val_str, val_x, text_y, white)
 
 
 def render_game(canvas, game: dict, details: dict | None, panel_view: str) -> None:
@@ -1168,11 +1174,11 @@ def render_baseball_overview(canvas, game_a: dict, game_b: dict | None) -> None:
 #   Left panel (x=0..27):  away / home score rows; status zone y=20..31
 #                           period label + clock (e.g. "P2 14:23")
 #   Divider (x=28):         dim vertical line
-#   Right panel (x=29..63) cycles 4 views every PANEL_CYCLE seconds:
+#   Right panel (x=29..63) cycles 6 views every PANEL_CYCLE seconds:
 #     "stats"    — SOG / HIT / BLK comparison (away left · label centre · home right)
-#     "goals"    — goal scorers in order (jersey + period)
-#     "away_ice" — jerseys of away team players on ice, 3×2 grid
-#     "home_ice" — jerseys of home team players on ice, 3×2 grid
+#     "goals"    — goal scorers in order (name + period)
+#     "assists" / "hits" — top players by that stat (name + value)
+#     "scoring" / "penalties" — game events (name + detail)
 #
 # Overview layout: same structure as NBA overview (period + clock in info strip).
 

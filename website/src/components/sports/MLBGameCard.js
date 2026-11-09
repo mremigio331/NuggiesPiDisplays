@@ -171,17 +171,17 @@ export default function MLBGameCard({ game, favoriteTeams, activeEventIds }) {
             </div>
           </div>
 
-          {game.batter_jersey && game.batter_jersey !== "?" && (
+          {game.batter_name && (
             <div
               style={{ marginLeft: "auto", fontSize: "0.72rem", color: "#aaa", textAlign: "right" }}
             >
               <div>
-                Bat <span style={{ color: "#fff" }}>#{game.batter_jersey}</span>
+                Bat <span style={{ color: "#fff" }}>{game.batter_name}</span>
                 {game.batter_avg ? <span style={{ color: "#888" }}> {game.batter_avg}</span> : null}
               </div>
-              {game.pitcher_jersey && game.pitcher_jersey !== "?" && (
+              {game.pitcher_name && (
                 <div>
-                  Pit <span style={{ color: "#fff" }}>#{game.pitcher_jersey}</span>
+                  Pit <span style={{ color: "#fff" }}>{game.pitcher_name}</span>
                   {game.pitcher_era ? (
                     <span style={{ color: "#888" }}> {game.pitcher_era}</span>
                   ) : null}
