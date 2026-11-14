@@ -14,6 +14,7 @@ from helpers.buttons import poll_buttons
 from helpers.wifi_state import WIFI_FLAG
 from helpers.update_check import run_background_checker
 from helpers.schedule import run_scheduler
+from helpers.cycle import run_cycler
 from helpers.system import clear_update_lock
 from middleware.service_log import ServiceLogMiddleware
 from endpoints.docs import router as docs_router
@@ -69,6 +70,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(poll_buttons())
     asyncio.create_task(run_background_checker())
     asyncio.create_task(run_scheduler())
+    asyncio.create_task(run_cycler())
     yield
 
 

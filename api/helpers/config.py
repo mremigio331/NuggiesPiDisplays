@@ -223,6 +223,12 @@ def normalize_schedule(raw: dict | None) -> dict:
             val = max(BRIGHTNESS_MIN, min(BRIGHTNESS_MAX, val))
             rule = {"time": t, "action": "brightness", "brightness": val}
 
+        elif action == "cycle":
+            cycle_id = str(r.get("cycle", "")).strip()
+            if not cycle_id:
+                continue
+            rule = {"time": t, "action": "cycle", "cycle": cycle_id}
+
         else:
             # Unknown action — drop it rather than guess.
             continue
@@ -320,3 +326,104 @@ def normalize_text(raw: dict | None) -> dict:
             for i in range(TEXT_MAX_ROWS)
         ],
     }
+
+
+CYCLE_MIN_MINUTES = 5
+CYCLE_MAX_MINUTES = 60
+CYCLE_MAX_NAME_LENGTH = 30
+CYCLE_ALL_OPTION = "all"  # a sports view that shows every league in turn
+_CYCLE_ALL_EXCLUDES = ("favorites",)
+
+
+def _normalize_cycle_view(raw) -> dict | None:
+    raw = raw if isinstance(raw, dict) else {}
+    mode = str(raw.get("mode", "")).strip()
+    if mode not in _DISPLAY_MODES:
+        return None
+    view = {"mode": mode}
+    valid = {o["key"] for o in schedule_mode_options().get(mode, [])}
+    if valid:
+        option = str(raw.get("option", "")).strip()
+        view["option"] = (
+            option
+            if option in valid or option == CYCLE_ALL_OPTION
+            else CYCLE_ALL_OPTION
+        )
+    return view
+
+
+def normalize_cycle(raw) -> dict | None:
+    """One saved cycle in canonical shape, or None if it can't be used."""
+    raw = raw if isinstance(raw, dict) else {}
+    cycle_id = str(raw.get("id", "")).strip()
+    name = str(raw.get("name", "")).strip()[:CYCLE_MAX_NAME_LENGTH]
+    views = [_normalize_cycle_view(v) for v in raw.get("views", []) or []]
+    views = [v for v in views if v]
+    if not cycle_id or not name or not views:
+        return None
+    try:
+        minutes = int(raw.get("minutes", CYCLE_MIN_MINUTES))
+    except (TypeError, ValueError):
+        minutes = CYCLE_MIN_MINUTES
+    return {
+        "id": cycle_id,
+        "name": name,
+        "minutes": max(CYCLE_MIN_MINUTES, min(CYCLE_MAX_MINUTES, minutes)),
+        "views": views,
+    }
+
+
+def normalize_cycles(raw) -> dict:
+    """Tolerates a missing block, so older devices load with no saved cycles."""
+    raw = raw if isinstance(raw, dict) else {}
+    saved = [normalize_cycle(c) for c in raw.get("saved", []) or []]
+    saved = [c for c in saved if c]
+    active_id = raw.get("active_id")
+    if active_id not in {c["id"] for c in saved}:
+        active_id = None
+    return {"active_id": active_id, "saved": saved}
+
+
+def read_cycles() -> dict:
+    return normalize_cycles(read_settings().get("cycle"))
+
+
+def write_cycles(cycles: dict) -> dict:
+    normalized = normalize_cycles(cycles)
+    settings = read_settings()
+    settings["cycle"] = normalized
+    write_settings(settings)
+    return normalized
+
+
+def active_cycle() -> dict | None:
+    cycles = read_cycles()
+    return next((c for c in cycles["saved"] if c["id"] == cycles["active_id"]), None)
+
+
+def set_active_cycle(cycle_id: str | None) -> bool:
+    """Start a saved cycle, or stop cycling with None. False if it's not saved."""
+    cycles = read_cycles()
+    if cycle_id is not None and cycle_id not in {c["id"] for c in cycles["saved"]}:
+        return False
+    if cycles["active_id"] != cycle_id:
+        cycles["active_id"] = cycle_id
+        write_cycles(cycles)
+    return True
+
+
+def cycle_steps(cycle: dict) -> list[tuple]:
+    """The (mode, option) stops in order, with "all" opened into each league."""
+    steps = []
+    leagues = [
+        o["key"]
+        for o in schedule_mode_options().get("sports", [])
+        if o["key"] not in _CYCLE_ALL_EXCLUDES
+    ]
+    for view in cycle["views"]:
+        option = view.get("option")
+        if option == CYCLE_ALL_OPTION:
+            steps.extend((view["mode"], league) for league in leagues)
+        else:
+            steps.append((view["mode"], option))
+    return steps

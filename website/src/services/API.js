@@ -49,6 +49,12 @@ export const updateApp = (runSetup = true, component = null, force = false) =>
     });
 // Display schedule: time-of-day mode automation. GET returns
 // { enabled, rules:[{time,mode}], modes:[...] }; PUT persists { enabled, rules }.
+export const getCycles = () => handle(api.get("/system/cycles"));
+export const createCycle = (body) => handle(api.post("/system/cycles", body));
+export const updateCycle = (id, body) => handle(api.put(`/system/cycles/${id}`, body));
+export const deleteCycle = (id) => handle(api.delete(`/system/cycles/${id}`));
+export const startCycle = (id) => handle(api.post(`/system/cycles/${id}/start`));
+export const stopCycle = () => handle(api.post("/system/cycles/stop"));
 export const getSchedule = () => handle(api.get("/system/schedule"));
 export const setSchedule = (schedule) => handle(api.put("/system/schedule", schedule));
 export const getLogLevel = () => handle(api.get("/system/log-level"));

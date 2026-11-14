@@ -146,5 +146,9 @@
   "schedule": {
     "enabled": false,
     "rules": []
+  },
+  "cycle": {
+    "active_id": null,
+    "saved": []
   }
 }

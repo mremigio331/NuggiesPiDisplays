@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useSystemStatus } from "../../hooks/useSystemStatus";
 import { DISPLAY_MODES, LOG_LEVELS } from "../../constants/display";
+import CycleSection from "../../components/system/CycleSection";
 import {
   startDisplay,
   stopDisplay,
@@ -928,6 +929,7 @@ function ScheduleSection() {
   const brightnessCfg = data?.brightness ?? { min: 1, max: 100, presets: [] };
   const enabled = data?.enabled ?? false;
   const rules = data?.rules ?? [];
+  const cycles = data?.cycles ?? [];
 
   const [draft, setDraft] = React.useState(null);
   // Local editing copy of the rules; seeded from the server, flushed on save.
@@ -970,6 +972,15 @@ function ScheduleSection() {
         option: undefined,
         brightness: undefined,
       });
+    } else if (action === "cycle") {
+      setRow(i, {
+        action,
+        cycle: cycles[0]?.id,
+        mode: undefined,
+        option: undefined,
+        power: undefined,
+        brightness: undefined,
+      });
     } else {
       setRow(i, { action, brightness: 25, mode: undefined, option: undefined, power: undefined });
     }
@@ -988,13 +999,14 @@ function ScheduleSection() {
   const labelFor = (m) => (DISPLAY_MODES.find((d) => d.key === m) || {}).label || m.toUpperCase();
   const optionLabelFor = (mode, opt) =>
     ((modeOptions[mode] || []).find((o) => o.key === opt) || {}).label || opt;
-  const actionLabel = { mode: "Mode", power: "Power", brightness: "Brightness" };
+  const actionLabel = { mode: "Mode", power: "Power", brightness: "Brightness", cycle: "Cycle" };
 
   // Human summary of a rule for the read-only list.
   const summarize = (r) => {
     const a = r.action || "mode";
     if (a === "power") return `Power ${r.power === "off" ? "Off" : "On"}`;
     if (a === "brightness") return `Brightness ${r.brightness}`;
+    if (a === "cycle") return `Cycle · ${cycles.find((c) => c.id === r.cycle)?.name ?? "?"}`;
     return labelFor(r.mode) + (r.option ? ` · ${optionLabelFor(r.mode, r.option)}` : "");
   };
 
@@ -1048,11 +1060,13 @@ function ScheduleSection() {
               onChange={(e) => setRowAction(i, e.target.value)}
               style={{ flex: "0 0 8rem" }}
             >
-              {actions.map((a) => (
-                <option key={a} value={a}>
-                  {actionLabel[a] || a}
-                </option>
-              ))}
+              {actions
+                .filter((a) => a !== "cycle" || cycles.length > 0)
+                .map((a) => (
+                  <option key={a} value={a}>
+                    {actionLabel[a] || a}
+                  </option>
+                ))}
             </select>
 
             {(r.action || "mode") === "mode" && (
@@ -1096,6 +1110,21 @@ function ScheduleSection() {
                 {powerOptions.map((p) => (
                   <option key={p} value={p}>
                     {p === "off" ? "Off" : "On"}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {r.action === "cycle" && (
+              <select
+                className="m-input"
+                value={r.cycle}
+                onChange={(e) => setRow(i, { cycle: e.target.value })}
+                style={{ flex: "1 1 8rem" }}
+              >
+                {cycles.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
                   </option>
                 ))}
               </select>
@@ -1258,6 +1287,7 @@ export default function System() {
         </div>
       </div>
 
+      <CycleSection />
       <ScheduleSection />
 
       <div className="m-card">

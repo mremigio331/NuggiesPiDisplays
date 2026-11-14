@@ -3,6 +3,7 @@ import { StatusIndicator, TopNavigation } from "@cloudscape-design/components";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useApiCheck } from "../providers/APICheckProvider";
+import { useSystemStatus } from "../hooks/useSystemStatus";
 import { getUpdateStatus } from "../services/API";
 
 export default function NavBar() {
@@ -15,12 +16,13 @@ export default function NavBar() {
     retry: false,
   });
   const updateAvailable = updateStatus?.update_available ?? false;
+  const { data: status } = useSystemStatus({ refetchInterval: 10000 });
 
   return (
     <TopNavigation
       identity={{
         href: "/",
-        title: "Nuggies Display",
+        title: status?.cycle_name ? "Nuggies Display · Cycle" : "Nuggies Display",
         onFollow: (e) => {
           e.preventDefault();
           navigate("/");

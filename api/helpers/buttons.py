@@ -4,7 +4,12 @@ import threading
 import time
 
 from constants import DISPLAY_MODES, SPORTS_CYCLE, BUTTON_1_PIN, BUTTON_2_PIN
-from helpers.config import read_settings, write_settings, write_overlay
+from helpers.config import (
+    read_settings,
+    set_active_cycle,
+    write_settings,
+    write_overlay,
+)
 from helpers.process import start_display
 from helpers.system import SystemManager
 from helpers.wifi_state import WIFI_FLAG
@@ -280,6 +285,7 @@ class ButtonManager:
     # --- Actions ---
 
     def _switch(self, mode: str) -> None:
+        set_active_cycle(None)  # a button press ends any cycle
         start_display(mode)
         settings = read_settings()
         settings["active_display"] = mode

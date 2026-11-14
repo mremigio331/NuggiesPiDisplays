@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from constants import DISPLAY_MODES
 from helpers.config import (
+    read_cycles,
     read_schedule,
     write_schedule,
     schedule_mode_options,
@@ -28,6 +29,7 @@ class ScheduleRule(BaseModel):
     option: Optional[str] = None
     power: Optional[str] = None  # "on" | "off"
     brightness: Optional[int] = None  # 1-100
+    cycle: Optional[str] = None  # a saved cycle's id
 
 
 class Schedule(BaseModel):
@@ -42,7 +44,8 @@ def _payload(schedule: dict) -> dict:
         "modes": DISPLAY_MODES,
         "mode_options": schedule_mode_options(),
         # What the UI needs to build the non-mode action controls.
-        "actions": ["mode", "power", "brightness"],
+        "actions": ["mode", "power", "brightness", "cycle"],
+        "cycles": [{"id": c["id"], "name": c["name"]} for c in read_cycles()["saved"]],
         "power_options": ["on", "off"],
         "brightness": {
             "min": BRIGHTNESS_MIN,

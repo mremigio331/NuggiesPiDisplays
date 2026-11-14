@@ -127,6 +127,7 @@ Each rule is a **time** plus one **action**:
 | Action | What it does at that time |
 |--------|---------------------------|
 | **Mode** | Switches to a display mode (Clock, MTA, Sports, Stocks, Text, Weather). For **Sports**, you also pick the league. |
+| **Cycle** | Starts one of your saved cycles. |
 | **Power** | Turns the display **Off** or **On**. |
 | **Brightness** | Sets the brightness (1–100). |
 
@@ -161,6 +162,7 @@ Each mode has its own settings page accessible from the navigation menu:
 - **Sports** — Pick your league and team
 - **Weather** — Set your location
 - **Clock** — Set your timezone
+- **Cycle** (System page) — Save named lists of views and rotate through them, 5 to 60 minutes each
 - **Text** — Type up to five rows and pick each row's color and alignment
 
 ---

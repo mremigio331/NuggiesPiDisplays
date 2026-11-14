@@ -27,6 +27,7 @@ from datetime import datetime
 from helpers.config import (
     read_schedule,
     read_settings,
+    set_active_cycle,
     write_settings,
     write_display_brightness,
 )
@@ -100,7 +101,15 @@ def _fire(rule: dict) -> None:
         logger.info("Schedule: fired %s rule -> brightness %s", t, value)
         return
 
-    # Default: mode switch.
+    if action == "cycle":
+        if set_active_cycle(rule["cycle"]):
+            logger.info("Schedule: fired %s rule -> cycle %s", t, rule["cycle"])
+        else:
+            logger.warning("Schedule: %s rule's cycle no longer exists", t)
+        return
+
+    # Default: mode switch. It ends any cycle, like a manual switch.
+    set_active_cycle(None)
     mode = rule["mode"]
     option = rule.get("option")
     _apply_option(mode, option)

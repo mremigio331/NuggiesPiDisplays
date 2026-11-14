@@ -27,6 +27,7 @@ from .update_stage import router as update_stage_router
 from .brightness import router as brightness_router
 from .logs import router as logs_router
 from .schedule import router as schedule_router
+from .cycles import router as cycles_router
 
 router = APIRouter(prefix="/system", tags=["system"])
 router.include_router(status_router)
@@ -57,3 +58,4 @@ router.include_router(get_log_level_router)
 router.include_router(update_log_level_router)
 router.include_router(logs_router)
 router.include_router(schedule_router)
+router.include_router(cycles_router)
