@@ -930,6 +930,11 @@ function ScheduleSection() {
   const enabled = data?.enabled ?? false;
   const rules = data?.rules ?? [];
   const cycles = data?.cycles ?? [];
+  // [{key: weekday() number (Mon = 0), label}]. A rule with no `days` runs
+  // every day.
+  const dayOptions = data?.days ?? [];
+  const allDays = dayOptions.map((d) => d.key);
+  const daysOf = (r) => (r.days?.length ? r.days : allDays);
 
   const [draft, setDraft] = React.useState(null);
   // Local editing copy of the rules; seeded from the server, flushed on save.
@@ -950,6 +955,16 @@ function ScheduleSection() {
   const removeRow = (i) => setDraft(draft.filter((_, idx) => idx !== i));
   const setRow = (i, patch) =>
     setDraft(draft.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  // Tap a day to add or drop it. The last day can't be dropped — a rule with no
+  // days would never run. All 7 picked is saved as "every day" (no days key).
+  const toggleDay = (i, day) => {
+    const current = daysOf(draft[i]);
+    const next = current.includes(day)
+      ? current.filter((d) => d !== day)
+      : [...current, day].sort((a, b) => a - b);
+    if (next.length === 0) return;
+    setRow(i, { days: next.length === allDays.length ? undefined : next });
+  };
 
   // Switching a row's ACTION resets it to that action's sensible defaults, so a
   // stale mode/league/power/brightness can't ride along into the new shape.
@@ -1009,12 +1024,22 @@ function ScheduleSection() {
     if (a === "cycle") return `Cycle · ${cycles.find((c) => c.id === r.cycle)?.name ?? "?"}`;
     return labelFor(r.mode) + (r.option ? ` · ${optionLabelFor(r.mode, r.option)}` : "");
   };
+  const summarizeDays = (r) => {
+    const days = daysOf(r).join(",");
+    if (days === allDays.join(",")) return "Every day";
+    if (days === "0,1,2,3,4") return "Weekdays";
+    if (days === "5,6") return "Weekends";
+    return daysOf(r)
+      .map((d) => dayOptions.find((o) => o.key === d)?.label ?? d)
+      .join(", ");
+  };
 
   return (
     <div className="m-card">
       <div className="m-card-title">Schedule</div>
       <div style={{ color: "#888", fontSize: "0.72rem", marginBottom: "0.6rem" }}>
-        Run an action automatically at a set time, in this device&apos;s local time: switch mode,
+        Run an action automatically at a set time on the days you pick, in this device&apos;s local
+        time: switch mode,
         turn the display off/on, or set brightness. Rules fire at their time; turning the schedule
         on does not move anything until the next rule time.
       </div>
@@ -1149,11 +1174,33 @@ function ScheduleSection() {
             >
               Remove
             </button>
+
+            {dayOptions.length > 0 && (
+              <div style={{ flex: "1 1 100%", display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {dayOptions.map((d) => {
+                  const on = daysOf(r).includes(d.key);
+                  return (
+                    <button
+                      key={d.key}
+                      className={`m-btn ${on ? "m-btn-active" : "m-btn-neutral"}`}
+                      style={{ flex: "0 0 auto", height: 32, padding: "0 10px", fontSize: "0.72rem" }}
+                      aria-pressed={on}
+                      onClick={() => toggleDay(i, d.key)}
+                    >
+                      {d.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : (
           <div key={i} className="m-status-row" style={{ marginBottom: 4 }}>
             <span className="m-badge m-badge-gray">{r.time}</span>
             <span className="m-badge m-badge-blue">{summarize(r)}</span>
+            {dayOptions.length > 0 && (
+              <span className="m-badge m-badge-gray">{summarizeDays(r)}</span>
+            )}
           </div>
         )
       )}

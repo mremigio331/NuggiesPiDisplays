@@ -27,6 +27,7 @@ from datetime import datetime
 from helpers.config import (
     read_schedule,
     read_settings,
+    rule_runs_on,
     set_active_cycle,
     write_settings,
     write_display_brightness,
@@ -138,11 +139,12 @@ async def _tick() -> None:
     now = datetime.now()
     hhmm = now.strftime("%H:%M")
 
-    # Find a rule whose time is exactly the current minute. rules is normalized
-    # (deduped by time), so at most one matches.
-    rule = next((r for r in rules if r["time"] == hhmm), None)
-    if rule is None:
+    # Find the rule for this exact minute that runs today. Rules may share a
+    # time on different days; if their days overlap, the later rule wins.
+    due = [r for r in rules if r["time"] == hhmm and rule_runs_on(r, now.weekday())]
+    if not due:
         return
+    rule = due[-1]
 
     stamp = f"{now.strftime('%Y-%m-%d %H:%M')}|{rule['time']}"
     if stamp == _last_fired_stamp:

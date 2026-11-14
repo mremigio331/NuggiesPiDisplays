@@ -153,6 +153,35 @@ from constants import DISPLAY_MODES as _DISPLAY_MODES
 
 _TIME_RE = _re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
+# Schedule rule days, keyed like datetime.weekday() (Monday = 0).
+SCHEDULE_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def _normalize_days(raw) -> list[int] | None:
+    """Sorted weekday numbers, or None for every day (missing, empty or all 7).
+
+    Every day is stored as no "days" key, so rules saved before days existed
+    keep their exact shape.
+    """
+    if not isinstance(raw, list):
+        return None
+    days = set()
+    for d in raw:
+        try:
+            d = int(d)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= d < len(SCHEDULE_DAYS):
+            days.add(d)
+    if not days or len(days) == len(SCHEDULE_DAYS):
+        return None
+    return sorted(days)
+
+
+def rule_runs_on(rule: dict, weekday: int) -> bool:
+    days = rule.get("days")
+    return not days or weekday in days
+
 
 def schedule_mode_options() -> dict:
     """Map of display mode -> [{key,label}] of its schedule sub-options.
@@ -233,15 +262,20 @@ def normalize_schedule(raw: dict | None) -> dict:
             # Unknown action — drop it rather than guess.
             continue
 
+        days = _normalize_days(r.get("days"))
+        if days:
+            rule["days"] = days
         rules.append(rule)
 
-    # Sort by time, then dedupe on time keeping the last-wins entry so a single
-    # minute never maps to two actions.
+    # Sort by time, then dedupe on (time, days) keeping the last-wins entry.
+    # Two rules may share a time on different days (07:00 weekdays + 07:00
+    # weekends); if their days overlap, the scheduler fires the later one.
     rules.sort(key=lambda r: r["time"])
-    deduped: dict[str, dict] = {}
+    deduped: dict[tuple, dict] = {}
     for r in rules:
-        deduped[r["time"]] = r
-    rules = [deduped[t] for t in sorted(deduped)]
+        deduped[(r["time"], tuple(r.get("days") or ()))] = r
+    rules = list(deduped.values())
+    rules.sort(key=lambda r: r["time"])
     return {"enabled": bool(raw.get("enabled", False)), "rules": rules}
 
 

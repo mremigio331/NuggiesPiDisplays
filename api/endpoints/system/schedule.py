@@ -13,6 +13,7 @@ from helpers.config import (
     BRIGHTNESS_MIN,
     BRIGHTNESS_MAX,
     BRIGHTNESS_PRESETS,
+    SCHEDULE_DAYS,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class ScheduleRule(BaseModel):
     power: Optional[str] = None  # "on" | "off"
     brightness: Optional[int] = None  # 1-100
     cycle: Optional[str] = None  # a saved cycle's id
+    days: Optional[list[int]] = None  # weekday() numbers; omitted = every day
 
 
 class Schedule(BaseModel):
@@ -47,6 +49,7 @@ def _payload(schedule: dict) -> dict:
         "actions": ["mode", "power", "brightness", "cycle"],
         "cycles": [{"id": c["id"], "name": c["name"]} for c in read_cycles()["saved"]],
         "power_options": ["on", "off"],
+        "days": [{"key": i, "label": d} for i, d in enumerate(SCHEDULE_DAYS)],
         "brightness": {
             "min": BRIGHTNESS_MIN,
             "max": BRIGHTNESS_MAX,
