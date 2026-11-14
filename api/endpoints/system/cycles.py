@@ -10,6 +10,7 @@ from helpers.config import (
     CYCLE_MAX_MINUTES,
     CYCLE_MAX_NAME_LENGTH,
     CYCLE_MIN_MINUTES,
+    cycle_all_leagues,
     cycle_steps,
     normalize_cycle,
     read_cycles,
@@ -26,7 +27,7 @@ router = APIRouter()
 
 class CycleView(BaseModel):
     mode: str
-    option: str | None = None
+    options: list[str] | None = None
 
 
 class CycleBody(BaseModel):
@@ -42,6 +43,8 @@ def _payload(cycles: dict) -> dict:
         "modes": DISPLAY_MODES,
         "mode_options": schedule_mode_options(),
         "all_option": CYCLE_ALL_OPTION,
+        # How many views "all" opens into, so the editor can show the time.
+        "all_count": len(cycle_all_leagues()),
         "minutes": {"min": CYCLE_MIN_MINUTES, "max": CYCLE_MAX_MINUTES},
         "max_name_length": CYCLE_MAX_NAME_LENGTH,
     }

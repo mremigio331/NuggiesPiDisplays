@@ -18,6 +18,8 @@ export default function CycleSection() {
   const { error: notifyError } = useNotify();
   const { data } = useQuery({ queryKey: ["cycles"], queryFn: getCycles });
   const [draft, setDraft] = React.useState(null);
+  // Set when Save is pressed with a blank name; outlines the name box in red.
+  const [nameMissing, setNameMissing] = React.useState(false);
 
   const onSaved = (saved) => {
     qc.setQueryData(["cycles"], saved);
@@ -46,11 +48,13 @@ export default function CycleSection() {
     const opts = modeOptions[mode] || [];
     return opts.length ? [{ key: allOption, label: "All" }, ...opts] : [];
   };
-  const optionLabel = (view) =>
-    (optionsFor(view.mode).find((o) => o.key === view.option) || {}).label;
+  const optionLabels = (view) =>
+    (view.options || [])
+      .map((key) => (optionsFor(view.mode).find((o) => o.key === key) || {}).label || key)
+      .join(", ");
   const newView = (mode) => ({
     mode,
-    option: optionsFor(mode).length ? allOption : undefined,
+    options: optionsFor(mode).length ? [allOption] : undefined,
   });
 
   const setView = (i, patch) =>
@@ -58,6 +62,16 @@ export default function CycleSection() {
       ...draft,
       views: draft.views.map((v, idx) => (idx === i ? { ...v, ...patch } : v)),
     });
+  // All and specific picks are exclusive: tapping All clears the rest, tapping
+  // a league drops All, and un-picking the last league falls back to All.
+  const toggleOption = (i, key) => {
+    const current = draft.views[i].options || [];
+    let next;
+    if (key === allOption) next = [allOption];
+    else if (current.includes(key)) next = current.filter((k) => k !== key);
+    else next = [...current.filter((k) => k !== allOption), key];
+    setView(i, { options: next.length ? next : [allOption] });
+  };
   const moveView = (i, delta) => {
     const views = [...draft.views];
     [views[i], views[i + delta]] = [views[i + delta], views[i]];
@@ -67,7 +81,9 @@ export default function CycleSection() {
     setDraft({ ...draft, views: draft.views.filter((_, idx) => idx !== i) });
 
   const summarize = (cycle) =>
-    cycle.views.map((v) => labelFor(v.mode) + (v.option ? ` · ${optionLabel(v)}` : "")).join(" → ");
+    cycle.views
+      .map((v) => labelFor(v.mode) + (v.options?.length ? ` · ${optionLabels(v)}` : ""))
+      .join(" → ");
 
   return (
     <div className="m-card">
@@ -122,11 +138,19 @@ export default function CycleSection() {
         <div>
           <input
             className="m-input"
-            style={{ width: "100%", marginBottom: 8 }}
             placeholder="Cycle name"
             maxLength={data.max_name_length}
             value={draft.name}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            aria-invalid={nameMissing}
+            style={{
+              width: "100%",
+              marginBottom: 8,
+              ...(nameMissing ? { border: "1px solid #e05050" } : {}),
+            }}
+            onChange={(e) => {
+              setNameMissing(false);
+              setDraft({ ...draft, name: e.target.value });
+            }}
           />
           <div className="m-toggle-row">
             <span className="m-label">
@@ -167,18 +191,39 @@ export default function CycleSection() {
                 ))}
               </select>
               {optionsFor(view.mode).length > 0 && (
-                <select
-                  className="m-input"
-                  style={{ flex: "1 1 8rem" }}
-                  value={view.option}
-                  onChange={(e) => setView(i, { option: e.target.value })}
+                <div
+                  style={{ flex: "1 1 100%", order: 1, display: "flex", flexWrap: "wrap", gap: 6 }}
                 >
-                  {optionsFor(view.mode).map((o) => (
-                    <option key={o.key} value={o.key}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                  {optionsFor(view.mode).map((o) => {
+                    const on = (view.options || []).includes(o.key);
+                    return (
+                      <button
+                        key={o.key}
+                        className={`m-btn ${on ? "m-btn-active" : "m-btn-neutral"}`}
+                        style={{ flex: "0 0 auto", height: 32, padding: "0 10px", fontSize: "0.72rem" }}
+                        aria-pressed={on}
+                        onClick={() => toggleOption(i, o.key)}
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {optionsFor(view.mode).length > 0 && (
+                <div
+                  className="m-notif m-notif-info"
+                  style={{ flex: "1 1 100%", order: 2, fontSize: "0.72rem", padding: "6px 10px" }}
+                >
+                  {(() => {
+                    const picks = view.options || [];
+                    const count = picks.includes(allOption) ? data.all_count : picks.length;
+                    const total = count * draft.minutes;
+                    return count > 1
+                      ? `Each sport shows for ${draft.minutes} min before the next. ${count} sports here = ${total} min.`
+                      : `Shows for ${draft.minutes} min before the next view.`;
+                  })()}
+                </div>
               )}
               <button
                 className="m-btn m-btn-neutral"
@@ -224,11 +269,23 @@ export default function CycleSection() {
             <button
               className="m-btn m-btn-primary"
               disabled={saveMut.isPending}
-              onClick={() => saveMut.mutate(draft)}
+              onClick={() => {
+                if (!draft.name.trim()) {
+                  setNameMissing(true);
+                  return;
+                }
+                saveMut.mutate(draft);
+              }}
             >
               Save
             </button>
-            <button className="m-btn m-btn-neutral" onClick={() => setDraft(null)}>
+            <button
+              className="m-btn m-btn-neutral"
+              onClick={() => {
+                setNameMissing(false);
+                setDraft(null);
+              }}
+            >
               Cancel
             </button>
           </>

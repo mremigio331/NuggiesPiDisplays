@@ -343,12 +343,20 @@ def _normalize_cycle_view(raw) -> dict | None:
     view = {"mode": mode}
     valid = {o["key"] for o in schedule_mode_options().get(mode, [])}
     if valid:
-        option = str(raw.get("option", "")).strip()
-        view["option"] = (
-            option
-            if option in valid or option == CYCLE_ALL_OPTION
-            else CYCLE_ALL_OPTION
-        )
+        # Several options per view (e.g. NBA + NHL), each shown in turn. Cycles
+        # saved before multi-select carry a single "option" string.
+        picked = raw.get("options")
+        if not isinstance(picked, list):
+            picked = [raw.get("option", "")]
+        options = []
+        for option in picked:
+            option = str(option or "").strip()
+            if option in valid and option not in options:
+                options.append(option)
+            elif option == CYCLE_ALL_OPTION:
+                options = [CYCLE_ALL_OPTION]  # All covers every other pick
+                break
+        view["options"] = options or [CYCLE_ALL_OPTION]
     return view
 
 
@@ -412,18 +420,25 @@ def set_active_cycle(cycle_id: str | None) -> bool:
     return True
 
 
-def cycle_steps(cycle: dict) -> list[tuple]:
-    """The (mode, option) stops in order, with "all" opened into each league."""
-    steps = []
-    leagues = [
+def cycle_all_leagues() -> list[str]:
+    """The leagues a sports view's "all" pick opens into, in order."""
+    return [
         o["key"]
         for o in schedule_mode_options().get("sports", [])
         if o["key"] not in _CYCLE_ALL_EXCLUDES
     ]
+
+
+def cycle_steps(cycle: dict) -> list[tuple]:
+    """The (mode, option) stops in order: one per picked option, "all" opened
+    into each league. A mode with no options is a single (mode, None) stop."""
+    steps = []
+    leagues = cycle_all_leagues()
     for view in cycle["views"]:
-        option = view.get("option")
-        if option == CYCLE_ALL_OPTION:
-            steps.extend((view["mode"], league) for league in leagues)
-        else:
-            steps.append((view["mode"], option))
+        options = view.get("options") or [None]
+        for option in options:
+            if option == CYCLE_ALL_OPTION:
+                steps.extend((view["mode"], league) for league in leagues)
+            else:
+                steps.append((view["mode"], option))
     return steps
