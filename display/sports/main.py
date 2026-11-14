@@ -28,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SCOREBOARD_REFRESH = 60  # re-fetch scoreboard when no live game
-LIVE_REFRESH = 30  # re-fetch scoreboard when a game is live
+LIVE_REFRESH = 5  # re-fetch scoreboard when a game is live
 DETAILS_TTL = 15  # re-fetch game details (players/fouls)
 PANEL_CYCLE = 15  # seconds between stat views (focus mode)
 OVERVIEW_CYCLE = 20  # seconds per game pair (overview mode)

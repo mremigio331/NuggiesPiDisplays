@@ -29,12 +29,13 @@ from helpers.config import read_settings
 from helpers.espn_client import ESPNClient
 
 from . import _favorites
+from .common import scoreboard_for_sport
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Dedicated client (not common._client) so the longer schedule payloads are
-# cached independently of the 15s live-scoreboard cache. Team schedules change
+# cached independently of the 5s live-scoreboard cache. Team schedules change
 # at most a few times a day, so a longer TTL avoids hammering ESPN.
 _client = ESPNClient(cache_ttl=300)
 
@@ -131,6 +132,7 @@ def collect_favorite_team_games(favorites: dict[str, list[str]]) -> list[dict]:
     for sport, team_ids in favorites.items():
         if not team_ids:
             continue
+        live_by_id: dict[str, dict] | None = None
         for team_id in team_ids:
             try:
                 schedule = _client.get_team_schedule(sport, str(team_id))
@@ -143,10 +145,41 @@ def collect_favorite_team_games(favorites: dict[str, list[str]]) -> list[dict]:
             # team's own schedule should always, but tagging stays correct).
             mine = [g for g in schedule if _is_favorite_team(g, team_id)]
             for game in _pick_last_and_next(mine):
+                if game["slot"] != "last":
+                    if live_by_id is None:
+                        live_by_id = _scoreboard_by_event(sport)
+                    game = _overlay_live(game, live_by_id)
                 tagged = {**game, "sport": sport, "favorite_id": str(team_id).upper()}
                 _attach_records(tagged, sport)
                 games.append(tagged)
     return games
+
+
+def _scoreboard_by_event(sport: str) -> dict[str, dict]:
+    """Today's league scoreboard (5s cache) keyed by event id; {} on failure."""
+    try:
+        return {
+            str(g.get("event_id")): g
+            for g in scoreboard_for_sport(sport)
+            if g.get("event_id")
+        }
+    except Exception as e:
+        logger.error(f"Favourites: {sport} live scoreboard fetch failed: {e}")
+        return {}
+
+
+def _overlay_live(game: dict, live_by_id: dict[str, dict]) -> dict:
+    """Swap in the live scoreboard's copy of a live/next game when ESPN has one.
+
+    The team schedule is cached for 5 minutes, so on its own a live score (or a
+    game tipping off) would lag that long. Today's scoreboard is cached for 5s
+    and has the same shape plus the live clock and possession.
+    """
+    live = live_by_id.get(str(game.get("event_id") or ""))
+    if live is None:
+        return game
+    slot = "live" if live.get("state") == "in" else game["slot"]
+    return {**game, **live, "slot": slot}
 
 
 @router.get("/favorites/scoreboard")

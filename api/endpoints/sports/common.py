@@ -2,7 +2,8 @@ from collections.abc import Callable
 from fastapi import HTTPException
 from helpers.espn_client import ESPNClient
 
-_client = ESPNClient(cache_ttl=15)
+# Matches the display's 5s LIVE_REFRESH so a live poll gets a fresh ESPN answer.
+_client = ESPNClient(cache_ttl=5)
 
 _STATE_ORDER = {"in": 0, "post": 1, "pre": 2}
 
