@@ -72,6 +72,8 @@ def normalize_clock(clock: dict) -> dict:
     clock.setdefault("color", [255, 255, 255])
     clock.setdefault("color_mode", "solid")
     clock.setdefault("use_24h", False)
+    # Show running timers in the clock's bottom row.
+    clock.setdefault("show_timers", True)
 
     # Drop obsolete keys so clients only see the current schema.
     for stale in ("timezone", "timezone_auto", "mode", "world_timezones"):

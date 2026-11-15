@@ -52,6 +52,34 @@
   letter-spacing: 0.06em;
 }
 
+/* Clock tab while a timer is done: red label and a pulsing red badge. */
+.bottom-nav-tab.timer-done {
+  color: #e05050;
+  position: relative;
+}
+.timer-done-badge {
+  position: absolute;
+  top: 4px;
+  right: calc(50% - 20px);
+  min-width: 10px;
+  height: 10px;
+  padding: 0 3px;
+  border-radius: 6px;
+  background: #e05050;
+  color: #fff;
+  font-size: 0.55rem;
+  font-weight: 700;
+  line-height: 10px;
+  text-align: center;
+  box-shadow: 0 0 6px #e0505088;
+  animation: timer-done-pulse 1s ease-in-out infinite;
+}
+@keyframes timer-done-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
 .active-pip {
   position: absolute;
   top: 6px;

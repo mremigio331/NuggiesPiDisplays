@@ -23,6 +23,8 @@ class ClockSettings(BaseModel):
     # rainbow that slides to the right.
     color_mode: Optional[str] = None
     use_24h: Optional[bool] = None
+    # Show running timers in the bottom row (in place of the timezone/AM-PM).
+    show_timers: Optional[bool] = None
 
 
 def _validate_timezones(zones) -> List[str]:

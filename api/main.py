@@ -15,6 +15,7 @@ from helpers.wifi_state import WIFI_FLAG
 from helpers.update_check import run_background_checker
 from helpers.schedule import run_scheduler
 from helpers.cycle import run_cycler
+from helpers.timers import run_timer_watcher
 from helpers.system import clear_update_lock
 from middleware.service_log import ServiceLogMiddleware
 from endpoints.docs import router as docs_router
@@ -25,6 +26,7 @@ from endpoints.stonks import router as stonks_router
 from endpoints.mta import router as mta_router
 from endpoints.clock import router as clock_router
 from endpoints.text import router as text_router
+from endpoints.timers import router as timers_router
 from endpoints.sports import router as sports_router
 from endpoints.weather import router as weather_router
 from endpoints.wifi import router as wifi_router
@@ -71,6 +73,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(run_background_checker())
     asyncio.create_task(run_scheduler())
     asyncio.create_task(run_cycler())
+    asyncio.create_task(run_timer_watcher())
     yield
 
 
@@ -99,6 +102,7 @@ app.include_router(stonks_router, prefix="/api")
 app.include_router(mta_router, prefix="/api")
 app.include_router(clock_router, prefix="/api")
 app.include_router(text_router, prefix="/api")
+app.include_router(timers_router, prefix="/api")
 app.include_router(sports_router, prefix="/api")
 app.include_router(weather_router, prefix="/api")
 app.include_router(wifi_router, prefix="/api")

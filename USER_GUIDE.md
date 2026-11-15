@@ -74,6 +74,7 @@ The device has two buttons on the side:
 |--------|--------|
 | Press **Button 1** (left) | Cycle to the previous display mode |
 | Press **Button 2** (right) | Cycle to the next display mode |
+| Press **Button 1** or **Button 2** while a timer alert shows | Dismiss that timer (see [Timers](#timers)) |
 | Hold **Button 1** for 10 seconds | Restart the Pi |
 | Hold **both buttons** (see below) | Cycle sport / factory reset, with on-screen feedback |
 
@@ -93,6 +94,35 @@ factory reset, with a visible countdown so you can let go in time if you didn't
 mean to.
 
 > **Note:** The buttons are inactive while the device is in WiFi setup mode (showing the setup screen on the matrix).
+
+---
+
+## Timers
+
+Timers live on the **Clock** page of the website, under the clock preview.
+
+1. Pick **Length** (for example 2 h 0 m) or **Clock time** (for example 4:00 PM).
+   A clock time already past today means tomorrow.
+2. Type a label, up to 20 characters. It's what the board shows.
+3. Tap **Start Timer**. You can have up to 10 timers.
+
+While a timer runs:
+- **Clock** mode shows it in the bottom row, like `Tea 3:59`. With several
+  running they take turns. Turn this off in Clock settings
+  (**Show running timers**).
+- **Cancel** on the Clock page removes it.
+
+When a timer ends:
+- The board shows **TIME'S UP**, the label and how long ago it ended, with a
+  blinking red border. This shows in every mode, and turns the display on if
+  it was off.
+- It stays until you dismiss it. Press **Button 1** or **Button 2**, or tap
+  **Dismiss** on the website (a red banner shows on every other page). Dismissing
+  deletes the timer.
+- If several end, the oldest shows first with a count like **1/3**. Each
+  button press clears one.
+- **+5 min** on the Clock page starts it again for 5 more minutes.
+- The power button does not dismiss a timer; it still turns the display on and off.
 
 ---
 

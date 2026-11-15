@@ -1,10 +1,11 @@
 import React from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import BottomNav from "../navigation/BottomNav";
 import { getNotificationsContext } from "../services/Notifications";
 import { useSystemStatus } from "../hooks/useSystemStatus";
-import { getUpdateStatus } from "../services/API";
+import { useTimers } from "../hooks/useTimers";
+import { dismissDoneTimers, getUpdateStatus } from "../services/API";
 import "./AppLayout.css";
 
 export default function AppLayout({ children }) {
@@ -25,6 +26,14 @@ export default function AppLayout({ children }) {
     retry: false,
   });
   const updateAvailable = updateStatus?.update_available ?? false;
+
+  const qc = useQueryClient();
+  const { data: timers } = useTimers();
+  const doneTimers = (timers?.timers ?? []).filter((t) => t.done);
+  const dismissMut = useMutation({
+    mutationFn: dismissDoneTimers,
+    onSuccess: (saved) => qc.setQueryData(["timers"], saved),
+  });
 
   const goHome = () => navigate(mode ? `/${mode}` : "/");
 
@@ -61,6 +70,22 @@ export default function AppLayout({ children }) {
           </div>
         </div>
       </header>
+
+      {doneTimers.length > 0 && pathname !== "/clock" && (
+        <div className="ml-timer-banner" role="alert">
+          <span onClick={() => navigate("/clock")}>
+            ⏰ {doneTimers.length === 1 ? `${doneTimers[0].label} is done` : `${doneTimers.length} timers are done`}
+          </span>
+          <button
+            className="m-btn m-btn-danger"
+            style={{ flex: "0 0 auto", height: 30, padding: "0 12px" }}
+            disabled={dismissMut.isPending}
+            onClick={() => dismissMut.mutate()}
+          >
+            Dismiss{doneTimers.length > 1 ? " all" : ""}
+          </button>
+        </div>
+      )}
 
       {notifications.length > 0 && (
         <div className="m-notifications">

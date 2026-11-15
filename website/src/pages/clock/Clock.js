@@ -2,6 +2,7 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { useClockSettings } from "../../hooks/useClockSettings";
 import SwitchDisplayButton from "../../components/shared/SwitchDisplayButton";
+import TimerSection from "../../components/clock/TimerSection";
 
 const COLOR_PRESETS = [
   { label: "Blue", value: "0,0,255", rgb: [0, 0, 255] },
@@ -183,6 +184,8 @@ export default function Clock() {
           </button>
         </div>
       )}
+
+      <TimerSection />
     </div>
   );
 }

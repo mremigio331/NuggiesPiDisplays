@@ -62,6 +62,9 @@ pin 1 at the top-left.
 - 🔴 **Red** → pin **1** (3.3V)
 - ⚫ **Black** → pin **34** (GND)
 
+While a timer alert ("TIME'S UP") is on the board, a tap on Button 1 or
+Button 2 dismisses that timer instead of cycling. Holds work as usual.
+
 ## Quick reference — the six pins you touch
 
 ```

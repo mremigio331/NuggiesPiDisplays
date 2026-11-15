@@ -4,7 +4,8 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from helpers.config import read_overlay, write_overlay
+from helpers.config import read_settings, write_overlay
+from helpers.timers import timer_overlay
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -22,8 +23,14 @@ class OverlayRequest(BaseModel):
 
 @router.get("/display-overlay")
 async def get_display_overlay():
-    """Return the current display overlay (or null)."""
-    return JSONResponse({"overlay": read_overlay()})
+    """Return the current display overlay (or null).
+
+    A set overlay (factory-reset messaging) wins. Otherwise, while any timer is
+    done, this serves the timer alert for the oldest one.
+    """
+    settings = read_settings()
+    overlay = settings.get("overlay") or timer_overlay(settings)
+    return JSONResponse({"overlay": overlay})
 
 
 @router.post("/display-overlay")

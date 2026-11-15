@@ -427,6 +427,7 @@ export default function ClockSettings() {
   const [colorPreset, setColorPreset] = React.useState(COLOR_PRESETS[0]);
   const [colorMode, setColorMode] = React.useState("solid"); // "solid" | "rainbow"
   const [use24h, setUse24h] = React.useState(false);
+  const [showTimers, setShowTimers] = React.useState(true);
   const [saveStatus, setSaveStatus] = React.useState(null); // null | "saving" | "saved"
 
   const colorRef = React.useRef(colorPreset);
@@ -452,6 +453,7 @@ export default function ClockSettings() {
       setColorPreset(findPreset(settings.color));
       setColorMode(settings.color_mode === "rainbow" ? "rainbow" : "solid");
       setUse24h(settings.use_24h ?? false);
+      setShowTimers(settings.show_timers !== false);
     }
   }, [settings]);
 
@@ -537,6 +539,10 @@ export default function ClockSettings() {
     setUse24h(checked);
     use24hRef.current = checked;
     scheduleDisplaySave();
+  };
+  const handleShowTimers = (checked) => {
+    setShowTimers(checked);
+    save({ show_timers: checked });
   };
 
   const previewHex = "#" + colorPreset.rgb.map((v) => v.toString(16).padStart(2, "0")).join("");
@@ -690,6 +696,18 @@ export default function ClockSettings() {
           <span className="m-label">24-hour time</span>
           <label className="m-switch">
             <input type="checkbox" checked={use24h} onChange={(e) => handle24h(e.target.checked)} />
+            <span className="m-switch-slider" />
+          </label>
+        </div>
+
+        <div className="m-toggle-row">
+          <span className="m-label">Show running timers (bottom row)</span>
+          <label className="m-switch">
+            <input
+              type="checkbox"
+              checked={showTimers}
+              onChange={(e) => handleShowTimers(e.target.checked)}
+            />
             <span className="m-switch-slider" />
           </label>
         </div>

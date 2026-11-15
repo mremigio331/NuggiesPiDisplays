@@ -128,14 +128,18 @@ def render(
     use_24h: bool = False,
     tz_name: str = "",
     rainbow_phase=None,
+    timer_text: str | None = None,
 ) -> None:
-    """Focus view: one timezone, three centered lines (time / date / tz)."""
+    """Focus view: one timezone, three centered lines (time / date / tz).
+
+    With `timer_text` (a running timer, e.g. "Tea 3:59") the bottom line shows
+    that instead of the timezone."""
     if use_24h:
         time_str = dt.strftime("%H:%M:%S")  # e.g. "15:45:30"
     else:
         time_str = dt.strftime("%-I:%M:%S%p")  # e.g. "3:45:30PM" (no space fits 64px)
     date_str = dt.strftime("%a %b %d")  # e.g. "Mon Jan 06"
-    tz_str = _tz_abbr(dt, tz_name)
+    tz_str = timer_text or _tz_abbr(dt, tz_name)
 
     time_x = _center_x(time_str, _CHAR_W_LARGE)
     date_x = _center_x(date_str, _CHAR_W_SMALL)
@@ -184,12 +188,19 @@ def _col_center_x(col: int, text: str, char_w: int) -> int:
 
 
 def render_multi(
-    canvas, entries: list, color: tuple, use_24h: bool = False, rainbow_phase=None
+    canvas,
+    entries: list,
+    color: tuple,
+    use_24h: bool = False,
+    rainbow_phase=None,
+    timer_text: str | None = None,
 ) -> None:
     """Render up to three timezone columns.
 
     `entries` is a list of (abbr, datetime) tuples in display order, sliced to
-    at most 3 by the caller.
+    at most 3 by the caller. With `timer_text` (a running timer) the bottom row
+    shows it across the full width, and AM/PM shrinks to a letter after the
+    time ("1:05p") so it still fits a column.
     """
     lines = []  # (x, baseline_y, text)
     for i, (abbr, dt) in enumerate(entries[:_COL_COUNT]):
@@ -199,6 +210,9 @@ def render_multi(
         else:
             time_str = dt.strftime("%-I:%M")  # e.g. "1:05"
             ampm_str = dt.strftime("%p")  # "AM" / "PM"
+            if timer_text:
+                time_str += ampm_str[0].lower()
+                ampm_str = ""
 
         abbr = (abbr or "")[:4]
 
@@ -209,6 +223,12 @@ def render_multi(
                 (_col_center_x(i, ampm_str, _CHAR_W_TINY), _W_AMPM_Y, ampm_str)
             )
 
+    divider_bottom = MATRIX_H - 1
+    if timer_text:
+        lines.append((_center_x(timer_text, _CHAR_W_TINY), _W_AMPM_Y, timer_text))
+        # Stop the dividers above the full-width timer row.
+        divider_bottom = _W_AMPM_Y - 8
+
     divider_cols = range(1, min(len(entries), _COL_COUNT))
 
     if USING_HARDWARE and _gfx and _hw_tiny and rainbow_phase is None:
@@ -217,7 +237,7 @@ def render_multi(
         divider = _gfx.Color(*[v // 3 for v in color])
         for col in divider_cols:
             x = col * _COL_W
-            _gfx.DrawLine(canvas, x, 0, x, MATRIX_H - 1, divider)
+            _gfx.DrawLine(canvas, x, 0, x, divider_bottom, divider)
         for x, y, text in lines:
             _gfx.DrawText(canvas, _hw_tiny, x, y, c, text)
         return
@@ -230,5 +250,5 @@ def render_multi(
     div_color = tuple(v // 3 for v in color) if rainbow_phase is None else (60, 60, 60)
     for col in divider_cols:
         x = col * _COL_W
-        draw.line([(x, 0), (x, MATRIX_H - 1)], fill=div_color)
+        draw.line([(x, 0), (x, divider_bottom)], fill=div_color)
     canvas.SetImage(img)

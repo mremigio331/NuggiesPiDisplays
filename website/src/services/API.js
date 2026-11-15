@@ -55,6 +55,14 @@ export const updateCycle = (id, body) => handle(api.put(`/system/cycles/${id}`, 
 export const deleteCycle = (id) => handle(api.delete(`/system/cycles/${id}`));
 export const startCycle = (id) => handle(api.post(`/system/cycles/${id}/start`));
 export const stopCycle = () => handle(api.post("/system/cycles/stop"));
+// Timers. Every call returns { now, timers:[{id,label,ends_at,created_at,done}],
+// max_count, max_label, max_seconds, snooze_seconds }. ends_at is epoch seconds.
+export const getTimers = () => handle(api.get("/timers"));
+// body: { label, seconds } counts down; { label, at: "HH:MM" } ends at that clock time.
+export const createTimer = (body) => handle(api.post("/timers", body));
+export const deleteTimer = (id) => handle(api.delete(`/timers/${id}`));
+export const snoozeTimer = (id) => handle(api.post(`/timers/${id}/snooze`));
+export const dismissDoneTimers = () => handle(api.post("/timers/dismiss-done"));
 export const getSchedule = () => handle(api.get("/system/schedule"));
 export const setSchedule = (schedule) => handle(api.put("/system/schedule", schedule));
 export const getLogLevel = () => handle(api.get("/system/log-level"));

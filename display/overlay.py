@@ -8,6 +8,8 @@ message over everything, short-circuiting normal rendering.
 Overlay dicts (written by the API button handler / display-overlay endpoint):
     {"kind": "reset_prompt", "seconds_left": N}  -> "FACTORY RESET" + "Hold Ns"
     {"kind": "reset_running"}                    -> "FACTORY" + "RESET"
+    {"kind": "timer", "label": str,              -> "TIME'S UP" + label + time
+     "ended_at": epoch, "count": N}                 since it ended, blinking border
 
 Returns True when it rendered an overlay (caller should swap + skip its own
 rendering), False when there is no overlay (caller renders normally).
@@ -82,6 +84,69 @@ def _draw_center(canvas, text, baseline_y, color, big):
                 canvas.SetPixel(xx, yy, r, g, b)
 
 
+# Timer alert: inside a 1px border there is room for 15 small or 12 big letters.
+_TIMER_SM_FIT = (MATRIX_W - 2) // _CW_SM
+_TIMER_MD_FIT = (MATRIX_W - 2) // _CW_MD
+
+
+def _since(seconds: float) -> str:
+    """How long ago the timer ended: +0:42, +12:05, +1h05, +2d."""
+    s = max(0, int(seconds))
+    if s >= 86400:
+        return f"+{s // 86400}d"
+    h, rem = divmod(s, 3600)
+    m, s = divmod(rem, 60)
+    return f"+{h}h{m:02d}" if h else f"+{m}:{s:02d}"
+
+
+def _split_label(label: str) -> list[str]:
+    """One line if it fits the small font, else two, broken at a space if possible."""
+    if len(label) <= _TIMER_SM_FIT:
+        return [label]
+    cut = label.rfind(" ", 0, _TIMER_SM_FIT + 1)
+    if cut <= 0 or len(label) - cut - 1 > _TIMER_SM_FIT:
+        cut = _TIMER_SM_FIT
+        return [label[:cut], label[cut:][:_TIMER_SM_FIT]]
+    return [label[:cut], label[cut + 1 :][:_TIMER_SM_FIT]]
+
+
+def _render_timer(canvas, overlay) -> None:
+    """A done timer: blinking red border, "TIME'S UP", the label, time since."""
+    import time as _t
+
+    now = _t.time()
+    blink = int(now * 2) % 2 == 0  # flips every half second
+    label = str(overlay.get("label") or "Timer")
+    count = overlay.get("count") if isinstance(overlay.get("count"), int) else 1
+    ended_at = overlay.get("ended_at")
+
+    if blink:
+        r, g, b = 230, 30, 30
+        for x in range(MATRIX_W):
+            canvas.SetPixel(x, 0, r, g, b)
+            canvas.SetPixel(x, MATRIX_H - 1, r, g, b)
+        for y in range(MATRIX_H):
+            canvas.SetPixel(0, y, r, g, b)
+            canvas.SetPixel(MATRIX_W - 1, y, r, g, b)
+
+    header = "TIME'S UP" + (f" 1/{count}" if count > 1 else "")
+    _draw_center(canvas, header, 8, _color(240, 160, 0), big=False)
+
+    white = _color(255, 255, 255)
+    if len(label) <= _TIMER_MD_FIT:
+        _draw_center(canvas, label, 19, white, big=True)
+    else:
+        lines = _split_label(label)
+        if len(lines) == 1:
+            _draw_center(canvas, lines[0], 18, white, big=False)
+        else:
+            _draw_center(canvas, lines[0], 16, white, big=False)
+            _draw_center(canvas, lines[1], 23, white, big=False)
+
+    if isinstance(ended_at, (int, float)):
+        _draw_center(canvas, _since(now - ended_at), 29, _color(150, 150, 150), big=False)
+
+
 def render_overlay(canvas, overlay) -> bool:
     """Render *overlay* over a blanked canvas. Returns True if it drew anything."""
     if not overlay or not isinstance(overlay, dict):
@@ -106,6 +171,10 @@ def render_overlay(canvas, overlay) -> bool:
         red = _color(230, 60, 60)
         _draw_center(canvas, "FACTORY", 14, red, big=True)
         _draw_center(canvas, "RESET", 26, red, big=True)
+        return True
+
+    if kind == "timer":
+        _render_timer(canvas, overlay)
         return True
 
     # Unknown kind — treat as no overlay so we never wedge the display on a bad

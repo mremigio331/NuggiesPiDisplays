@@ -12,6 +12,7 @@ from helpers.config import (
 )
 from helpers.process import start_display
 from helpers.system import SystemManager
+from helpers.timers import dismiss_oldest_done
 from helpers.wifi_state import WIFI_FLAG
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,8 @@ class ButtonManager:
         with self._hold_lock:
             if self._hold_start is not None:
                 return
+        if self._dismiss_timer():
+            return
         if WIFI_FLAG.exists():
             logger.info("Button 2 pressed (cycle right)")
             current = read_settings().get("active_display", DISPLAY_MODES[0])
@@ -109,7 +112,7 @@ class ButtonManager:
 
                 # Button released before threshold — cycle left.
                 if GPIO.input(BUTTON_1_PIN) != GPIO.LOW:
-                    if elapsed < RESTART_HOLD_SECONDS:
+                    if elapsed < RESTART_HOLD_SECONDS and not self._dismiss_timer():
                         if WIFI_FLAG.exists():
                             logger.info("Button 1 pressed (cycle left)")
                             current = read_settings().get(
@@ -283,6 +286,15 @@ class ButtonManager:
             logger.error(f"Failed to set display overlay: {e}")
 
     # --- Actions ---
+
+    def _dismiss_timer(self) -> bool:
+        """While a timer alert shows, a Button 1 or 2 tap dismisses it instead of
+        cycling. Returns True if a done timer was dismissed."""
+        try:
+            return dismiss_oldest_done() is not None
+        except Exception as e:
+            logger.error(f"Timer dismiss failed: {e}")
+            return False
 
     def _switch(self, mode: str) -> None:
         set_active_cycle(None)  # a button press ends any cycle

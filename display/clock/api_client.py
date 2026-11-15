@@ -22,6 +22,17 @@ def get_settings() -> dict | None:
         return None
 
 
+def get_timers() -> list | None:
+    """Saved timers from the API (soonest first), or None if it can't be reached."""
+    try:
+        resp = requests.get(f"{_BASE}/timers", timeout=3)
+        resp.raise_for_status()
+        return resp.json().get("timers", [])
+    except requests.RequestException as e:
+        logger.debug(f"Failed to fetch timers: {e}")
+        return None
+
+
 def get_log_level() -> str:
     try:
         resp = requests.get(f"{_BASE}/system/log-level", timeout=3)

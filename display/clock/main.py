@@ -62,6 +62,49 @@ def _ws_thread():
     asyncio.run(listen())
 
 
+# Running timers shown in the bottom row. The list rarely changes, so a slow
+# poll is enough; the countdown itself is worked out locally every frame.
+TIMER_POLL_SECONDS = 2
+# With several timers running, each gets the bottom row this long in turn.
+TIMER_ROTATE_SECONDS = 4
+# Bottom-row width in letters: 5x8 font in focus view, 4x6 in multi view.
+FOCUS_TIMER_FIT = 64 // 5
+MULTI_TIMER_FIT = 64 // 4
+
+_timers: list = []
+
+
+def _timers_thread():
+    global _timers
+    while True:
+        timers = api_client.get_timers()
+        if timers is not None:
+            _timers = timers
+        time.sleep(TIMER_POLL_SECONDS)
+
+
+def _countdown(seconds: float) -> str:
+    """Time left: 3:59 under an hour, 1h05 from an hour up."""
+    s = max(0, int(seconds + 0.999))  # round up so 0:00 only shows at the end
+    h, rem = divmod(s, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}h{m:02d}" if h else f"{m}:{s:02d}"
+
+
+def _timer_text(fit: int) -> str | None:
+    """Bottom-row text for the running timer whose turn it is, e.g. "Tea 3:59".
+
+    Done timers are left out: the full-screen alert already shows those."""
+    now = time.time()
+    running = [t for t in _timers if t.get("ends_at", 0) > now]
+    if not running:
+        return None
+    timer = running[int(now // TIMER_ROTATE_SECONDS) % len(running)]
+    left = _countdown(timer["ends_at"] - now)
+    label = str(timer.get("label") or "Timer")[: max(0, fit - len(left) - 1)].rstrip()
+    return f"{label} {left}" if label else left
+
+
 def run():
     matrix = build_matrix()
     canvas = matrix.CreateFrameCanvas()
@@ -73,6 +116,7 @@ def run():
         _update_settings(initial)
 
     threading.Thread(target=_ws_thread, daemon=True).start()
+    threading.Thread(target=_timers_thread, daemon=True).start()
 
     # The display goes down the `timezones` list. In focus mode it advances one
     # zone per step; in multi mode it advances one page (of three) per step.
@@ -95,6 +139,7 @@ def run():
             color = tuple(_settings.get("color", [255, 255, 255]))
             color_mode = _settings.get("color_mode", "solid")
             use_24h = _settings.get("use_24h", False)
+            show_timers = _settings.get("show_timers", True) is not False
 
         rainbow = color_mode == "rainbow"
 
@@ -128,16 +173,20 @@ def run():
         phase = (now * 0.25) % 1.0 if rainbow else None
 
         if display_mode == "multi":
+            timer_text = _timer_text(MULTI_TIMER_FIT) if show_timers else None
             renderer.render_multi(
-                canvas, _entries_for(current_zones), color, use_24h, phase
+                canvas, _entries_for(current_zones), color, use_24h, phase, timer_text
             )
         else:
+            timer_text = _timer_text(FOCUS_TIMER_FIT) if show_timers else None
             tz_name = current_zones[0]
             try:
                 tz = ZoneInfo(tz_name)
             except Exception:
                 tz_name, tz = "UTC", ZoneInfo("UTC")
-            renderer.render(canvas, datetime.now(tz), color, use_24h, tz_name, phase)
+            renderer.render(
+                canvas, datetime.now(tz), color, use_24h, tz_name, phase, timer_text
+            )
 
         canvas = matrix.SwapOnVSync(canvas)
         # Animate smoothly in rainbow mode; otherwise the clock only needs a
