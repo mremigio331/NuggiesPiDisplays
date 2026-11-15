@@ -673,3 +673,46 @@
     opacity: 1;
   }
 }
+
+/* ── Page tabs (System page) ───────────────────────────────────── */
+/* Sticks to the top while scrolling; scrolls sideways on narrow phones. */
+.m-tabs {
+  position: sticky;
+  top: -16px; /* sit flush with the top edge, over .ml-content's padding */
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+  margin: 0 -16px 14px;
+  padding: 10px 16px;
+  background: #0a1628;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.m-tabs::-webkit-scrollbar {
+  display: none;
+}
+.m-tab {
+  flex: 0 0 auto;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid #1a2a40;
+  border-radius: 18px;
+  background: #0f1e30;
+  color: #8a9ab0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.m-tab-active {
+  background: #1a5fa8;
+  border-color: #4a9fe8;
+  color: #fff;
+}
+
+.m-badge-warm {
+  background: #2a2008;
+  color: #f0a800;
+  border: 1px solid #4a3a10;
+}

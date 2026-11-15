@@ -16,6 +16,7 @@ from helpers.update_check import run_background_checker
 from helpers.schedule import run_scheduler
 from helpers.cycle import run_cycler
 from helpers.timers import run_timer_watcher
+from helpers.health import run_health_logger
 from helpers.system import clear_update_lock
 from middleware.service_log import ServiceLogMiddleware
 from endpoints.docs import router as docs_router
@@ -74,6 +75,8 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(run_scheduler())
     asyncio.create_task(run_cycler())
     asyncio.create_task(run_timer_watcher())
+    # Logs CPU temp, CPU use and memory every 10 minutes (System > Health).
+    asyncio.create_task(run_health_logger())
     yield
 
 

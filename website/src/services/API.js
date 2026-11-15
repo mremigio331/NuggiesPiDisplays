@@ -10,6 +10,10 @@ const handle = async (promise) => {
 
 // System
 export const getSystemStatus = () => handle(api.get("/system/status"));
+// Live stats (temp, CPU, memory, disk, uptime, throttling) + the temp log for
+// the last `hours` (the Pi saves a reading every 10 minutes, kept 7 days).
+export const getSystemHealth = (hours = 24) =>
+  handle(api.get("/system/health", { params: { hours } }));
 export const startDisplay = () => handle(api.post("/system/display/start"));
 export const stopDisplay = () => handle(api.post("/system/display/stop"));
 export const switchDisplay = (mode) => handle(api.post("/system/display", { mode }));

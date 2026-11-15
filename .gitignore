@@ -41,3 +41,7 @@ docs/*
 .kiro/*
 # Local backlog (not shipped)
 BACKLOG.md
+
+# Device health log (System > Health)
+api/data/health.jsonl
+api/data/health.tmp

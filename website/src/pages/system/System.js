@@ -1,9 +1,10 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useSystemStatus } from "../../hooks/useSystemStatus";
 import { DISPLAY_MODES, LOG_LEVELS } from "../../constants/display";
 import CycleSection from "../../components/system/CycleSection";
+import HealthSection from "../../components/system/HealthSection";
 import {
   startDisplay,
   stopDisplay,
@@ -48,6 +49,34 @@ const BRIGHTNESS_PRESETS = [
 ];
 // Display labels for preset names (backend sends names; UI titles them).
 const PRESET_LABELS = { full: "Full", medium: "Medium", low: "Low" };
+
+// System page tabs. The open tab lives in the URL (?tab=health) so a refresh or
+// a shared link lands on the same tab.
+const TABS = [
+  { key: "display", label: "Display" },
+  { key: "schedule", label: "Schedule" },
+  { key: "health", label: "Health" },
+  { key: "updates", label: "Updates" },
+  { key: "advanced", label: "Advanced" },
+];
+
+function TabBar({ tab, onChange }) {
+  return (
+    <div className="m-tabs" role="tablist">
+      {TABS.map(({ key, label }) => (
+        <button
+          key={key}
+          role="tab"
+          aria-selected={tab === key}
+          className={`m-tab ${tab === key ? "m-tab-active" : ""}`}
+          onClick={() => onChange(key)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function useSystem() {
   const qc = useQueryClient();
@@ -1039,9 +1068,8 @@ function ScheduleSection() {
       <div className="m-card-title">Schedule</div>
       <div style={{ color: "#888", fontSize: "0.72rem", marginBottom: "0.6rem" }}>
         Run an action automatically at a set time on the days you pick, in this device&apos;s local
-        time: switch mode,
-        turn the display off/on, or set brightness. Rules fire at their time; turning the schedule
-        on does not move anything until the next rule time.
+        time: switch mode, turn the display off/on, or set brightness. Rules fire at their time;
+        turning the schedule on does not move anything until the next rule time.
       </div>
 
       <div className="m-btn-row" style={{ marginBottom: "0.6rem" }}>
@@ -1183,7 +1211,12 @@ function ScheduleSection() {
                     <button
                       key={d.key}
                       className={`m-btn ${on ? "m-btn-active" : "m-btn-neutral"}`}
-                      style={{ flex: "0 0 auto", height: 32, padding: "0 10px", fontSize: "0.72rem" }}
+                      style={{
+                        flex: "0 0 auto",
+                        height: 32,
+                        padding: "0 10px",
+                        fontSize: "0.72rem",
+                      }}
                       aria-pressed={on}
                       onClick={() => toggleDay(i, d.key)}
                     >
@@ -1266,6 +1299,11 @@ export default function System() {
     setupSsid,
   } = useSystem();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = TABS.some((t) => t.key === searchParams.get("tab"))
+    ? searchParams.get("tab")
+    : "display";
+  const setTab = (key) => setSearchParams({ tab: key }, { replace: true });
   const [confirmRestart, setConfirmRestart] = React.useState(false);
   const [confirmReset, setConfirmReset] = React.useState(false);
   const [confirmResetWifi, setConfirmResetWifi] = React.useState(false);
@@ -1280,258 +1318,275 @@ export default function System() {
       <div className="m-section-title">System</div>
       <div className="m-section-sub">Display power and Pi management</div>
 
-      <div className="m-card">
-        <div className="m-card-title">Status</div>
-        <div className="m-status-row">
-          <span className="m-label">Display</span>
-          {isLoading ? (
-            <span className="m-badge m-badge-gray">Checking…</span>
-          ) : running ? (
-            <span className="m-badge m-badge-green">Running</span>
-          ) : (
-            <span className="m-badge m-badge-red">Stopped</span>
-          )}
-        </div>
-        <div className="m-status-row">
-          <span className="m-label">Mode</span>
-          <span className="m-badge m-badge-blue">{mode.toUpperCase()}</span>
-        </div>
-      </div>
+      <TabBar tab={tab} onChange={setTab} />
 
-      <div className="m-card">
-        <div className="m-card-title">Power</div>
-        <div className="m-btn-row">
-          <button
-            className="m-btn m-btn-primary"
-            disabled={busy || running}
-            onClick={() => startMut.mutate()}
-          >
-            Turn On
-          </button>
-          <button
-            className="m-btn m-btn-danger"
-            disabled={busy || !running}
-            onClick={() => stopMut.mutate()}
-          >
-            Turn Off
-          </button>
-        </div>
-      </div>
-
-      <div className="m-card">
-        <div className="m-card-title">Switch Mode</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {DISPLAY_MODES.map(({ key, label }) => (
-            <button
-              key={key}
-              className={`m-btn ${mode === key ? "m-btn-active" : "m-btn-neutral"}`}
-              disabled={busy}
-              onClick={() => switchMut.mutate(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <CycleSection />
-      <ScheduleSection />
-
-      <div className="m-card">
-        <div className="m-card-title">Brightness</div>
-        <div style={{ color: "#888", fontSize: "0.72rem", marginBottom: "0.6rem" }}>
-          Dims every display mode. Changing it restarts the display to apply.
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          {presets.map((preset) => (
-            <button
-              key={preset.name}
-              className={`m-btn ${activePreset === preset.name ? "m-btn-active" : "m-btn-neutral"}`}
-              disabled={setBrightnessMut.isPending}
-              onClick={() => setBrightnessMut.mutate(preset.name)}
-            >
-              {preset.label ?? PRESET_LABELS[preset.name] ?? preset.name}
-            </button>
-          ))}
-        </div>
-        {setBrightnessMut.isPending && (
-          <div style={{ color: "#f0a800", fontSize: "0.7rem", marginTop: "0.5rem" }}>
-            Applying… the display will restart.
-          </div>
-        )}
-      </div>
-
-      <div className="m-card">
-        <div className="m-card-title">Pi Actions</div>
-
-        <UpdateSection
-          updateStatus={updateStatus}
-          updateChecking={updateChecking}
-          checkUpdateMut={checkUpdateMut}
-          updateAppMut={updateAppMut}
-          updateStage={updateStage}
-          setStageMut={setStageMut}
-          onConfirmUpdate={() => setConfirmUpdate(true)}
-        />
-
-        <button
-          className="m-btn m-btn-neutral"
-          style={{ width: "100%", marginTop: "0.75rem" }}
-          onClick={() => setConfirmRestart(true)}
-        >
-          🔄 Restart Pi
-        </button>
-      </div>
-
-      <div className="m-card">
-        <div className="m-card-title">Restart Services</div>
-        <div className="m-form-desc" style={{ marginBottom: "0.75rem" }}>
-          Restart an individual service without rebooting the whole Pi.
-        </div>
-        <button
-          className="m-btn m-btn-neutral"
-          style={{ width: "100%" }}
-          disabled={restartApiMut.isPending}
-          onClick={() => restartApiMut.mutate()}
-        >
-          {restartApiMut.isPending ? "Restarting…" : "Restart API Service"}
-        </button>
-        <button
-          className="m-btn m-btn-neutral"
-          style={{ width: "100%", marginTop: 8 }}
-          disabled={restartDisplayMut.isPending}
-          onClick={() => restartDisplayMut.mutate()}
-        >
-          {restartDisplayMut.isPending ? "Restarting…" : "Restart Display Service"}
-        </button>
-        <button
-          className="m-btn m-btn-neutral"
-          style={{ width: "100%", marginTop: 8 }}
-          disabled={restartWebsiteMut.isPending}
-          onClick={() => restartWebsiteMut.mutate()}
-        >
-          {restartWebsiteMut.isPending ? "Restarting…" : "Restart Website Service"}
-        </button>
-        {(restartApiMut.isSuccess ||
-          restartDisplayMut.isSuccess ||
-          restartWebsiteMut.isSuccess) && (
-          <div style={{ color: "#5cb85c", fontSize: "0.8rem", marginTop: 8 }}>
-            Restart triggered.
-          </div>
-        )}
-        {(restartApiMut.isError || restartDisplayMut.isError || restartWebsiteMut.isError) && (
-          <div style={{ color: "#e05050", fontSize: "0.8rem", marginTop: 8 }}>
-            Restart failed. Check the service logs.
-          </div>
-        )}
-      </div>
-
-      <div className="m-card">
-        <div className="m-card-title">Log Level</div>
-        <div className="m-form-desc" style={{ marginBottom: "0.75rem" }}>
-          Controls verbosity for API and display logs. DEBUG logs every request and API call.
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
-          {LOG_LEVELS.map((level) => (
-            <button
-              key={level}
-              className={`m-btn ${currentLogLevel === level ? "m-btn-active" : "m-btn-neutral"}`}
-              disabled={setLogLevelMut.isPending}
-              onClick={() => setLogLevelMut.mutate(level)}
-            >
-              {level}
-            </button>
-          ))}
-        </div>
-        <button
-          className="m-btn m-btn-neutral"
-          style={{ width: "100%", marginTop: "0.75rem" }}
-          onClick={() => navigate("/system/logs")}
-        >
-          📋 View Logs
-        </button>
-      </div>
-
-      <div className="m-card">
-        <div className="m-card-title">Help</div>
-        <button
-          className="m-btn m-btn-neutral"
-          style={{ width: "100%" }}
-          onClick={() => navigate("/system/user-guide")}
-        >
-          📖 User Manual
-        </button>
-      </div>
-
-      {devMode && (
-        <div className="m-card" style={{ borderColor: "#4a3000" }}>
-          <div className="m-card-title" style={{ color: "#f0a800" }}>
-            Dev Mode
-          </div>
-          <button
-            className="m-btn m-btn-neutral"
-            style={{ width: "100%" }}
-            disabled={forgetWifiMut.isPending}
-            onClick={() => setConfirmForgetWifi(true)}
-          >
-            {forgetWifiMut.isPending ? "Clearing…" : "Forget WiFi"}
-          </button>
-          {forgetWifiMut.isSuccess && (
-            <div style={{ color: "#5cb85c", fontSize: "0.8rem", marginTop: 8 }}>
-              WiFi cleared. Use Restart Pi to re-run setup.
+      {tab === "display" && (
+        <>
+          <div className="m-card">
+            <div className="m-card-title">Status</div>
+            <div className="m-status-row">
+              <span className="m-label">Display</span>
+              {isLoading ? (
+                <span className="m-badge m-badge-gray">Checking…</span>
+              ) : running ? (
+                <span className="m-badge m-badge-green">Running</span>
+              ) : (
+                <span className="m-badge m-badge-red">Stopped</span>
+              )}
             </div>
-          )}
-          <div className="m-form-desc" style={{ marginTop: 8 }}>
-            Removes saved WiFi connections and resets the setup flag. Settings untouched. Reboot to
-            trigger the captive portal.
+            <div className="m-status-row">
+              <span className="m-label">Mode</span>
+              <span className="m-badge m-badge-blue">{mode.toUpperCase()}</span>
+            </div>
           </div>
 
-          <button
-            className="m-btn m-btn-neutral"
-            style={{ width: "100%", marginTop: 10 }}
-            onClick={() => setShowLoadingPreview(true)}
-          >
-            Preview Loading Screen
-          </button>
-          <div className="m-form-desc" style={{ marginTop: 8 }}>
-            Shows the post-update reboot animation (the LED board cycling through each display)
-            without running a real update.
+          <div className="m-card">
+            <div className="m-card-title">Power</div>
+            <div className="m-btn-row">
+              <button
+                className="m-btn m-btn-primary"
+                disabled={busy || running}
+                onClick={() => startMut.mutate()}
+              >
+                Turn On
+              </button>
+              <button
+                className="m-btn m-btn-danger"
+                disabled={busy || !running}
+                onClick={() => stopMut.mutate()}
+              >
+                Turn Off
+              </button>
+            </div>
           </div>
+
+          <div className="m-card">
+            <div className="m-card-title">Switch Mode</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {DISPLAY_MODES.map(({ key, label }) => (
+                <button
+                  key={key}
+                  className={`m-btn ${mode === key ? "m-btn-active" : "m-btn-neutral"}`}
+                  disabled={busy}
+                  onClick={() => switchMut.mutate(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="m-card">
+            <div className="m-card-title">Brightness</div>
+            <div style={{ color: "#888", fontSize: "0.72rem", marginBottom: "0.6rem" }}>
+              Dims every display mode. Changing it restarts the display to apply.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+              {presets.map((preset) => (
+                <button
+                  key={preset.name}
+                  className={`m-btn ${activePreset === preset.name ? "m-btn-active" : "m-btn-neutral"}`}
+                  disabled={setBrightnessMut.isPending}
+                  onClick={() => setBrightnessMut.mutate(preset.name)}
+                >
+                  {preset.label ?? PRESET_LABELS[preset.name] ?? preset.name}
+                </button>
+              ))}
+            </div>
+            {setBrightnessMut.isPending && (
+              <div style={{ color: "#f0a800", fontSize: "0.7rem", marginTop: "0.5rem" }}>
+                Applying… the display will restart.
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {tab === "schedule" && (
+        <>
+          <CycleSection />
+          <ScheduleSection />
+        </>
+      )}
+
+      {tab === "health" && <HealthSection />}
+
+      {tab === "updates" && (
+        <div className="m-card">
+          <div className="m-card-title">Updates</div>
+
+          <UpdateSection
+            updateStatus={updateStatus}
+            updateChecking={updateChecking}
+            checkUpdateMut={checkUpdateMut}
+            updateAppMut={updateAppMut}
+            updateStage={updateStage}
+            setStageMut={setStageMut}
+            onConfirmUpdate={() => setConfirmUpdate(true)}
+          />
         </div>
       )}
 
-      <div className="m-card" style={{ borderColor: "#4a1a1a" }}>
-        <div className="m-card-title" style={{ color: "#e05050" }}>
-          Danger Zone
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div>
+      {tab === "advanced" && (
+        <>
+          <div className="m-card">
+            <div className="m-card-title">Restart</div>
             <button
-              className="m-btn m-btn-danger"
+              className="m-btn m-btn-neutral"
               style={{ width: "100%" }}
-              onClick={() => setConfirmReset(true)}
+              onClick={() => setConfirmRestart(true)}
             >
-              Reset Settings
+              🔄 Restart Pi
             </button>
-            <div className="m-form-desc" style={{ marginTop: 6 }}>
-              Restores all settings to factory defaults. WiFi and display stay on.
+            <div className="m-form-desc" style={{ margin: "0.75rem 0" }}>
+              Or restart one service without rebooting the whole Pi.
             </div>
-          </div>
-          <div>
             <button
-              className="m-btn m-btn-danger"
-              style={{ width: "100%", background: "#5a0a0a" }}
-              onClick={() => setConfirmResetWifi(true)}
+              className="m-btn m-btn-neutral"
+              style={{ width: "100%" }}
+              disabled={restartApiMut.isPending}
+              onClick={() => restartApiMut.mutate()}
             >
-              Factory Reset + WiFi Wipe
+              {restartApiMut.isPending ? "Restarting…" : "Restart API Service"}
             </button>
-            <div className="m-form-desc" style={{ marginTop: 6 }}>
-              Resets all settings, removes all saved WiFi networks, and reboots. You'll need to
-              reconnect via the {setupSsid} network.
+            <button
+              className="m-btn m-btn-neutral"
+              style={{ width: "100%", marginTop: 8 }}
+              disabled={restartDisplayMut.isPending}
+              onClick={() => restartDisplayMut.mutate()}
+            >
+              {restartDisplayMut.isPending ? "Restarting…" : "Restart Display Service"}
+            </button>
+            <button
+              className="m-btn m-btn-neutral"
+              style={{ width: "100%", marginTop: 8 }}
+              disabled={restartWebsiteMut.isPending}
+              onClick={() => restartWebsiteMut.mutate()}
+            >
+              {restartWebsiteMut.isPending ? "Restarting…" : "Restart Website Service"}
+            </button>
+            {(restartApiMut.isSuccess ||
+              restartDisplayMut.isSuccess ||
+              restartWebsiteMut.isSuccess) && (
+              <div style={{ color: "#5cb85c", fontSize: "0.8rem", marginTop: 8 }}>
+                Restart triggered.
+              </div>
+            )}
+            {(restartApiMut.isError || restartDisplayMut.isError || restartWebsiteMut.isError) && (
+              <div style={{ color: "#e05050", fontSize: "0.8rem", marginTop: 8 }}>
+                Restart failed. Check the service logs.
+              </div>
+            )}
+          </div>
+
+          <div className="m-card">
+            <div className="m-card-title">Log Level</div>
+            <div className="m-form-desc" style={{ marginBottom: "0.75rem" }}>
+              Controls verbosity for API and display logs. DEBUG logs every request and API call.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
+              {LOG_LEVELS.map((level) => (
+                <button
+                  key={level}
+                  className={`m-btn ${currentLogLevel === level ? "m-btn-active" : "m-btn-neutral"}`}
+                  disabled={setLogLevelMut.isPending}
+                  onClick={() => setLogLevelMut.mutate(level)}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+            <button
+              className="m-btn m-btn-neutral"
+              style={{ width: "100%", marginTop: "0.75rem" }}
+              onClick={() => navigate("/system/logs")}
+            >
+              📋 View Logs
+            </button>
+          </div>
+
+          <div className="m-card">
+            <div className="m-card-title">Help</div>
+            <button
+              className="m-btn m-btn-neutral"
+              style={{ width: "100%" }}
+              onClick={() => navigate("/system/user-guide")}
+            >
+              📖 User Manual
+            </button>
+          </div>
+
+          {devMode && (
+            <div className="m-card" style={{ borderColor: "#4a3000" }}>
+              <div className="m-card-title" style={{ color: "#f0a800" }}>
+                Dev Mode
+              </div>
+              <button
+                className="m-btn m-btn-neutral"
+                style={{ width: "100%" }}
+                disabled={forgetWifiMut.isPending}
+                onClick={() => setConfirmForgetWifi(true)}
+              >
+                {forgetWifiMut.isPending ? "Clearing…" : "Forget WiFi"}
+              </button>
+              {forgetWifiMut.isSuccess && (
+                <div style={{ color: "#5cb85c", fontSize: "0.8rem", marginTop: 8 }}>
+                  WiFi cleared. Use Restart Pi to re-run setup.
+                </div>
+              )}
+              <div className="m-form-desc" style={{ marginTop: 8 }}>
+                Removes saved WiFi connections and resets the setup flag. Settings untouched. Reboot
+                to trigger the captive portal.
+              </div>
+
+              <button
+                className="m-btn m-btn-neutral"
+                style={{ width: "100%", marginTop: 10 }}
+                onClick={() => setShowLoadingPreview(true)}
+              >
+                Preview Loading Screen
+              </button>
+              <div className="m-form-desc" style={{ marginTop: 8 }}>
+                Shows the post-update reboot animation (the LED board cycling through each display)
+                without running a real update.
+              </div>
+            </div>
+          )}
+
+          <div className="m-card" style={{ borderColor: "#4a1a1a" }}>
+            <div className="m-card-title" style={{ color: "#e05050" }}>
+              Danger Zone
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div>
+                <button
+                  className="m-btn m-btn-danger"
+                  style={{ width: "100%" }}
+                  onClick={() => setConfirmReset(true)}
+                >
+                  Reset Settings
+                </button>
+                <div className="m-form-desc" style={{ marginTop: 6 }}>
+                  Restores all settings to factory defaults. WiFi and display stay on.
+                </div>
+              </div>
+              <div>
+                <button
+                  className="m-btn m-btn-danger"
+                  style={{ width: "100%", background: "#5a0a0a" }}
+                  onClick={() => setConfirmResetWifi(true)}
+                >
+                  Factory Reset + WiFi Wipe
+                </button>
+                <div className="m-form-desc" style={{ marginTop: 6 }}>
+                  Resets all settings, removes all saved WiFi networks, and reboots. You'll need to
+                  reconnect via the {setupSsid} network.
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
 
       {factoryResetWifiMut.isSuccess && (
         <div
