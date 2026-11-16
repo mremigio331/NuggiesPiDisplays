@@ -10,6 +10,7 @@ from helpers.config import (
 )
 from helpers.dev_config import is_dev_mode
 from helpers.logger import LOG_DIR
+from helpers.power_led import power_led
 from helpers.process import (
     _PROJECT_ROOT,
     start_display as _start_display,
@@ -128,11 +129,28 @@ def _privileged_command(*args: str) -> list[str]:
 class SystemManager:
     def reboot(self) -> None:
         logger.info("Rebooting Pi")
+        # Every Python-side reboot (Button 1 hold, System page restart, update
+        # without setup) comes through here, so this is the one place to go red.
+        power_led.latch("red")
         result = subprocess.run(_privileged_command("reboot"), capture_output=True)
         if result.returncode != 0:
             err = result.stderr.decode().strip()
             logger.error(f"Reboot failed: {err}")
+            power_led.unlatch()
             raise RuntimeError(f"Reboot failed: {err}")
+
+    def shutdown(self) -> None:
+        """Power the Pi off (power button hold). A tap on GPIO 3 boots it again."""
+        logger.info("Shutting down Pi")
+        # Pulsing red until the API is stopped, which then holds it solid red
+        # until the Pi halts and the LED goes dark.
+        power_led.latch("red", pulse=True)
+        result = subprocess.run(_privileged_command("poweroff"), capture_output=True)
+        if result.returncode != 0:
+            err = result.stderr.decode().strip()
+            logger.error(f"Shutdown failed: {err}")
+            power_led.unlatch()
+            raise RuntimeError(f"Shutdown failed: {err}")
 
     def wifi_service_restart(self) -> None:
         subprocess.Popen(
@@ -262,6 +280,9 @@ class SystemManager:
     def factory_reset(self) -> None:
         """Reset settings to defaults, pull latest code, reapply setup, restart service."""
         logger.info("Factory reset: restoring default settings + full re-setup")
+        # Blue pulse while setup.sh runs; the reboot that ends it stops the API,
+        # which turns the LED red. No update lock is taken here, so latch it.
+        power_led.latch("blue", pulse=True)
         self.stop_display()
 
         # Fix settings file permissions in case root owns it from a previous run
@@ -291,6 +312,8 @@ class SystemManager:
         logger.info(
             "Full factory reset: settings + re-setup + WiFi wipe + service restart"
         )
+        # Blue pulse while setup.sh runs (see factory_reset); red comes with the reboot.
+        power_led.latch("blue", pulse=True)
         self.stop_display()
 
         # Fix settings file permissions in case root owns it from a previous run
@@ -446,6 +469,11 @@ class SystemManager:
         (EXIT trap), and a stale lock is cleared on the next API boot.
         """
         await asyncio.sleep(1)  # let HTTP response flush before blocking
+
+        # Blue pulse right away. The power LED status loop keeps it pulsing while the
+        # update lock is held and returns to the live status when setup.sh
+        # releases it (no-reboot updates); a reboot turns it red.
+        power_led.set_color("blue", pulse=True)
 
         scoped = bool(component) and component != "all"
 

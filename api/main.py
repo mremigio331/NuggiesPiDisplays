@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from helpers.config import read_settings
 from helpers.process import start_display, is_running
 from helpers.buttons import poll_buttons
+from helpers.power_led import power_led, run_power_led
 from helpers.wifi_state import WIFI_FLAG
 from helpers.update_check import run_background_checker
 from helpers.schedule import run_scheduler
@@ -77,7 +78,14 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(run_timer_watcher())
     # Logs CPU temp, CPU use and memory every 10 minutes (System > Health).
     asyncio.create_task(run_health_logger())
+    # Power button LED tracks device status: green display on, blue display on
+    # with an update ready, red display off, blue pulse while updating, green
+    # pulse in WiFi setup.
+    asyncio.create_task(run_power_led())
     yield
+    # Service stopping (systemctl stop/restart, or the reboot/shutdown that stops
+    # every service) — show red. Latched so the status loop can't repaint it.
+    power_led.latch("red")
 
 
 # Disable FastAPI's internal docs routes — they're registered as low-priority Route objects

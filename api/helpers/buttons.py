@@ -3,14 +3,21 @@ import logging
 import threading
 import time
 
-from constants import DISPLAY_MODES, SPORTS_CYCLE, BUTTON_1_PIN, BUTTON_2_PIN
+from constants import (
+    DISPLAY_MODES,
+    SPORTS_CYCLE,
+    BUTTON_1_PIN,
+    BUTTON_2_PIN,
+    POWER_BUTTON_PIN,
+)
 from helpers.config import (
     read_settings,
     set_active_cycle,
     write_settings,
     write_overlay,
 )
-from helpers.process import start_display
+from helpers.power_led import power_led
+from helpers.process import start_display, stop_display, is_running
 from helpers.system import SystemManager
 from helpers.timers import dismiss_oldest_done
 from helpers.wifi_state import WIFI_FLAG
@@ -26,6 +33,10 @@ FACTORY_RESET_HOLD_SECONDS = 10
 #   >= RESET               -> factory reset
 BOTH_CYCLE_MIN_SECONDS = 3
 BOTH_PROMPT_SECONDS = 5
+# Power button: tap toggles the display; hold this long to shut the Pi down.
+POWER_HOLD_SECONDS = 5
+# Shorter than this is contact noise, not a press.
+POWER_MIN_PRESS_SECONDS = 0.05
 
 
 class ButtonManager:
@@ -37,6 +48,26 @@ class ButtonManager:
         # Button 1 solo hold (restart)
         self._btn1_monitoring = False
         self._btn1_lock = threading.Lock()
+        # Power button press monitor — one at a time
+        self._power_monitoring = False
+        self._power_lock = threading.Lock()
+
+    def _init_power_button(self):
+        """Power button: tap toggles the display, hold POWER_HOLD_SECONDS = shutdown.
+
+        Set up on its own so a failure here (e.g. a leftover
+        `dtoverlay=gpio-shutdown` still claiming GPIO 3 until the next reboot)
+        never takes Buttons 1 and 2 down with it.
+        """
+        GPIO = self._gpio
+        try:
+            GPIO.setup(POWER_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            GPIO.add_event_detect(
+                POWER_BUTTON_PIN, GPIO.FALLING, callback=self._on_power, bouncetime=300
+            )
+            logger.info(f"Power button initialized (pin {POWER_BUTTON_PIN})")
+        except Exception as e:
+            logger.warning(f"Power button not available: {e}")
 
     def _init_gpio(self):
         try:
@@ -57,8 +88,62 @@ class ButtonManager:
             )
         except Exception as e:
             logger.warning(f"GPIO buttons not available: {e}")
+            return
+        self._init_power_button()
 
     # --- GPIO interrupt callbacks (run in GPIO's internal thread) ---
+
+    def _on_power(self, channel):
+        with self._power_lock:
+            if self._power_monitoring:
+                return
+            self._power_monitoring = True
+        threading.Thread(target=self._monitor_power_press, daemon=True).start()
+
+    # --- Power button press monitor (tap = display toggle, hold = shutdown) ---
+
+    def _monitor_power_press(self):
+        GPIO = self._gpio
+        press_time = time.monotonic()
+        try:
+            while True:
+                time.sleep(0.05)
+                elapsed = time.monotonic() - press_time
+
+                if GPIO.input(POWER_BUTTON_PIN) != GPIO.LOW:
+                    if elapsed >= POWER_MIN_PRESS_SECONDS:
+                        self._toggle_display()
+                    return
+
+                if elapsed >= POWER_HOLD_SECONDS:
+                    # Allowed in WiFi setup mode too — a power button must
+                    # always be able to turn the device off.
+                    self._shutdown()
+                    while GPIO.input(POWER_BUTTON_PIN) == GPIO.LOW:
+                        time.sleep(0.05)
+                    return
+        except Exception:
+            logger.exception("Power button monitor crashed")
+        finally:
+            with self._power_lock:
+                self._power_monitoring = False
+
+    def _toggle_display(self) -> None:
+        if not WIFI_FLAG.exists():
+            logger.info("Power button tapped — ignored (WiFi setup mode)")
+            return
+        try:
+            if is_running():
+                logger.info("Power button tapped — display OFF")
+                stop_display()
+                power_led.set_color("red")
+            else:
+                mode = read_settings().get("active_display", DISPLAY_MODES[0])
+                logger.info(f"Power button tapped — display ON ({mode})")
+                start_display(mode)
+                power_led.set_color("green")
+        except Exception as e:
+            logger.error(f"Power button toggle failed: {e}")
 
     def _on_btn1(self, channel):
         if self._gpio.input(BUTTON_2_PIN) == self._gpio.LOW:
@@ -310,6 +395,15 @@ class ButtonManager:
             SystemManager().reboot()
         except Exception as e:
             logger.error(f"Restart failed: {e}")
+
+    def _shutdown(self) -> None:
+        logger.info(
+            f"Shutdown triggered — power button held for {POWER_HOLD_SECONDS} seconds"
+        )
+        try:
+            SystemManager().shutdown()
+        except Exception as e:
+            logger.error(f"Shutdown failed: {e}")
 
     def _factory_reset(self) -> None:
         logger.info("Factory reset triggered — both buttons held for 10 seconds")

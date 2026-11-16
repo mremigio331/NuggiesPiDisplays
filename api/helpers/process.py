@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 import logging
@@ -22,6 +23,13 @@ _DISPLAY_SCRIPTS = {
 }
 
 _DISPLAY_LOG = LOG_DIR / "display.log"
+
+# One display start/stop at a time across the whole API. Buttons (GPIO callback
+# and hold-monitor threads), the cycler, the scheduler and HTTP handlers all
+# switch the display. Unserialized, two callers could each kill the old process
+# and then each spawn a new one — two displays drawing over each other on the
+# panel with only one tracked in the PID file.
+_switch_lock = threading.Lock()
 
 
 def _privileged_command(*args: str) -> list[str]:
@@ -104,7 +112,11 @@ def _kill_running() -> None:
 def start_display(mode: str) -> int:
     if mode not in _DISPLAY_SCRIPTS:
         raise ValueError(f"Unknown mode: {mode}")
+    with _switch_lock:
+        return _start_display_locked(mode)
 
+
+def _start_display_locked(mode: str) -> int:
     log.debug(f"start_display: mode={mode}")
     _kill_running()
 
@@ -145,7 +157,8 @@ def start_display(mode: str) -> int:
 
 def stop_display() -> None:
     log.debug("stop_display called")
-    _kill_running()
+    with _switch_lock:
+        _kill_running()
 
 
 def is_running() -> bool:

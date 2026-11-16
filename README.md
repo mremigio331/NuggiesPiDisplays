@@ -55,6 +55,7 @@ The **System** page manages the device itself:
 - Adafruit RGB Matrix HAT/Bonnet
 - Raspberry Pi (tested on Pi 4)
 - 2× Adafruit STEMMA tactile buttons (3-wire: signal/3.3V/GND)
+- Adafruit Rugged Metal Pushbutton, 16mm 6V RGB momentary (#3350) — power button
 
 ### Button Wiring
 
@@ -63,6 +64,17 @@ The **System** page manages the device itself:
 | **White** (signal) | Pin 22 / GPIO 25 | Pin 35 / GPIO 19 |
 | **Red** (3.3V) | Pin 17 | Pin 1 |
 | **Black** (GND) | Pin 20 | Pin 34 |
+
+**Power button** (switch and RGB LED are separate circuits):
+
+| Tab | Pin / GPIO | Role |
+|---|---|---|
+| Gold (switch) | Pin 5 / GPIO 3 | Power switch (tap / hold / wake) |
+| Gold (switch) | Pin 6 / GND | Switch ground |
+| `C+` (LED anode) | Pin 18 / GPIO 24 | Driven HIGH to power the LED |
+| `R` | Pin 19 / GPIO 10 | LOW = red on |
+| `G` | Pin 21 / GPIO 9 | LOW = green on |
+| `B` | Pin 23 / GPIO 11 | LOW = blue on |
 
 See [display/BUTTON_WIRING.md](display/BUTTON_WIRING.md) for the full header map.
 
@@ -85,6 +97,24 @@ See [display/BUTTON_WIRING.md](display/BUTTON_WIRING.md) for the full header map
 
 While both buttons are held, single-button cycling is suppressed so the display
 doesn't change underneath you mid-hold.
+
+**Power button:**
+- **Tap** — turn the display on/off. The Pi and website stay up.
+- **Hold 5s** — clean shutdown of the Pi.
+- **Tap while the Pi is off** — boots it (GPIO 3 to GND, built into the Pi).
+
+The power button's LED ring shows status:
+
+| Color | Meaning |
+|---|---|
+| Green | Display on |
+| Blue | Display on, and an update is ready (checked hourly) |
+| Blue, pulsing | Update or factory reset in progress |
+| Red | Display off (Pi still on), or rebooting |
+| Red, pulsing | Shutting down |
+| White, pulsing | Booting |
+| Green, pulsing | WiFi setup mode |
+| Dark | Pi fully off |
 
 ---
 

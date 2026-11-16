@@ -141,16 +141,21 @@ install_node() {
 
 # ---------------------------------------------------------------------------
 # Python packages
+#
+# --no-cache-dir on every install: a corrupt entry in root's pip cache (a
+# cached wheel .metadata file that isn't valid UTF-8) aborts pip with a
+# UnicodeDecodeError and stops the whole install. Skipping the cache costs a
+# few re-downloads and also spares the SD card the writes.
 # ---------------------------------------------------------------------------
 install_python_packages() {
     echo "--- Installing Python packages (API)..."
-    pip install -r requirements-api.txt --break-system-packages --ignore-installed
+    pip install -r requirements-api.txt --break-system-packages --ignore-installed --no-cache-dir
 
     echo "--- Installing Python packages (captive portal — root, for systemd service)..."
-    pip install -r requirements-api.txt --break-system-packages --ignore-installed
+    pip install -r requirements-api.txt --break-system-packages --ignore-installed --no-cache-dir
 
     echo "--- Installing Python packages (display — root, for sudo python3)..."
-    pip install -r requirements-display.txt --break-system-packages --ignore-installed
+    pip install -r requirements-display.txt --break-system-packages --ignore-installed --no-cache-dir
 }
 
 # ---------------------------------------------------------------------------
@@ -209,6 +214,7 @@ setup_sudoers() {
     PYTHON=$(command -v python3)
     BASH=$(command -v bash)
     REBOOT=$(command -v reboot 2>/dev/null || echo /usr/sbin/reboot)
+    POWEROFF=$(command -v poweroff 2>/dev/null || echo /usr/sbin/poweroff)
     SYSTEMCTL=$(command -v systemctl 2>/dev/null || echo /usr/bin/systemctl)
     CHMOD=$(command -v chmod 2>/dev/null || echo /usr/bin/chmod)
     IPTABLES=$(command -v iptables 2>/dev/null || echo /usr/sbin/iptables)
@@ -231,6 +237,7 @@ $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/setup/main.py
 # the script path is fixed so this does not broaden the grant to other scripts.
 $USER ALL=(ALL) NOPASSWD: $BASH $SCRIPT_DIR/setup.sh, $BASH $SCRIPT_DIR/setup.sh *
 $USER ALL=(ALL) NOPASSWD: $REBOOT
+$USER ALL=(ALL) NOPASSWD: $POWEROFF
 $USER ALL=(ALL) NOPASSWD: $SYSTEMCTL restart nuggies-wifi-setup.service
 $USER ALL=(ALL) NOPASSWD: $SYSTEMCTL restart nuggies-api.service
 # Kill/sweep display processes (which run as root via sudo)
@@ -416,13 +423,23 @@ EOF
 # ---------------------------------------------------------------------------
 # Cron helper — add an entry only if it isn't already present
 # ---------------------------------------------------------------------------
+#
+# Always $USER's crontab. setup.sh runs as root (it re-execs under sudo), so a
+# bare `crontab` edits ROOT's crontab — the API then starts twice at boot, once
+# as $USER and once as root, and both drive the display and fight over GPIO.
+# A copy of the entry in root's crontab (left by older runs) is removed.
+# ---------------------------------------------------------------------------
 add_cron_if_missing() {
     local entry="$1"
     local label="$2"
-    if crontab -l 2>/dev/null | grep -qF "$entry"; then
+    if crontab -l 2>/dev/null | grep -qxF "$entry"; then
+        crontab -l 2>/dev/null | grep -vxF "$entry" | crontab -
+        echo "  [removed] root's duplicate cron: $label"
+    fi
+    if crontab -u "$USER" -l 2>/dev/null | grep -qF "$entry"; then
         echo "  [skip] Cron already has: $label"
     else
-        (crontab -l 2>/dev/null || true; echo "$entry") | crontab -
+        (crontab -u "$USER" -l 2>/dev/null || true; echo "$entry") | crontab -u "$USER" -
         echo "  [added] Cron: $label"
     fi
 }
@@ -555,6 +572,67 @@ disable_onboard_audio() {
 }
 
 # ---------------------------------------------------------------------------
+# Power button — switch on GPIO 3 (pin 5) + GND (pin 6), RGB LED on GPIO 24
+# (anode) and GPIO 10/9/11 (R/G/B cathodes, LOW = on).
+#
+#   tap        -> display on/off        (API, helpers/buttons.py)
+#   hold 5s    -> Pi shutdown           (API, sudo poweroff)
+#   tap when off -> Pi boots            (Pi firmware wakes on GPIO 3 to GND)
+#
+# - Removes dtoverlay=gpio-shutdown if an earlier setup.sh added it: that
+#   overlay claims GPIO 3 and makes every press a shutdown.
+# - gpio= lines make the firmware light the LED solid white at power-on,
+#   before Linux runs.
+# - nuggies-led-boot.service pulses it white from early boot until the API is
+#   up and takes over.
+# ---------------------------------------------------------------------------
+setup_power_button() {
+    local CONFIG=""
+    if [[ -f /boot/firmware/config.txt ]]; then
+        CONFIG="/boot/firmware/config.txt"
+    elif [[ -f /boot/config.txt ]]; then
+        CONFIG="/boot/config.txt"
+    else
+        echo "Cannot find config.txt, skipping power button setup."
+        return
+    fi
+
+    echo "--- Configuring power button..."
+    if grep -q "^dtoverlay=gpio-shutdown" "$CONFIG"; then
+        sudo sed -i '/^dtoverlay=gpio-shutdown/d' "$CONFIG"
+        echo "Removed dtoverlay=gpio-shutdown (a press now toggles the display). Takes effect after reboot."
+    fi
+    local line
+    for line in "gpio=24=op,dh" "gpio=9-11=op,dl"; do
+        if ! grep -qx "$line" "$CONFIG"; then
+            echo "$line" | sudo tee -a "$CONFIG" > /dev/null
+            echo "Added $line (boot-time LED). Takes effect after reboot."
+        fi
+    done
+
+    SERVICE_DST="/etc/systemd/system/nuggies-led-boot.service"
+    sudo tee "$SERVICE_DST" > /dev/null <<SERVICE
+[Unit]
+Description=Nuggies power button LED boot pulse
+DefaultDependencies=no
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=$(command -v python3) $SCRIPT_DIR/scripts/boot_led.py
+User=root
+Restart=no
+
+[Install]
+WantedBy=sysinit.target
+SERVICE
+    sudo chmod 644 "$SERVICE_DST"
+    sudo systemctl daemon-reload
+    sudo systemctl enable nuggies-led-boot.service
+    echo "Power button configured (boot LED service enabled)."
+}
+
+# ---------------------------------------------------------------------------
 # Marker ownership — every marker file in the WiFi flow is written by *both*
 # the root boot script and the API (which runs as $USER), so each one has to be
 # owned by $USER:$USER for both writers to work.
@@ -657,10 +735,11 @@ verify_permissions() {
     echo "--- Verifying permissions (provisioning-time gate)..."
 
     local SUDOERS_FILE="/etc/sudoers.d/nuggies-display"
-    local PYTHON BASH REBOOT SYSTEMCTL CHMOD IPTABLES
+    local PYTHON BASH REBOOT POWEROFF SYSTEMCTL CHMOD IPTABLES
     PYTHON=$(command -v python3)
     BASH=$(command -v bash)
     REBOOT=$(command -v reboot 2>/dev/null || echo /usr/sbin/reboot)
+    POWEROFF=$(command -v poweroff 2>/dev/null || echo /usr/sbin/poweroff)
     SYSTEMCTL=$(command -v systemctl 2>/dev/null || echo /usr/bin/systemctl)
     CHMOD=$(command -v chmod 2>/dev/null || echo /usr/bin/chmod)
     IPTABLES=$(command -v iptables 2>/dev/null || echo /usr/sbin/iptables)
@@ -756,6 +835,9 @@ verify_permissions() {
     # reboot (it reboots the device):
     _assert_sudoers_line "grant: reboot" \
         "$USER ALL=(ALL) NOPASSWD: $REBOOT"
+    # poweroff (power button hold; it shuts the device down):
+    _assert_sudoers_line "grant: poweroff" \
+        "$USER ALL=(ALL) NOPASSWD: $POWEROFF"
     # systemctl restart of the wifi-setup service (it drops the WiFi association);
     # the .service suffix is load-bearing — the bare form does not match:
     _assert_sudoers_line "grant: systemctl restart nuggies-wifi-setup.service" \
@@ -918,7 +1000,7 @@ update_api() {
         echo "--- API unchanged — skipping (use --force to reinstall)."; return 0
     fi
     echo "--- Updating API dependencies..."
-    pip3 install --break-system-packages --ignore-installed -r "$SCRIPT_DIR/requirements-api.txt"
+    pip3 install --break-system-packages --ignore-installed --no-cache-dir -r "$SCRIPT_DIR/requirements-api.txt"
     _RESTART_API=1
 }
 
@@ -927,7 +1009,7 @@ update_display() {
         echo "--- Display unchanged — skipping (use --force to reinstall)."; return 0
     fi
     echo "--- Updating display dependencies..."
-    pip3 install --break-system-packages --ignore-installed -r "$SCRIPT_DIR/requirements-display.txt"
+    pip3 install --break-system-packages --ignore-installed --no-cache-dir -r "$SCRIPT_DIR/requirements-display.txt"
     _RESTART_DISPLAY=1
 }
 
@@ -967,6 +1049,7 @@ update_system() {
     setup_avahi
     setup_isolcpus
     disable_onboard_audio
+    setup_power_button
     setup_logs
     ensure_wifi_flag
     normalize_marker_ownership
@@ -1085,6 +1168,7 @@ install_wifi_setup_service
 disable_wifi_power_save
 setup_isolcpus
 disable_onboard_audio
+setup_power_button
 init_settings
 verify_display
 ensure_wifi_flag
