@@ -41,3 +41,11 @@ def get_log_level() -> str:
         return resp.json().get("log_level", "INFO")
     except requests.RequestException:
         return "INFO"
+
+
+def clear_force_view() -> None:
+    """Mark a "show now" request as consumed."""
+    try:
+        requests.put(f"{_BASE}/weather/settings", json={"force_view": ""}, timeout=5)
+    except requests.RequestException as e:
+        logger.error(f"Failed to clear force_view: {e}")

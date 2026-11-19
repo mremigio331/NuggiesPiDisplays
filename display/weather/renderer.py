@@ -8,9 +8,11 @@ Screen 3 (forecast):  5 columns — day / icon / hi / lo
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from pathlib import Path
 
+import sky as sky_mod
 from icons import draw_icon, wmo_to_icon
 from matrix import USING_HARDWARE
 
@@ -210,3 +212,146 @@ def render_forecast(canvas, data: dict) -> None:
         draw_icon(canvas, icon_key, x=x + 6, y=9, scale=1)
         _draw_text(canvas, str(hi), x=x + 2, baseline_y=24, color=white, font="small")
         _draw_text(canvas, str(lo), x=x + 2, baseline_y=31, color=gold, font="small")
+
+
+# ---------------------------------------------------------------------------
+# Screen 4 — Sky (sun by day, moon by night, over Mount Rainier)
+# ---------------------------------------------------------------------------
+#
+# Layout (64×32):
+#   y=0-7    local time at the weather location (4×6, centred)
+#   y=8-31   sun/moon on a half-circle arch, drawn BEFORE the mountains so it
+#            rises from and sets behind them
+#
+_ARC_X0, _ARC_X1 = 5, 58  # horizontal travel (left horizon -> right horizon)
+_ARC_Y_HORIZON = 29  # centre y at sunrise/sunset (hidden behind the ground)
+_ARC_Y_PEAK = 11  # centre y at solar noon (just clears the summit)
+_BODY_R = 3
+_GROUND_TOP = 25  # y of the first ground row
+_STARS = [(3, 11), (11, 9), (20, 12), (42, 9), (52, 14), (60, 9)]
+
+# Mount Rainier, as seen from Seattle: a broad glaciated dome with the Liberty
+# Cap shoulder on the left and the rocky Little Tahoma spur on the right.
+# website/src/pages/weather/SkyCard.js mirrors these numbers — keep in sync.
+_RAINIER = [  # (x, top y) outline points, joined by straight lines
+    (0, 25),
+    (2, 25),
+    (8, 23),
+    (14, 21),
+    (19, 19),
+    (23, 17),
+    (26, 16),
+    (28, 15),
+    (30, 14),
+    (35, 14),
+    (38, 15),
+    (41, 17),
+    (42, 18),
+    (44, 17),
+    (46, 19),
+    (50, 21),
+    (55, 23),
+    (61, 25),
+    (63, 25),
+]
+_SNOW_LINE = 20  # snow covers everything above this row...
+_GLACIERS = {15: 22, 16: 23, 21: 22, 25: 21, 31: 21, 39: 22, 40: 23, 48: 22}
+_BARE_ROCK = {(44, 17), (43, 18), (44, 18), (45, 18)}  # Little Tahoma
+_SHADE_FROM_X = 33  # snow right of the summit is in shadow
+_TREELINE = 23  # forest on the low slopes from this row down
+
+_C_SNOW = (210, 220, 235)
+_C_SNOW_SHADE = (150, 165, 195)
+_C_ROCK = (75, 80, 105)
+_C_FOREST = (25, 60, 40)
+_C_GROUND = (15, 38, 28)
+
+
+def _rainier_top(x: int) -> int:
+    for (x0, y0), (x1, y1) in zip(_RAINIER, _RAINIER[1:]):
+        if x0 <= x <= x1:
+            return round(y0 + (y1 - y0) * (x - x0) / (x1 - x0))
+    return _GROUND_TOP
+
+
+def _rainier_pixel(x: int, y: int):
+    """Colour of the mountain/ground at (x, y), or None for open sky."""
+    if y < _rainier_top(x):
+        return None
+    if y >= _GROUND_TOP:
+        return _C_GROUND
+    snow_bottom = max(_SNOW_LINE, _GLACIERS.get(x, 0))
+    if y < snow_bottom and (x, y) not in _BARE_ROCK:
+        return _C_SNOW_SHADE if x >= _SHADE_FROM_X else _C_SNOW
+    if y >= _TREELINE:
+        return _C_FOREST
+    return _C_ROCK
+
+
+def _put(canvas, x: int, y: int, rgb) -> None:
+    if 0 <= x < MATRIX_W and 0 <= y < MATRIX_H:
+        canvas.SetPixel(x, y, *rgb)
+
+
+def _draw_sun(canvas, cx: int, cy: int) -> None:
+    for dy in range(-_BODY_R, _BODY_R + 1):
+        for dx in range(-_BODY_R, _BODY_R + 1):
+            if dx * dx + dy * dy <= 10:
+                _put(canvas, cx + dx, cy + dy, (255, 200, 0))
+
+
+def _draw_moon(canvas, cx: int, cy: int, phase: float) -> None:
+    c = math.cos(2 * math.pi * phase)  # 1 new, 0 quarter, -1 full
+    waxing = phase < 0.5
+    for dy in range(-_BODY_R, _BODY_R + 1):
+        w = math.sqrt(max(0.0, 10.5 - dy * dy))
+        for dx in range(-_BODY_R, _BODY_R + 1):
+            if dx * dx + dy * dy > 10:
+                continue
+            # Lit side is the right in the first half of the cycle, left after.
+            lit = dx >= w * c - 0.01 if waxing else dx <= -w * c + 0.01
+            _put(canvas, cx + dx, cy + dy, (225, 230, 245) if lit else (45, 50, 70))
+
+
+def _draw_mountains(canvas, night: bool) -> None:
+    dim = 0.5 if night else 1.0
+    for x in range(MATRIX_W):
+        for y in range(_rainier_top(x), MATRIX_H):
+            r, g, b = _rainier_pixel(x, y)
+            _put(canvas, x, y, (int(r * dim), int(g * dim), int(b * dim)))
+
+
+def render_sky(canvas, data: dict) -> bool:
+    """Draw the sky screen. Returns False (nothing drawn) when sun times are
+    unavailable, so the caller can skip this screen."""
+    pos = sky_mod.compute(data.get("sky"))
+    if pos is None:
+        return False
+
+    _clear(canvas)
+    now = pos["local_now"]
+    h = now.hour % 12 or 12
+    ampm = "A" if now.hour < 12 else "P"
+    time_str = f"{h}:{now.strftime('%M')}{ampm}"
+    _draw_text(
+        canvas,
+        time_str,
+        x=(MATRIX_W - len(time_str) * _CW_SMALL) // 2,
+        baseline_y=7,
+        color=_color(255, 255, 255),
+        font="small",
+    )
+
+    p = pos["progress"]
+    cx = round(_ARC_X0 + p * (_ARC_X1 - _ARC_X0))
+    cy = round(_ARC_Y_HORIZON - (_ARC_Y_HORIZON - _ARC_Y_PEAK) * math.sin(math.pi * p))
+
+    if pos["body"] == "moon":
+        for sx, sy in _STARS:
+            _put(canvas, sx, sy, (90, 95, 120))
+        _draw_moon(canvas, cx, cy, pos["phase"])
+    else:
+        _draw_sun(canvas, cx, cy)
+
+    _draw_mountains(canvas, night=pos["body"] == "moon")  # last: sun/moon set behind it
+    return True

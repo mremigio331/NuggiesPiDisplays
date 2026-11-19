@@ -1,8 +1,16 @@
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { getWeatherData } from "../../services/API";
+import {
+  getWeatherData,
+  getWeatherSettings,
+  lockWeatherView,
+  showWeatherView,
+} from "../../services/API";
+import { useSystemStatus } from "../../hooks/useSystemStatus";
+import { useNotify } from "../../hooks/useNotify";
 import SwitchDisplayButton from "../../components/shared/SwitchDisplayButton";
+import SkyCard from "./SkyCard";
 
 const ICON_MAP = {
   0: "☀️",
@@ -52,8 +60,110 @@ const ICON_BTN = {
   lineHeight: 1,
 };
 
+// "2026-11-19T03:45:00Z" -> "7:45 PM" in the viewer's own clock
+const fmtTime = (iso) =>
+  iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+
+// Card heading with the matrix controls for that screen:
+//   Show now: jump the matrix to this screen once, then keep rotating.
+//   Lock: keep the matrix on this screen for an hour (or until unlocked).
+function CardHeading({
+  title,
+  view,
+  canControl,
+  lockedView,
+  lockedUntil,
+  onLockChange,
+  lockPending,
+}) {
+  const { error: notifyError } = useNotify();
+  const showMut = useMutation({
+    mutationFn: () => showWeatherView(view),
+    onSuccess: () => setTimeout(() => showMut.reset(), 3000),
+    onError: (err) => notifyError(err),
+  });
+  const isLocked = lockedView === view;
+  const anyLocked = !!lockedView;
+  const btn = { fontSize: "0.75rem", padding: "4px 10px" };
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 6,
+      }}
+    >
+      <div className="m-card-title" style={{ margin: 0 }}>
+        {title}
+      </div>
+      {canControl && (
+        <div style={{ display: "flex", gap: 6 }}>
+          {!anyLocked && (
+            <button
+              className="m-btn m-btn-neutral"
+              style={btn}
+              disabled={showMut.isPending || showMut.isSuccess}
+              onClick={() => showMut.mutate()}
+              title="Jump the display to this screen now"
+            >
+              {showMut.isPending ? "…" : showMut.isSuccess ? "Sent ✓" : "Show now"}
+            </button>
+          )}
+          <button
+            className={`m-btn ${isLocked ? "m-btn-active" : "m-btn-neutral"}`}
+            style={btn}
+            disabled={lockPending}
+            onClick={() => onLockChange(isLocked ? "" : view)}
+            title={
+              isLocked
+                ? "Unlock and resume the rotation"
+                : "Keep the display on this screen for 1 hour"
+            }
+          >
+            {isLocked ? `🔒 Until ${fmtTime(lockedUntil)}` : "Lock"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Weather() {
   const navigate = useNavigate();
+  const { data: systemStatus } = useSystemStatus({ refetchInterval: 10000 });
+  const canControl = systemStatus?.active_display === "weather";
+
+  const qc = useQueryClient();
+  const { error: notifyError } = useNotify();
+  const { data: weatherSettings } = useQuery({
+    queryKey: ["weatherSettings"],
+    queryFn: getWeatherSettings,
+  });
+  const lockedView = weatherSettings?.locked_view || "";
+  const lockedUntil = weatherSettings?.locked_until || "";
+  // Drop the lock badge on its own when the hour runs out.
+  React.useEffect(() => {
+    if (!lockedUntil) return undefined;
+    const ms = new Date(lockedUntil).getTime() - Date.now();
+    const id = setTimeout(
+      () => qc.invalidateQueries({ queryKey: ["weatherSettings"] }),
+      Math.max(0, ms) + 2000
+    );
+    return () => clearTimeout(id);
+  }, [lockedUntil, qc]);
+  const lockMut = useMutation({
+    mutationFn: (view) => lockWeatherView(view),
+    onSuccess: (saved) => qc.setQueryData(["weatherSettings"], saved),
+    onError: (err) => notifyError(err),
+  });
+  const headingProps = {
+    canControl,
+    lockedView,
+    lockedUntil,
+    onLockChange: (view) => lockMut.mutate(view),
+    lockPending: lockMut.isPending,
+  };
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["weatherData"],
     queryFn: getWeatherData,
@@ -61,7 +171,7 @@ export default function Weather() {
     refetchInterval: 30 * 60 * 1000,
   });
 
-  const { current = {}, hourly = [], daily = [], location = {} } = data ?? {};
+  const { current = {}, hourly = [], daily = [], location = {}, sky } = data ?? {};
 
   const header = (
     <div
@@ -131,6 +241,7 @@ export default function Weather() {
 
       {/* ── Current ──────────────────────────────────────────────── */}
       <div className="m-card">
+        <CardHeading title="Now" view="current" {...headingProps} />
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           <div style={{ fontSize: "3.5rem", lineHeight: 1 }}>
             {weatherIcon(current.weather_code)}
@@ -154,7 +265,7 @@ export default function Weather() {
       {/* ── Hourly ───────────────────────────────────────────────── */}
       {hourly.length > 0 && (
         <div className="m-card">
-          <div className="m-card-title">Next 6 Hours</div>
+          <CardHeading title="Next 6 Hours" view="hourly" {...headingProps} />
           <div style={{ display: "flex", justifyContent: "space-between", gap: 4 }}>
             {hourly.map((h, i) => (
               <div key={i} style={{ flex: 1, textAlign: "center" }}>
@@ -182,7 +293,7 @@ export default function Weather() {
       {/* ── 5-Day ────────────────────────────────────────────────── */}
       {daily.length > 0 && (
         <div className="m-card">
-          <div className="m-card-title">5-Day Forecast</div>
+          <CardHeading title="5-Day Forecast" view="forecast" {...headingProps} />
           {daily.map((d, i) => (
             <div
               key={i}
@@ -215,6 +326,14 @@ export default function Weather() {
               </span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── Sky (sun by day, moon by night) ──────────────────────── */}
+      {sky?.sunrise?.length > 0 && (
+        <div className="m-card">
+          <CardHeading title="Sky" view="sky" {...headingProps} />
+          <SkyCard sky={sky} />
         </div>
       )}
 

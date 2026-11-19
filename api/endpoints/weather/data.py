@@ -1,6 +1,9 @@
+import json
 import logging
+import os
 import time
 from datetime import datetime
+from pathlib import Path
 import requests
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -10,8 +13,32 @@ from helpers.geolocation import get_ip_geolocation
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-_cache: dict = {"data": None, "fetched_at": 0.0}
 CACHE_TTL = 30 * 60  # 30 minutes
+_CACHE_FILE = Path(__file__).resolve().parents[2] / "data" / "weather_cache.json"
+
+
+def _load_cache() -> dict:
+    """Reload the last response from disk so API restarts/reloads and reboots
+    do not trigger a fresh Open-Meteo call."""
+    try:
+        saved = json.loads(_CACHE_FILE.read_text())
+        if isinstance(saved.get("data"), dict):
+            return {"data": saved["data"], "fetched_at": float(saved["fetched_at"])}
+    except Exception:
+        pass
+    return {"data": None, "fetched_at": 0.0}
+
+
+def _save_cache() -> None:
+    try:
+        tmp = _CACHE_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(_cache))
+        os.replace(tmp, _CACHE_FILE)  # atomic: never leaves a half-written file
+    except Exception as e:
+        logger.warning(f"Could not save weather cache: {e}")
+
+
+_cache: dict = _load_cache()
 
 WMO_DESCRIPTIONS = {
     0: "Clear sky",
@@ -43,6 +70,7 @@ WMO_DESCRIPTIONS = {
 
 def invalidate_cache() -> None:
     _cache["fetched_at"] = 0.0
+    _save_cache()
 
 
 def _get_ip_location() -> dict | None:
@@ -64,7 +92,7 @@ def _fetch_open_meteo(lat: float, lon: float, units: str) -> dict:
         f"?latitude={lat}&longitude={lon}"
         "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m"
         "&hourly=temperature_2m,weather_code"
-        "&daily=weather_code,temperature_2m_max,temperature_2m_min"
+        "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset"
         f"&temperature_unit={temp_unit}"
         f"&wind_speed_unit={wind_unit}"
         "&timezone=auto"
@@ -143,11 +171,20 @@ def _build_response(raw: dict, location: dict, units: str) -> dict:
             }
         )
 
+    # Sun times are local to the weather location (timezone=auto). The offset
+    # lets the display work out the location's current time on any device clock.
+    sky_data = {
+        "utc_offset_seconds": raw.get("utc_offset_seconds", 0),
+        "sunrise": daily.get("sunrise", [])[:2],
+        "sunset": daily.get("sunset", [])[:2],
+    }
+
     return {
         "location": location,
         "current": current_data,
         "hourly": hourly_data,
         "daily": daily_data,
+        "sky": sky_data,
         "last_updated": datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -193,6 +230,7 @@ async def get_weather_data(force: bool = False):
         data = _build_response(raw, location, units)
         _cache["data"] = data
         _cache["fetched_at"] = now
+        _save_cache()
         return JSONResponse(data)
     except Exception as e:
         logger.error(f"Weather fetch failed: {e}")

@@ -182,4 +182,9 @@ export const getClockTimezones = (page = 1, search = "") =>
 export const getWeatherData = () => handle(api.get("/weather/data"));
 export const getWeatherSettings = () => handle(api.get("/weather/settings"));
 export const updateWeatherSettings = (body) => handle(api.put("/weather/settings", body));
+// Jump the display to one screen once ("current" | "hourly" | "forecast" | "sky"),
+// then resume rotation
+export const showWeatherView = (view) => updateWeatherSettings({ force_view: view });
+// Keep the display on one screen for 1 hour; "" unlocks
+export const lockWeatherView = (view) => updateWeatherSettings({ locked_view: view });
 export const geocodeLocation = (q) => handle(api.get("/weather/geocode", { params: { q } }));
