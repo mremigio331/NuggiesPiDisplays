@@ -85,6 +85,13 @@ function useNetworks() {
   return { networks, stale, ageSeconds, scanError, loading, loadState, refresh: fetch_ };
 }
 
+// Mirror of the server rule (wifi_setup/device_name.normalize_name): lowercase letters,
+// digits and dashes, no leading/trailing dash, max 63. The server re-validates.
+function cleanName(raw) {
+  const n = (raw || "").trim().toLowerCase().replace(/\s+/g, "-");
+  return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(n) ? n : "";
+}
+
 export default function WifiSetup() {
   const { networks, stale, ageSeconds, loading, loadState, refresh } = useNetworks();
   const [selectedSsid, setSelectedSsid] = useState(null);
@@ -107,6 +114,10 @@ export default function WifiSetup() {
   // that cannot resolve .local. NOTHING here is hardcoded to nuggies.
   const [mdnsName, setMdnsName] = useState(null);
   const [deviceIp, setDeviceIp] = useState(null);
+  // Name the user gives this display; becomes "<name>.local" once the WiFi join is
+  // verified. Blank keeps the current name. Kept across a failed join so they can retry.
+  const [deviceName, setDeviceName] = useState("");
+  const [currentHostname, setCurrentHostname] = useState("");
   // Visible setup-AP SSID, derived server-side from the hostname. Defaults to the
   // documented fallback until the status fetch resolves so instructions read sensibly.
   const [setupSsid, setSetupSsid] = useState("NuggiesDisplay");
@@ -124,6 +135,7 @@ export default function WifiSetup() {
         const data = await res.json();
         if (cancelled) return;
         setMdnsName(data.mdns_name || null);
+        setCurrentHostname(data.hostname || "");
         setDeviceIp(data.ip || null);
         setSetupSsid(data.setup_ssid || "NuggiesDisplay");
       } catch {
@@ -219,6 +231,7 @@ export default function WifiSetup() {
     const ssid = ssidArg ?? selectedSsid;
     const pw = passwordArg !== undefined ? passwordArg : password;
     if (!ssid) return;
+    if (deviceName.trim() && !cleanName(deviceName)) return; // invalid name: hint is shown
     setPhase("connecting");
     setSelectedSsid(ssid); // so the connecting/verified screens name the target
     setErrorMsg("");
@@ -232,7 +245,11 @@ export default function WifiSetup() {
       const res = await fetch("/api/wifi/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ssid, password: pw || null }),
+        body: JSON.stringify({
+          ssid,
+          password: pw || null,
+          device_name: cleanName(deviceName) || null,
+        }),
       });
       // The endpoint answers 202 immediately with { job_id, state } BEFORE the
       // radio moves. If we can read a body, capture the job id to poll.
@@ -286,7 +303,11 @@ export default function WifiSetup() {
       return;
     }
 
-    // Terminal state reached.
+    // Terminal state reached. A verified join reports the hostname it applied, so the
+    // "visit <name>.local" instructions show the NEW name, not the old one.
+    if (state === "connected_verified" && data && data.hostname) {
+      setMdnsName(`${data.hostname}.local`);
+    }
     applyTerminalState(state, data && data.message);
   }
 
@@ -586,6 +607,44 @@ export default function WifiSetup() {
           <div style={{ color: "#ccc", fontSize: "0.85rem" }}>{errorMsg}</div>
         </div>
       )}
+
+      <div className="m-card">
+        <div className="m-card-title">Name your display</div>
+        <input
+          type="text"
+          value={deviceName}
+          onChange={(e) => setDeviceName(e.target.value)}
+          placeholder={currentHostname || "kitchen"}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          style={{
+            width: "100%",
+            padding: "0.5rem 0.6rem",
+            background: "#111",
+            border: "1px solid #555",
+            borderRadius: "6px",
+            color: "#fff",
+            fontSize: "1rem",
+            boxSizing: "border-box",
+          }}
+        />
+        <div style={{ color: "#aaa", fontSize: "0.8rem", marginTop: "0.4rem" }}>
+          {deviceName && !cleanName(deviceName) ? (
+            <span style={{ color: "#d9534f" }}>
+              Use letters, numbers and dashes only (no dash at the start or end).
+            </span>
+          ) : (
+            <>
+              You will open it at{" "}
+              <strong style={{ color: "#5b9bd5" }}>
+                {cleanName(deviceName) || currentHostname || "name"}.local
+              </strong>
+              . Leave blank to keep the current name.
+            </>
+          )}
+        </div>
+      </div>
 
       <div className="m-card">
         <div className="m-card-title">

@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from . import wifi_manager
+from . import device_name, wifi_manager
 
 # The visible setup-AP SSID, derived at runtime from the hostname (never hardcoded). Surfaced
 # in the status response so the frontend can name the setup network correctly.
@@ -50,6 +50,7 @@ app.add_middleware(
 class ConnectRequest(BaseModel):
     ssid: str
     password: str | None = None
+    device_name: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +73,9 @@ _JOBS: dict[str, dict] = {}
 _LATEST_JOB_ID: str | None = None
 
 
-def _run_connect_job(job_id: str, ssid: str, password: str | None) -> None:
+def _run_connect_job(
+    job_id: str, ssid: str, password: str | None, name: str | None = None
+) -> None:
     """Perform the blocking radio handover, then record the outcome on the job.
 
     Runs in an executor thread. ``connect_to_network`` returns
@@ -90,6 +93,10 @@ def _run_connect_job(job_id: str, ssid: str, password: str | None) -> None:
             message=result.get("message", ""),
         )
         if result.get("state") == "connected_verified":
+            # The name is applied ONLY after the join is verified. A failed join leaves
+            # the hostname untouched, so there is nothing to roll back.
+            if name and device_name.apply_hostname(name):
+                _JOBS[job_id]["hostname"] = name
             # Preservation 3.4: a verified join records config (done inside
             # connect_to_network) and reboots into normal operation with the display up.
             asyncio.run(_finalize_after_connect())
@@ -152,7 +159,8 @@ async def connect_wifi(req: ConnectRequest):
 
     # Run the blocking, sequenced handover off the event loop so this handler returns now.
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, _run_connect_job, job_id, req.ssid, req.password)
+    name = device_name.normalize_name(req.device_name)
+    loop.run_in_executor(None, _run_connect_job, job_id, req.ssid, req.password, name)
 
     return JSONResponse(
         status_code=202,
@@ -184,6 +192,7 @@ async def connect_status(job_id: str | None = None):
         "state": job["state"],
         "ssid": job.get("ssid"),
         "message": job.get("message", ""),
+        "hostname": job.get("hostname"),
     }
 
 
@@ -221,6 +230,7 @@ def _derive_address() -> dict:
 async def get_status():
     body = {"connected": wifi_manager.is_connected(), "setup_ssid": AP_SSID}
     body.update(_derive_address())
+    body["default_name"] = body["hostname"]
     return body
 
 

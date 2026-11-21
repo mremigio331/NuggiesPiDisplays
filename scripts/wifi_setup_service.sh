@@ -10,18 +10,11 @@ LOG="/var/log/nuggies/wifi_setup.log"
 NM_DNSMASQ_DIR="/etc/NetworkManager/dnsmasq-shared.d"
 
 _AP_CFG="$PROJECT_DIR/wifi_ap.yaml"
-# Derive the visible setup-AP SSID from the hostname — never hardcoded — using the SAME
-# rule as wifi_setup/ap_config.py: uppercase the first character, keep the rest unchanged,
-# then append "Display" (stonks -> StonksDisplay). The Python derivation in ap_config.AP_SSID
-# is what actually names the AP (python3 -m wifi_setup.wifi_manager --start-hotspot); this
-# bash value is used only for logging and the stale-connection cleanup message, so we derive
-# it identically to keep logs in agreement. Guard every step so it can never fail under
-# `set -euo pipefail`: an empty hostname falls back to the yaml ssid, then literal NuggiesDisplay.
-_HOSTNAME=$(hostname 2>/dev/null || true)
-if [[ -n "$_HOSTNAME" ]]; then
-    _SSID_FIRST=$(printf '%s' "$_HOSTNAME" | cut -c1 | tr '[:lower:]' '[:upper:]')
-    _SSID_REST=$(printf '%s' "$_HOSTNAME" | cut -c2-)
-    AP_SSID="${_SSID_FIRST}${_SSID_REST}Display"
+# Setup-AP SSID is Nuggies-<last 4 MAC hex>, from wifi_setup/device_name.py (the same
+# code that names the AP). Falls back to the yaml ssid, then the literal NuggiesDisplay.
+_SUFFIX=$(cd "$PROJECT_DIR" && python3 -m wifi_setup.device_name --suffix 2>/dev/null || true)
+if [[ -n "$_SUFFIX" ]]; then
+    AP_SSID="Nuggies-${_SUFFIX}"
 else
     AP_SSID=$(grep '^ssid:' "$_AP_CFG" | sed 's/^ssid:[[:space:]]*//' || true)
     [[ -n "$AP_SSID" ]] || AP_SSID="NuggiesDisplay"
@@ -82,6 +75,10 @@ if [[ -f "$PROJECT_DIR/.factory_wifi_reset" ]]; then
     nmcli device disconnect wlan0 2>/dev/null || true
     rm -f "$PROJECT_DIR/.factory_wifi_reset"
     log "WiFi connections wiped."
+    # A factory reset also forgets the user's device name: back to nuggies-<mac suffix>.
+    # Never fatal — a failed rename must not stop the setup portal from coming up.
+    ( cd "$PROJECT_DIR" && python3 -m wifi_setup.device_name --reset-hostname ) 2>&1 | tee -a "$LOG" \
+        && log "Hostname reset to default." || log "WARNING: hostname reset failed (continuing)."
 fi
 
 # --- Resolve the configured verdict via the single shared resolver (task 2.1). ---

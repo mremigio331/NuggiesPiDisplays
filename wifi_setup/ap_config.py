@@ -1,8 +1,9 @@
 """Shared access-point config loaded from wifi_ap.yaml at the project root."""
 
-import socket
 from pathlib import Path
 import yaml
+
+from .device_name import setup_ssid
 
 _CONFIG_PATH = Path(__file__).resolve().parent.parent / "wifi_ap.yaml"
 
@@ -10,19 +11,13 @@ _cfg = yaml.safe_load(_CONFIG_PATH.read_text())
 
 
 def _derive_ap_ssid() -> str:
-    """Derive the visible setup-AP SSID from this device's hostname — never hardcoded.
+    """Setup-AP SSID: ``Nuggies-<last 4 MAC hex>`` (e.g. Nuggies-A1B2).
 
-    Rule: uppercase the FIRST character of the hostname, keep the REST unchanged, then
-    append "Display" (e.g. ``stonks`` -> ``StonksDisplay``, ``nuggies`` -> ``NuggiesDisplay``).
-    Note we deliberately do NOT use ``str.capitalize()`` — that would lowercase the rest,
-    turning ``myPi`` into ``Mypi``. An empty hostname falls back to the yaml ``ssid`` value
-    (documented default ``NuggiesDisplay``). The boot script (scripts/wifi_setup_service.sh)
-    derives the same name with the identical rule so logs and the actual AP name agree.
+    The MAC tail makes the name unique per device, so several displays in one home never
+    advertise the same setup network. See wifi_setup/device_name.py. The boot script
+    scripts/wifi_setup_service.sh gets the same suffix from that module.
     """
-    h = socket.gethostname()
-    if h:
-        return f"{h[:1].upper()}{h[1:]}Display"
-    return _cfg.get("ssid", "NuggiesDisplay")
+    return setup_ssid()
 
 
 AP_SSID = _derive_ap_ssid()

@@ -21,8 +21,22 @@ FORCE_REBOOT=""
 COMPONENTS=""
 FORCE=""
 _add_component() { case " $COMPONENTS " in *" $1 "*) ;; *) COMPONENTS="${COMPONENTS:+$COMPONENTS }$1" ;; esac; }
-for arg in "$@"; do
+# --branch NAME: install/update from the origin/NAME branch instead of the beta/prod
+# stage tag. For testing a branch on a device before it is merged. It is NEVER
+# remembered: a later plain --update (or the update button) returns the device to
+# its stage tag. A branch carries no CI-built website/dist/, so the bundle is built
+# on the device (a test-device step; do not use --branch on a field device).
+BRANCH=""
+while [[ $# -gt 0 ]]; do
+  arg="$1"; shift
   case "$arg" in
+    --branch)
+      BRANCH="${1:-}"
+      if [[ -z "$BRANCH" || "$BRANCH" == -* ]]; then
+        echo "!!! --branch needs a branch name, e.g. --branch my-feature" >&2; exit 1
+      fi
+      shift ;;
+    --branch=*) BRANCH="${arg#--branch=}" ;;
     --dev)   MODE="dev"  ;;
     --prod)  MODE="prod" ;;
     --update)          SUBCOMMAND="update" ;;
@@ -34,6 +48,9 @@ for arg in "$@"; do
     --reboot)  FORCE_REBOOT="1" ;;
   esac
 done
+if [[ -n "$BRANCH" && ! "$BRANCH" =~ ^[A-Za-z0-9._][A-Za-z0-9._/-]*$ ]]; then
+  echo "!!! Invalid branch name: $BRANCH" >&2; exit 1
+fi
 # No scoped component named -> update everything (the classic --update behaviour).
 [[ "$SUBCOMMAND" == "update" && -z "$COMPONENTS" ]] && COMPONENTS="website api display system"
 
@@ -48,6 +65,7 @@ if [[ -z "$MODE" && -z "$SUBCOMMAND" ]]; then
   echo "  --update-display   Pull latest, update only the display (pip) if it changed"
   echo "  --update-website   Pull latest, refresh only the website bundle if it changed"
   echo "  --update-system    Pull latest, reapply only system config (sudoers/hardware)"
+  echo "  --branch NAME      With --dev/--prod/--update: use origin/NAME instead of the stage tag (testing only; builds the website on the device; not remembered)"
   echo "  --force            With any update: skip the 'did it change?' checks and reinstall anyway"
   exit 1
 fi
@@ -299,8 +317,30 @@ build_frontend() {
 #          (beta/prod), which carries the CI-built website/dist/, and verify the
 #          bundle. This keeps webpack's write-churn off prod SD cards.
 # ---------------------------------------------------------------------------
+# Fetch ONLY origin/$BRANCH and confirm it exists. Never touches the working tree.
+fetch_branch_or_die() {
+    if ! git -C "$SCRIPT_DIR" fetch origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"; then
+        echo "!!! Could not fetch branch '$BRANCH' from origin. Is it pushed? Nothing was changed." >&2
+        exit 1
+    fi
+    if ! git -C "$SCRIPT_DIR" rev-parse -q --verify "refs/remotes/origin/$BRANCH^{commit}" >/dev/null 2>&1; then
+        echo "!!! Branch 'origin/$BRANCH' does not exist. Nothing was changed." >&2
+        exit 1
+    fi
+}
+
 provision_frontend() {
-    if [[ "$MODE" == "prod" ]]; then
+    if [[ -n "$BRANCH" ]]; then
+        # Test branch: check out origin/BRANCH, then build the website here (branches
+        # have no CI-built bundle). Fails cleanly, before any reset, if it is missing.
+        echo "--- Provisioning from branch '$BRANCH' (builds the website on this device)..."
+        fetch_branch_or_die
+        git -C "$SCRIPT_DIR" reset --hard "refs/remotes/origin/$BRANCH"
+        restore_tree_ownership
+        install_node
+        install_frontend
+        build_frontend
+    elif [[ "$MODE" == "prod" ]]; then
         local stage; stage=$(read_update_stage)
         echo "--- Provisioning prebuilt website bundle (prod, stage: $stage — no on-device build)..."
         git -C "$SCRIPT_DIR" fetch origin --tags --force 2>&1
@@ -465,10 +505,14 @@ setup_dev() {
 
 # ---------------------------------------------------------------------------
 # Prod mode — systemd service for the API (React app served by FastAPI)
+#
+# --host= (empty) listens on every address, IPv4 AND IPv6. With 0.0.0.0 the
+# API was IPv4-only, but avahi announces the IPv6 address too, so a phone or
+# Mac that picked the IPv6 answer for <name>.local got "connection refused".
+# An empty host makes asyncio open one socket per family; a family the Pi has
+# turned off is skipped, so IPv4-only Pis still start.
 # ---------------------------------------------------------------------------
-setup_prod() {
-    echo "--- Installing production systemd service..."
-
+write_api_service() {
     sudo tee /etc/systemd/system/nuggies-api.service > /dev/null <<SERVICE
 [Unit]
 Description=Nuggies Pi Displays API
@@ -479,7 +523,7 @@ Wants=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$SCRIPT_DIR/api
-ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+ExecStart=/usr/bin/python3 -m uvicorn main:app --host= --port 8000
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:$SCRIPT_DIR/logs/api.log
@@ -488,8 +532,12 @@ StandardError=append:$SCRIPT_DIR/logs/api.log
 [Install]
 WantedBy=multi-user.target
 SERVICE
-
     sudo systemctl daemon-reload
+}
+
+setup_prod() {
+    echo "--- Installing production systemd service..."
+    write_api_service
     sudo systemctl enable nuggies-api.service
     sudo systemctl restart nuggies-api.service
     echo "Production API service installed, enabled, and started."
@@ -962,8 +1010,19 @@ _PRE_PULL_SHA=""
 _UPDATE_STAGE=""
 pull_latest() {
     _UPDATE_STAGE=$(read_update_stage)
-    echo "--- Pulling latest code (stage: $_UPDATE_STAGE)..."
+    echo "--- Pulling latest code (stage: $_UPDATE_STAGE${BRANCH:+, OVERRIDDEN by --branch $BRANCH})..."
     _PRE_PULL_SHA=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "")
+
+    if [[ -n "$BRANCH" ]]; then
+        fetch_branch_or_die
+        if ! git -C "$SCRIPT_DIR" reset --hard "refs/remotes/origin/$BRANCH"; then
+            echo "!!! git reset --hard origin/$BRANCH failed. Aborting update." >&2
+            exit 1
+        fi
+        echo "Updated working tree to origin/$BRANCH ($_PRE_PULL_SHA -> $(git -C "$SCRIPT_DIR" rev-parse --short HEAD))."
+        restore_tree_ownership
+        return 0
+    fi
 
     if ! git -C "$SCRIPT_DIR" fetch origin --prune --tags --force; then
         echo "!!! git fetch failed. Aborting update." >&2
@@ -1017,7 +1076,7 @@ update_website() {
     if ! component_behind website/; then
         echo "--- Website unchanged — skipping (use --force to rebuild/refresh)."; return 0
     fi
-    if is_prod; then
+    if is_prod && [[ -z "$BRANCH" ]]; then
         # A1: the bundle was built in CI and arrived with the pull. Never build
         # on a prod Pi (that write-churn corrupted SD cards). Just verify it.
         echo "--- Verifying prebuilt website bundle (prod — no on-device build)..."
@@ -1030,7 +1089,8 @@ update_website() {
     else
         # Dev: build locally (healthy disk, wants live reload). npm ci with a
         # corruption-aware fallback, then build.
-        echo "--- Building website (dev)..."
+        echo "--- Building website (${BRANCH:+branch $BRANCH, }dev)..."
+        [[ -n "$BRANCH" ]] && install_node
         cd "$SCRIPT_DIR/website"
         npm ci || { rm -rf node_modules; npm install; }
         npm run build
@@ -1047,6 +1107,10 @@ update_system() {
     echo "--- Reapplying system config (sudoers + hardware)..."
     setup_sudoers
     setup_avahi
+    if is_prod; then
+        echo "--- Rewriting nuggies-api.service (applies on the reboot after this update)..."
+        write_api_service
+    fi
     setup_isolcpus
     disable_onboard_audio
     setup_power_button
