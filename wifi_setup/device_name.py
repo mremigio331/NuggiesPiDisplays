@@ -9,6 +9,7 @@ therefore never share a setup WiFi name or a ``.local`` name.
 CLI (run as root by scripts/wifi_setup_service.sh):
     python3 -m wifi_setup.device_name --suffix            # prints e.g. A1B2
     python3 -m wifi_setup.device_name --reset-hostname    # hostname -> nuggies-a1b2
+    python3 wifi_setup/device_name.py --set kitchen        # hostname -> kitchen (API, via sudo)
 """
 
 from __future__ import annotations
@@ -115,7 +116,13 @@ def apply_hostname(name: str) -> bool:
 if __name__ == "__main__":
     if "--suffix" in sys.argv:
         print(mac_suffix())
+    elif len(sys.argv) == 3 and sys.argv[1] == "--set":
+        # Called by the API through a sudoers grant (setup.sh). Re-validate here:
+        # the grant allows any argument, so this check is the real gate.
+        new = normalize_name(sys.argv[2])
+        sys.exit(0 if new and apply_hostname(new) else 1)
     elif "--reset-hostname" in sys.argv:
         sys.exit(0 if apply_hostname(default_hostname()) else 1)
     else:
         print(__doc__)
+        sys.exit(2 if len(sys.argv) > 1 else 0)

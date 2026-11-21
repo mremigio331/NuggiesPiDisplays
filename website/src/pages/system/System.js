@@ -5,6 +5,7 @@ import { useSystemStatus } from "../../hooks/useSystemStatus";
 import { DISPLAY_MODES, LOG_LEVELS } from "../../constants/display";
 import CycleSection from "../../components/system/CycleSection";
 import HealthSection from "../../components/system/HealthSection";
+import DeviceNameSection from "../../components/system/DeviceNameSection";
 import {
   startDisplay,
   stopDisplay,
@@ -1429,6 +1430,7 @@ export default function System() {
 
       {tab === "advanced" && (
         <>
+          <DeviceNameSection />
           <div className="m-card">
             <div className="m-card-title">Restart</div>
             <button

@@ -246,6 +246,8 @@ $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/stocks/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/text/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/weather/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/setup/main.py
+# Rename the device from the System page. The script re-validates the name.
+$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/wifi_setup/device_name.py --set *
 # System commands called by the API.
 # The trailing '' and '*' BOTH matter: a command listed with no argument spec
 # only matches an invocation with ZERO arguments, but the API always calls
@@ -880,6 +882,8 @@ verify_permissions() {
         "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/weather/main.py"
     _assert_sudoers_line "grant: display/setup/main.py" \
         "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/setup/main.py"
+    _assert_sudoers_line "grant: wifi_setup/device_name.py --set" \
+        "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/wifi_setup/device_name.py --set *"
     # reboot (it reboots the device):
     _assert_sudoers_line "grant: reboot" \
         "$USER ALL=(ALL) NOPASSWD: $REBOOT"

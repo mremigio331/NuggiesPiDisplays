@@ -24,6 +24,7 @@ from .update_log_level import router as update_log_level_router
 from .check_update import router as check_update_router
 from .update_status import router as update_status_router
 from .update_stage import router as update_stage_router
+from .device_name import router as device_name_router
 from .brightness import router as brightness_router
 from .logs import router as logs_router
 from .schedule import router as schedule_router
@@ -48,6 +49,7 @@ router.include_router(user_guide_router)
 router.include_router(check_update_router)
 router.include_router(update_status_router)
 router.include_router(update_stage_router)
+router.include_router(device_name_router)
 router.include_router(brightness_router)
 router.include_router(factory_reset_router)
 router.include_router(geolocate_router)
