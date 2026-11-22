@@ -1,6 +1,6 @@
 import React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   getWeatherData,
   getWeatherSettings,
@@ -60,22 +60,11 @@ const ICON_BTN = {
   lineHeight: 1,
 };
 
-// "2026-11-19T03:45:00Z" -> "7:45 PM" in the viewer's own clock
-const fmtTime = (iso) =>
-  iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
-
 // Card heading with the matrix controls for that screen:
 //   Show now: jump the matrix to this screen once, then keep rotating.
-//   Lock: keep the matrix on this screen for an hour (or until unlocked).
-function CardHeading({
-  title,
-  view,
-  canControl,
-  lockedView,
-  lockedUntil,
-  onLockChange,
-  lockPending,
-}) {
+//   Lock: keep the matrix on this screen until unlocked, or until a display
+//   is picked by hand.
+function CardHeading({ title, view, canControl, lockedView, onLockChange, lockPending }) {
   const { error: notifyError } = useNotify();
   const showMut = useMutation({
     mutationFn: () => showWeatherView(view),
@@ -115,13 +104,9 @@ function CardHeading({
             style={btn}
             disabled={lockPending}
             onClick={() => onLockChange(isLocked ? "" : view)}
-            title={
-              isLocked
-                ? "Unlock and resume the rotation"
-                : "Keep the display on this screen for 1 hour"
-            }
+            title={isLocked ? "Unlock and resume the rotation" : "Keep the display on this screen"}
           >
-            {isLocked ? `🔒 Until ${fmtTime(lockedUntil)}` : "Lock"}
+            {isLocked ? "🔒 Locked" : "Lock"}
           </button>
         </div>
       )}
@@ -129,8 +114,48 @@ function CardHeading({
   );
 }
 
+function EmptyCard({ text }) {
+  return (
+    <div className="m-card" style={{ textAlign: "center", color: "#aaa" }}>
+      {text}
+    </div>
+  );
+}
+
+// Weather page tabs, one per matrix screen (same keys as the display's views).
+// The open tab lives in the URL (?tab=sky), like the System page.
+const TABS = [
+  { key: "current", label: "Now" },
+  { key: "hourly", label: "Hourly" },
+  { key: "forecast", label: "5-Day" },
+  { key: "sky", label: "Sky" },
+];
+
+function TabBar({ tab, onChange, lockedView }) {
+  return (
+    <div className="m-tabs" role="tablist">
+      {TABS.map(({ key, label }) => (
+        <button
+          key={key}
+          role="tab"
+          aria-selected={tab === key}
+          className={`m-tab ${tab === key ? "m-tab-active" : ""}`}
+          onClick={() => onChange(key)}
+        >
+          {lockedView === key ? `🔒 ${label}` : label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function Weather() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = TABS.some((t) => t.key === searchParams.get("tab"))
+    ? searchParams.get("tab")
+    : "current";
+  const setTab = (key) => setSearchParams({ tab: key }, { replace: true });
   const { data: systemStatus } = useSystemStatus({ refetchInterval: 10000 });
   const canControl = systemStatus?.active_display === "weather";
 
@@ -141,17 +166,12 @@ export default function Weather() {
     queryFn: getWeatherSettings,
   });
   const lockedView = weatherSettings?.locked_view || "";
-  const lockedUntil = weatherSettings?.locked_until || "";
-  // Drop the lock badge on its own when the hour runs out.
+  // Switching the display by hand clears the lock on the device, so re-read it
+  // whenever the active display changes.
+  const activeDisplay = systemStatus?.active_display;
   React.useEffect(() => {
-    if (!lockedUntil) return undefined;
-    const ms = new Date(lockedUntil).getTime() - Date.now();
-    const id = setTimeout(
-      () => qc.invalidateQueries({ queryKey: ["weatherSettings"] }),
-      Math.max(0, ms) + 2000
-    );
-    return () => clearTimeout(id);
-  }, [lockedUntil, qc]);
+    if (activeDisplay) qc.invalidateQueries({ queryKey: ["weatherSettings"] });
+  }, [activeDisplay, qc]);
   const lockMut = useMutation({
     mutationFn: (view) => lockWeatherView(view),
     onSuccess: (saved) => qc.setQueryData(["weatherSettings"], saved),
@@ -160,7 +180,6 @@ export default function Weather() {
   const headingProps = {
     canControl,
     lockedView,
-    lockedUntil,
     onLockChange: (view) => lockMut.mutate(view),
     lockPending: lockMut.isPending,
   };
@@ -239,103 +258,124 @@ export default function Weather() {
       {header}
       {subtitle}
 
+      <TabBar tab={tab} onChange={setTab} lockedView={lockedView} />
+
       {/* ── Current ──────────────────────────────────────────────── */}
-      <div className="m-card">
-        <CardHeading title="Now" view="current" {...headingProps} />
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <div style={{ fontSize: "3.5rem", lineHeight: 1 }}>
-            {weatherIcon(current.weather_code)}
-          </div>
-          <div>
-            <div style={{ fontSize: "2.2rem", fontWeight: 700, color: tempColor, lineHeight: 1 }}>
-              {current.temperature}
-              {current.unit_symbol}
+      {tab === "current" && (
+        <div className="m-card">
+          <CardHeading title="Now" view="current" {...headingProps} />
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <div style={{ fontSize: "3.5rem", lineHeight: 1 }}>
+              {weatherIcon(current.weather_code)}
             </div>
-            <div style={{ color: "#aaa", fontSize: "0.85rem" }}>{current.weather_desc}</div>
-            <div style={{ color: "#aaa", fontSize: "0.8rem", marginTop: 2 }}>
-              Feels like {current.feels_like}
-              {current.unit_symbol}
-              {" · "}
-              Wind {current.wind_speed} {current.wind_unit}
+            <div>
+              <div style={{ fontSize: "2.2rem", fontWeight: 700, color: tempColor, lineHeight: 1 }}>
+                {current.temperature}
+                {current.unit_symbol}
+              </div>
+              <div style={{ color: "#aaa", fontSize: "0.85rem" }}>{current.weather_desc}</div>
+              <div style={{ color: "#aaa", fontSize: "0.8rem", marginTop: 2 }}>
+                Feels like {current.feels_like}
+                {current.unit_symbol}
+                {" · "}
+                Wind {current.wind_speed} {current.wind_unit}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ── Hourly ───────────────────────────────────────────────── */}
-      {hourly.length > 0 && (
-        <div className="m-card">
-          <CardHeading title="Next 6 Hours" view="hourly" {...headingProps} />
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 4 }}>
-            {hourly.map((h, i) => (
-              <div key={i} style={{ flex: 1, textAlign: "center" }}>
-                <div
-                  style={{ color: i === 0 ? "#fff" : "#aaa", fontSize: "0.75rem", marginBottom: 2 }}
-                >
-                  {h.time_label}
+      {tab === "hourly" &&
+        (hourly.length > 0 ? (
+          <div className="m-card">
+            <CardHeading title="Next 6 Hours" view="hourly" {...headingProps} />
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 4 }}>
+              {hourly.map((h, i) => (
+                <div key={i} style={{ flex: 1, textAlign: "center" }}>
+                  <div
+                    style={{
+                      color: i === 0 ? "#fff" : "#aaa",
+                      fontSize: "0.75rem",
+                      marginBottom: 2,
+                    }}
+                  >
+                    {h.time_label}
+                  </div>
+                  <div style={{ fontSize: "1.2rem" }}>{weatherIcon(h.weather_code)}</div>
+                  <div
+                    style={{
+                      fontSize: "0.8rem",
+                      fontWeight: i === 0 ? 700 : 400,
+                      color: SIGNAL_COLOR(h.temperature, current.unit_symbol),
+                    }}
+                  >
+                    {h.temperature}°
+                  </div>
                 </div>
-                <div style={{ fontSize: "1.2rem" }}>{weatherIcon(h.weather_code)}</div>
-                <div
+              ))}
+            </div>
+          </div>
+        ) : (
+          <EmptyCard text="No hourly forecast yet." />
+        ))}
+
+      {/* ── 5-Day ────────────────────────────────────────────────── */}
+      {tab === "forecast" &&
+        (daily.length > 0 ? (
+          <div className="m-card">
+            <CardHeading title="5-Day Forecast" view="forecast" {...headingProps} />
+            {daily.map((d, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr 1fr",
+                  alignItems: "center",
+                  padding: "5px 0",
+                  borderBottom: i < daily.length - 1 ? "1px solid #1a2a40" : "none",
+                }}
+              >
+                <span style={{ color: "#aaa", fontSize: "0.85rem", fontWeight: 600 }}>
+                  {d.day_label}
+                </span>
+                <span style={{ fontSize: "1.2rem", textAlign: "center" }}>
+                  {weatherIcon(d.weather_code)}
+                </span>
+                <span
                   style={{
-                    fontSize: "0.8rem",
-                    fontWeight: i === 0 ? 700 : 400,
-                    color: SIGNAL_COLOR(h.temperature, current.unit_symbol),
+                    color: SIGNAL_COLOR(d.temp_max, current.unit_symbol),
+                    fontWeight: 700,
+                    fontSize: "0.9rem",
+                    textAlign: "center",
                   }}
                 >
-                  {h.temperature}°
-                </div>
+                  {d.temp_max}°
+                </span>
+                <span style={{ color: "#7090b0", fontSize: "0.9rem", textAlign: "right" }}>
+                  {d.temp_min}°
+                </span>
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* ── 5-Day ────────────────────────────────────────────────── */}
-      {daily.length > 0 && (
-        <div className="m-card">
-          <CardHeading title="5-Day Forecast" view="forecast" {...headingProps} />
-          {daily.map((d, i) => (
-            <div
-              key={i}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr 1fr",
-                alignItems: "center",
-                padding: "5px 0",
-                borderBottom: i < daily.length - 1 ? "1px solid #1a2a40" : "none",
-              }}
-            >
-              <span style={{ color: "#aaa", fontSize: "0.85rem", fontWeight: 600 }}>
-                {d.day_label}
-              </span>
-              <span style={{ fontSize: "1.2rem", textAlign: "center" }}>
-                {weatherIcon(d.weather_code)}
-              </span>
-              <span
-                style={{
-                  color: SIGNAL_COLOR(d.temp_max, current.unit_symbol),
-                  fontWeight: 700,
-                  fontSize: "0.9rem",
-                  textAlign: "center",
-                }}
-              >
-                {d.temp_max}°
-              </span>
-              <span style={{ color: "#7090b0", fontSize: "0.9rem", textAlign: "right" }}>
-                {d.temp_min}°
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+        ) : (
+          <EmptyCard text="No daily forecast yet." />
+        ))}
 
       {/* ── Sky (sun by day, moon by night) ──────────────────────── */}
-      {sky?.sunrise?.length > 0 && (
-        <div className="m-card">
-          <CardHeading title="Sky" view="sky" {...headingProps} />
-          <SkyCard sky={sky} />
-        </div>
-      )}
+      {tab === "sky" &&
+        (sky?.sunrise?.length > 0 ? (
+          <div className="m-card">
+            <CardHeading title="Sky" view="sky" {...headingProps} />
+            <SkyCard
+              sky={sky}
+              weatherCode={current.weather_code}
+              weatherDesc={current.weather_desc}
+            />
+          </div>
+        ) : (
+          <EmptyCard text="Sunrise and sunset aren't available for this location." />
+        ))}
 
       <div style={{ textAlign: "right", color: "#555", fontSize: "0.75rem", marginTop: 4 }}>
         Updated {data.last_updated?.slice(11, 16)}

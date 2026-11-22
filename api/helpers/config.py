@@ -43,6 +43,15 @@ def write_section(key: str, section: dict) -> None:
     write_settings(settings)
 
 
+def clear_weather_lock(settings: dict) -> None:
+    """Picking a display by hand (website or button) ends the weather screen
+    lock. Mutates *settings*; the caller writes them."""
+    weather = settings.get("weather")
+    if isinstance(weather, dict):
+        weather["locked_view"] = ""
+        weather.pop("locked_until", None)
+
+
 # --- Update stage ----------------------------------------------------------- #
 # Which release tag this device tracks: "beta" (gets each build immediately) or
 # "prod" (gets only builds you approved). Default "prod". setup.sh reads the

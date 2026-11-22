@@ -11,6 +11,7 @@ from constants import (
     POWER_BUTTON_PIN,
 )
 from helpers.config import (
+    clear_weather_lock,
     read_settings,
     set_active_cycle,
     write_settings,
@@ -386,6 +387,7 @@ class ButtonManager:
         start_display(mode)
         settings = read_settings()
         settings["active_display"] = mode
+        clear_weather_lock(settings)  # a hand-picked display ends the lock
         write_settings(settings)
         logger.info(f"Button switched display to {mode}")
 

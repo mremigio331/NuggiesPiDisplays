@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from helpers.config import read_settings, write_settings
 from .data import invalidate_cache
-from ._lock import lock_expiry, with_active_lock
+from ._lock import VALID_VIEWS, with_active_lock
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -21,12 +21,11 @@ class WeatherSettings(BaseModel):
     # One-shot "show now": jump the display to this screen, then resume rotation.
     # The display clears it once consumed. Empty string clears it.
     force_view: Optional[str] = None
-    # Pin the display to one screen for 1 hour (survives restarts).
-    # Empty string unlocks and resumes the normal rotation.
+    # Pin the display to one screen until the user unlocks it or picks another
+    # display by hand (survives restarts). Empty string unlocks.
     locked_view: Optional[str] = None
 
 
-VALID_VIEWS = ("current", "hourly", "forecast", "sky")
 # Only these change what Open-Meteo returns, so only these may refetch.
 _DATA_KEYS = {"latitude", "longitude", "city_label", "use_ip_location", "units"}
 
@@ -60,13 +59,7 @@ async def update_settings(body: WeatherSettings):
     settings = read_settings()
     weather = settings.get("weather", {})
     weather.update(updates)
-
-    # A lock lasts LOCK_TTL (1 hour), then the rotation resumes by itself.
-    if "locked_view" in updates:
-        if updates["locked_view"]:
-            weather["locked_until"] = lock_expiry()
-        else:
-            weather.pop("locked_until", None)
+    weather.pop("locked_until", None)  # older builds expired locks; no longer
 
     # If the user set a manual lat/lon, switch off IP-based location
     if "latitude" in updates or "longitude" in updates:

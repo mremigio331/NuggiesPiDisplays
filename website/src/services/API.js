@@ -187,6 +187,6 @@ export const updateWeatherSettings = (body) => handle(api.put("/weather/settings
 // Jump the display to one screen once ("current" | "hourly" | "forecast" | "sky"),
 // then resume rotation
 export const showWeatherView = (view) => updateWeatherSettings({ force_view: view });
-// Keep the display on one screen for 1 hour; "" unlocks
+// Keep the display on one screen until unlocked; "" unlocks
 export const lockWeatherView = (view) => updateWeatherSettings({ locked_view: view });
 export const geocodeLocation = (q) => handle(api.get("/weather/geocode", { params: { q } }));

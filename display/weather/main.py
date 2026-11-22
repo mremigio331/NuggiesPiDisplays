@@ -7,7 +7,8 @@ Weather display — cycles through four screens:
 
 Website controls (both live in the weather settings):
   force_view   one-shot "Show now": jump to a screen once, then keep rotating.
-  locked_view  "Lock": stay on one screen for 1 hour (survives restarts).
+  locked_view  "Lock": stay on one screen until unlocked, or until the user
+               picks another display by hand (survives restarts).
 """
 
 import os, sys

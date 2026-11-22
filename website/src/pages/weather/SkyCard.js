@@ -203,7 +203,202 @@ function Moon({ cx, cy, phase }) {
   );
 }
 
-export default function SkyCard({ sky }) {
+// ── Weather on the sky — mirrors condition()/scene() in display/weather/sky.py ──
+
+export function skyCondition(code) {
+  const c = Number(code);
+  if (code == null || Number.isNaN(c)) return "clear";
+  if (c === 0) return "clear";
+  if (c === 1) return "mostly_clear";
+  if (c === 2) return "partly";
+  if (c === 3) return "overcast";
+  if ([45, 48].includes(c)) return "fog";
+  if ([51, 53, 55, 56, 57].includes(c)) return "drizzle";
+  if ([65, 67, 82].includes(c)) return "heavy_rain";
+  if ([61, 63, 66, 80, 81].includes(c)) return "rain";
+  if ([75, 86].includes(c)) return "heavy_snow";
+  if ([71, 73, 77, 85].includes(c)) return "snow";
+  if ([95, 96, 99].includes(c)) return "storm";
+  return "overcast";
+}
+
+// Always drawn (clouds go over it) so the position shows on cloudy days; fog dims it
+const BODY_SHOW = { fog: "dim" };
+const DIPPER = [
+  [1, 8],
+  [4, 9],
+  [7, 10],
+  [10, 11],
+  [10, 14],
+  [15, 14],
+  [15, 10],
+];
+const ORION = [
+  [51, 14],
+  [53, 13],
+  [55, 12],
+  [57, 9],
+  [49, 19],
+];
+const BETELGEUSE = [48, 8];
+const RIGEL = [58, 18];
+// A cartoon cloud, 14 x 6: "o" outline, "w" fill, "s" shaded underside.
+const CLOUD = [
+  ".....oooo.....",
+  "..ooowwwwo....",
+  ".owwwwwwwwooo.",
+  "owwwwwwwwwwwwo",
+  "osssssssssssso",
+  ".oooooooooooo.",
+];
+const CLOUDS_AT = {
+  mostly_clear: [[44, 9]],
+  partly: [
+    [2, 10],
+    [44, 9],
+  ],
+};
+const DECK_AT = [
+  [-3, 9],
+  [9, 8],
+  [21, 9],
+  [33, 8],
+  [45, 9],
+  [57, 8],
+];
+const cloudPixels = (ox, oy, line, fill, shade) => {
+  const out = [];
+  CLOUD.forEach((text, row) => {
+    [...text].forEach((ch, col) => {
+      if (ch !== ".") out.push([ox + col, oy + row, ch === "o" ? line : ch === "s" ? shade : fill]);
+    });
+  });
+  return out;
+};
+const FALL = {
+  drizzle: [6, 1, "rain"],
+  rain: [4, 2, "rain"],
+  heavy_rain: [3, 2, "rain"],
+  storm: [3, 2, "rain"],
+  snow: [5, 1, "snow"],
+  heavy_snow: [3, 1, "snow"],
+};
+const BOLT = [
+  [16, 14],
+  [15, 15],
+  [14, 16],
+  [13, 17],
+  [14, 17],
+  [15, 17],
+  [14, 18],
+  [13, 19],
+  [12, 20],
+];
+const FOG_ROWS = [16, 19, 22];
+const DAY = {
+  cloud_line: [70, 80, 105],
+  cloud: [240, 245, 255],
+  cloud_shade: [165, 175, 195],
+  deck_line: [70, 75, 95],
+  deck: [185, 190, 205],
+  deck_shade: [125, 130, 150],
+  storm_line: [35, 35, 50],
+  storm: [105, 105, 125],
+  storm_shade: [70, 70, 88],
+  rain: [80, 140, 255],
+  snow: [220, 230, 255],
+  fog: [120, 125, 140],
+};
+const NIGHT = {
+  cloud_line: [35, 38, 52],
+  cloud: [120, 125, 145],
+  cloud_shade: [80, 85, 105],
+  deck_line: [30, 32, 44],
+  deck: [85, 88, 105],
+  deck_shade: [58, 60, 75],
+  storm_line: [20, 20, 30],
+  storm: [55, 55, 70],
+  storm_shade: [40, 40, 52],
+  rain: [50, 90, 170],
+  snow: [150, 160, 185],
+  fog: [60, 62, 72],
+};
+const STAR = [150, 155, 180];
+const STAR_FAINT = [90, 95, 120];
+const STAR_RED = [220, 120, 90];
+const STAR_BLUE = [160, 185, 255];
+const LIGHTNING = [255, 240, 0];
+
+export function skyScene(code, night, minute, groundTop) {
+  const cond = skyCondition(code);
+  const pal = night ? NIGHT : DAY;
+  const back = [];
+  let front = [];
+  const over = [];
+
+  if (night && (cond === "clear" || cond === "mostly_clear")) {
+    STARS.forEach(([x, y]) => back.push([x, y, STAR_FAINT]));
+    [...DIPPER, ...ORION].forEach(([x, y]) => back.push([x, y, STAR]));
+    back.push([...BETELGEUSE, STAR_RED]);
+    back.push([...RIGEL, STAR_BLUE]);
+  } else if (night && cond === "partly") {
+    STARS.forEach(([x, y]) => back.push([x, y, STAR_FAINT]));
+  }
+
+  if (FALL[cond]) {
+    const [step, length, key] = FALL[cond];
+    for (let x = 1; x < 64; x += step) {
+      for (let base = 15; base < 32; base += 6) {
+        const y0 = base + ((x * 3 + minute) % 6);
+        for (let y = y0; y < y0 + length; y++) {
+          if (y < groundTop(x)) back.push([x, y, pal[key]]);
+        }
+      }
+    }
+  }
+  // lightning: in front of the sun/moon, under the clouds
+  if (cond === "storm") BOLT.forEach(([x, y]) => front.push([x, y, LIGHTNING]));
+
+  (CLOUDS_AT[cond] || []).forEach(([ox, oy]) => {
+    front = front.concat(cloudPixels(ox, oy, pal.cloud_line, pal.cloud, pal.cloud_shade));
+  });
+
+  let kind = null;
+  if (["overcast", "drizzle", "rain", "heavy_rain", "snow", "heavy_snow"].includes(cond)) {
+    kind = "deck";
+  } else if (cond === "storm") {
+    kind = "storm";
+  }
+  if (kind) {
+    DECK_AT.forEach(([ox, oy]) => {
+      front = front.concat(
+        cloudPixels(ox, oy, pal[`${kind}_line`], pal[kind], pal[`${kind}_shade`])
+      );
+    });
+  }
+
+  if (cond === "fog") {
+    FOG_ROWS.forEach((y) => {
+      for (let x = 0; x < 64; x++) {
+        if ((x + y * 3 + minute) % 9 < 6) over.push([x, y, pal.fog]);
+      }
+    });
+  }
+
+  return { body: BODY_SHOW[cond] || "show", back, front, over };
+}
+
+function Pixels({ pixels }) {
+  return (
+    <g shapeRendering="crispEdges">
+      {pixels.map(([x, y, c], i) => (
+        <rect key={i} x={x} y={y} width="1.02" height="1.02" fill={rgb(c, 1)} />
+      ))}
+    </g>
+  );
+}
+
+export default function SkyCard({ sky, weatherCode, weatherDesc }) {
   // Re-evaluate every minute so the sun/moon creeps along without a data refetch.
   const [nowMs, setNowMs] = React.useState(() => Date.now());
   React.useEffect(() => {
@@ -218,6 +413,9 @@ export default function SkyCard({ sky }) {
   const cx = ARC_X0 + progress * (ARC_X1 - ARC_X0);
   const cy = ARC_Y_HORIZON - (ARC_Y_HORIZON - ARC_Y_PEAK) * Math.sin(Math.PI * progress);
   const isNight = body === "moon";
+  const minute = new Date(localNow).getUTCMinutes(); // the location's own clock
+  const layers = skyScene(weatherCode, isNight, minute, rainierTop);
+  const bodyOpacity = layers.body === "dim" ? 0.35 : 1;
 
   const arc = Array.from({ length: 25 }, (_, i) => {
     const p = i / 24;
@@ -235,11 +433,10 @@ export default function SkyCard({ sky }) {
         viewBox="0 0 64 32"
         style={{ width: "100%", display: "block", borderRadius: 6 }}
         role="img"
-        aria-label={isNight ? `Moon, ${phaseName(phase)}` : "Sun"}
+        aria-label={`${isNight ? `Moon, ${phaseName(phase)}` : "Sun"}${weatherDesc ? `, ${weatherDesc}` : ""}`}
       >
         <rect width="64" height="32" fill={isNight ? "#05070d" : "#10223d"} />
-        {isNight &&
-          STARS.map(([x, y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r="0.4" fill="#5a5f78" />)}
+        <Pixels pixels={layers.back} />
         <polyline
           points={arc}
           fill="none"
@@ -248,13 +445,21 @@ export default function SkyCard({ sky }) {
           strokeDasharray="1 1.2"
           opacity="0.5"
         />
-        {isNight ? (
-          <Moon cx={cx} cy={cy} phase={phase} />
-        ) : (
-          <circle cx={cx} cy={cy} r={BODY_R} fill="#ffc800" />
+        {layers.body !== "hide" && (
+          <g opacity={bodyOpacity}>
+            {isNight ? (
+              <Moon cx={cx} cy={cy} phase={phase} />
+            ) : (
+              <circle cx={cx} cy={cy} r={BODY_R} fill="#ffc800" />
+            )}
+          </g>
         )}
+        {/* clouds pass in front of the sun/moon */}
+        <Pixels pixels={layers.front} />
         {/* Mount Rainier last, so the sun/moon rises from and sets behind it */}
         <Rainier night={isNight} />
+        {/* fog drifts over the mountain */}
+        <Pixels pixels={layers.over} />
       </svg>
       <div
         style={{
@@ -266,7 +471,7 @@ export default function SkyCard({ sky }) {
         }}
       >
         <span>↑ {fmtClock(pos.sunrise)}</span>
-        {isNight && <span>{phaseName(phase)}</span>}
+        <span>{[weatherDesc, isNight ? phaseName(phase) : null].filter(Boolean).join(" · ")}</span>
         <span>↓ {fmtClock(pos.sunset)}</span>
       </div>
     </>

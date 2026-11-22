@@ -215,7 +215,8 @@ def render_forecast(canvas, data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Screen 4 — Sky (sun by day, moon by night, over Mount Rainier)
+# Screen 4 — Sky (sun by day, moon by night, over Mount Rainier, with the
+#            current weather: clouds, rain, snow, fog, storms, stars)
 # ---------------------------------------------------------------------------
 #
 # Layout (64×32):
@@ -228,7 +229,6 @@ _ARC_Y_HORIZON = 29  # centre y at sunrise/sunset (hidden behind the ground)
 _ARC_Y_PEAK = 11  # centre y at solar noon (just clears the summit)
 _BODY_R = 3
 _GROUND_TOP = 25  # y of the first ground row
-_STARS = [(3, 11), (11, 9), (20, 12), (42, 9), (52, 14), (60, 9)]
 
 # Mount Rainier, as seen from Seattle: a broad glaciated dome with the Liberty
 # Cap shoulder on the left and the rocky Little Tahoma spur on the right.
@@ -293,16 +293,22 @@ def _put(canvas, x: int, y: int, rgb) -> None:
         canvas.SetPixel(x, y, *rgb)
 
 
-def _draw_sun(canvas, cx: int, cy: int) -> None:
+def _scaled(rgb, dim: float):
+    return tuple(int(c * dim) for c in rgb)
+
+
+def _draw_sun(canvas, cx: int, cy: int, dim: float = 1.0) -> None:
+    color = _scaled((255, 200, 0), dim)
     for dy in range(-_BODY_R, _BODY_R + 1):
         for dx in range(-_BODY_R, _BODY_R + 1):
             if dx * dx + dy * dy <= 10:
-                _put(canvas, cx + dx, cy + dy, (255, 200, 0))
+                _put(canvas, cx + dx, cy + dy, color)
 
 
-def _draw_moon(canvas, cx: int, cy: int, phase: float) -> None:
+def _draw_moon(canvas, cx: int, cy: int, phase: float, dim: float = 1.0) -> None:
     c = math.cos(2 * math.pi * phase)  # 1 new, 0 quarter, -1 full
     waxing = phase < 0.5
+    lit_c, dark_c = _scaled((225, 230, 245), dim), _scaled((45, 50, 70), dim)
     for dy in range(-_BODY_R, _BODY_R + 1):
         w = math.sqrt(max(0.0, 10.5 - dy * dy))
         for dx in range(-_BODY_R, _BODY_R + 1):
@@ -310,7 +316,12 @@ def _draw_moon(canvas, cx: int, cy: int, phase: float) -> None:
                 continue
             # Lit side is the right in the first half of the cycle, left after.
             lit = dx >= w * c - 0.01 if waxing else dx <= -w * c + 0.01
-            _put(canvas, cx + dx, cy + dy, (225, 230, 245) if lit else (45, 50, 70))
+            _put(canvas, cx + dx, cy + dy, lit_c if lit else dark_c)
+
+
+def _put_all(canvas, pixels) -> None:
+    for x, y, rgb in pixels:
+        _put(canvas, x, y, rgb)
 
 
 def _draw_mountains(canvas, night: bool) -> None:
@@ -346,12 +357,18 @@ def render_sky(canvas, data: dict) -> bool:
     cx = round(_ARC_X0 + p * (_ARC_X1 - _ARC_X0))
     cy = round(_ARC_Y_HORIZON - (_ARC_Y_HORIZON - _ARC_Y_PEAK) * math.sin(math.pi * p))
 
-    if pos["body"] == "moon":
-        for sx, sy in _STARS:
-            _put(canvas, sx, sy, (90, 95, 120))
-        _draw_moon(canvas, cx, cy, pos["phase"])
-    else:
-        _draw_sun(canvas, cx, cy)
+    night = pos["body"] == "moon"
+    code = (data.get("current") or {}).get("weather_code")
+    layers = sky_mod.scene(code, night, now.minute, _rainier_top)
 
-    _draw_mountains(canvas, night=pos["body"] == "moon")  # last: sun/moon set behind it
+    _put_all(canvas, layers["back"])  # stars, rain, snow
+    if layers["body"] != "hide":
+        dim = 0.35 if layers["body"] == "dim" else 1.0
+        if night:
+            _draw_moon(canvas, cx, cy, pos["phase"], dim)
+        else:
+            _draw_sun(canvas, cx, cy, dim)
+    _put_all(canvas, layers["front"])  # lightning and clouds, over the sun/moon
+    _draw_mountains(canvas, night=night)  # the sun/moon set behind Rainier
+    _put_all(canvas, layers["over"])  # fog drifts over the mountain
     return True

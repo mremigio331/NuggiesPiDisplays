@@ -4,7 +4,12 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from constants import DISPLAY_MODES
-from helpers.config import read_settings, set_active_cycle, write_settings
+from helpers.config import (
+    clear_weather_lock,
+    read_settings,
+    set_active_cycle,
+    write_settings,
+)
 from helpers.process import start_display
 
 logger = logging.getLogger(__name__)
@@ -24,6 +29,7 @@ async def switch_display(body: DisplayMode):
         pid = start_display(body.mode.value)
         settings = read_settings()
         settings["active_display"] = body.mode.value
+        clear_weather_lock(settings)  # a hand-picked display ends the lock
         write_settings(settings)
         logger.info(f"Switched display to {body.mode.value} (pid {pid})")
         return JSONResponse({"active_display": body.mode.value, "pid": pid})
