@@ -10,6 +10,7 @@ from helpers.config import (
     CYCLE_MAX_MINUTES,
     CYCLE_MAX_NAME_LENGTH,
     CYCLE_MIN_MINUTES,
+    CYCLE_MULTI_OPTION_MODES,
     cycle_all_leagues,
     cycle_steps,
     normalize_cycle,
@@ -43,6 +44,8 @@ def _payload(cycles: dict) -> dict:
         "modes": DISPLAY_MODES,
         "mode_options": schedule_mode_options(),
         "all_option": CYCLE_ALL_OPTION,
+        # Modes that pick several options (or All); the rest pick exactly one.
+        "multi_option_modes": list(CYCLE_MULTI_OPTION_MODES),
         # How many views "all" opens into, so the editor can show the time.
         "all_count": len(cycle_all_leagues()),
         "minutes": {"min": CYCLE_MIN_MINUTES, "max": CYCLE_MAX_MINUTES},

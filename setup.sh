@@ -240,6 +240,7 @@ setup_sudoers() {
     cat > /tmp/nuggies-display-sudoers <<EOF
 # Display scripts
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/clock/main.py
+$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/flight/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/mta/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/sports/main.py
 $USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/stocks/main.py
@@ -870,6 +871,8 @@ verify_permissions() {
     # Six display scripts (they seize the LED matrix):
     _assert_sudoers_line "grant: display/clock/main.py" \
         "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/clock/main.py"
+    _assert_sudoers_line "grant: display/flight/main.py" \
+        "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/flight/main.py"
     _assert_sudoers_line "grant: display/mta/main.py" \
         "$USER ALL=(ALL) NOPASSWD: $PYTHON $SCRIPT_DIR/display/mta/main.py"
     _assert_sudoers_line "grant: display/sports/main.py" \

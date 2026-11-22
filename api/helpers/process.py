@@ -15,6 +15,7 @@ _PID_FILE = _PROJECT_ROOT / "display.pid"
 
 _DISPLAY_SCRIPTS = {
     "clock": _PROJECT_ROOT / "display" / "clock" / "main.py",
+    "flight": _PROJECT_ROOT / "display" / "flight" / "main.py",
     "mta": _PROJECT_ROOT / "display" / "mta" / "main.py",
     "sports": _PROJECT_ROOT / "display" / "sports" / "main.py",
     "stocks": _PROJECT_ROOT / "display" / "stocks" / "main.py",

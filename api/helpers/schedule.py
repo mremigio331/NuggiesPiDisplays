@@ -25,10 +25,12 @@ import logging
 from datetime import datetime
 
 from helpers.config import (
+    read_flight,
     read_schedule,
     read_settings,
     rule_runs_on,
     set_active_cycle,
+    write_flight,
     write_settings,
     write_display_brightness,
 )
@@ -52,10 +54,19 @@ def _apply_option(mode: str, option: str | None) -> None:
 
     The display reads its sub-setting from settings at launch, so writing it
     here and then calling start_display(mode) brings the display up on the
-    chosen sub-option. Only sports has one today:
-    option -> settings["sports"]["sport"].
+    chosen sub-option:
+      sports  option -> settings["sports"]["sport"]
+      flight  "airlines" / "planes" -> settings["flight"]["airlines_only"]
     """
     if not option:
+        return
+    if mode == "flight":
+        flight = read_flight()
+        airlines_only = option == "airlines"
+        if flight["airlines_only"] != airlines_only:
+            flight["airlines_only"] = airlines_only
+            write_flight(flight)
+            logger.info("Schedule: flights %s", option)
         return
     if mode == "sports":
         settings = read_settings()

@@ -47,3 +47,6 @@ api/data/health.jsonl
 api/data/health.tmp
 api/data/weather_cache.json
 api/data/weather_cache.tmp
+api/data/flight_routes.json
+api/data/flight_routes.tmp
+api/data/airline_logos/

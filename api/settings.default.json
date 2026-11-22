@@ -135,6 +135,14 @@
     "units": "fahrenheit",
     "cycle_duration": 60
   },
+  "flight": {
+    "latitude": null,
+    "longitude": null,
+    "location_label": "",
+    "radius": 25,
+    "units": "mi",
+    "airlines_only": false
+  },
   "sports": {
     "sport": "nba",
     "favorite_teams": {},

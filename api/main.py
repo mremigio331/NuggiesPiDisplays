@@ -27,6 +27,7 @@ from endpoints.system import router as system_router
 from endpoints.stonks import router as stonks_router
 from endpoints.mta import router as mta_router
 from endpoints.clock import router as clock_router
+from endpoints.flight import router as flight_router
 from endpoints.text import router as text_router
 from endpoints.timers import router as timers_router
 from endpoints.sports import router as sports_router
@@ -112,6 +113,7 @@ app.include_router(system_router, prefix="/api")
 app.include_router(stonks_router, prefix="/api")
 app.include_router(mta_router, prefix="/api")
 app.include_router(clock_router, prefix="/api")
+app.include_router(flight_router, prefix="/api")
 app.include_router(text_router, prefix="/api")
 app.include_router(timers_router, prefix="/api")
 app.include_router(sports_router, prefix="/api")

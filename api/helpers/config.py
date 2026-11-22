@@ -52,6 +52,84 @@ def clear_weather_lock(settings: dict) -> None:
         weather.pop("locked_until", None)
 
 
+# --- Flight ----------------------------------------------------------------- #
+# Where to look for planes. The user sets the spot by address, by typing a
+# lat/lon, or by clicking a map; all three save the same lat/lon. No spot set
+# means the board shows "Update settings to view flight info". `radius` is in
+# `units` (mi or km) so the number the user picked stays the number they see.
+FLIGHT_UNITS = ("mi", "km")
+FLIGHT_RADIUS_MIN = 1
+FLIGHT_RADIUS_MAX = 150
+FLIGHT_DEFAULT_RADIUS = 25
+FLIGHT_LABEL_MAX = 120
+# Flights sub-options for schedules and cycles: which planes the view shows.
+# Applied by writing `airlines_only` before the display starts.
+FLIGHT_VIEW_OPTIONS = [
+    {"key": "planes", "label": "All planes"},
+    {"key": "airlines", "label": "Airlines only"},
+]
+
+
+def _flight_coord(value, low: float, high: float) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    # NaN fails both comparisons, so it is rejected here too.
+    if not (low <= v <= high):
+        return None
+    return round(v, 6)
+
+
+def normalize_flight(raw: dict | None) -> dict:
+    """Coerce an on-disk flight block into the canonical shape.
+
+    Tolerates a missing block (devices from before this mode) and bad values.
+    A half-set spot (lat without lon) counts as no spot.
+    """
+    raw = raw if isinstance(raw, dict) else {}
+    lat = _flight_coord(raw.get("latitude"), -90.0, 90.0)
+    lon = _flight_coord(raw.get("longitude"), -180.0, 180.0)
+    if lat is None or lon is None:
+        lat = lon = None
+
+    units = raw.get("units") if raw.get("units") in FLIGHT_UNITS else "mi"
+    # Hide planes with no airline (private, small and most military planes).
+    airlines_only = raw.get("airlines_only") is True
+    try:
+        radius = int(raw.get("radius", FLIGHT_DEFAULT_RADIUS))
+    except (TypeError, ValueError):
+        radius = FLIGHT_DEFAULT_RADIUS
+    radius = max(FLIGHT_RADIUS_MIN, min(FLIGHT_RADIUS_MAX, radius))
+
+    label = ""
+    if lat is not None:
+        label = str(raw.get("location_label") or "").strip()[:FLIGHT_LABEL_MAX]
+
+    return {
+        "latitude": lat,
+        "longitude": lon,
+        "location_label": label,
+        "radius": radius,
+        "units": units,
+        "airlines_only": airlines_only,
+    }
+
+
+def read_flight() -> dict:
+    return normalize_flight(read_settings().get("flight"))
+
+
+def write_flight(flight: dict) -> dict:
+    normalized = normalize_flight(flight)
+    settings = read_settings()
+    settings["flight"] = normalized
+    write_settings(settings)
+    return normalized
+
+
 # --- Update stage ----------------------------------------------------------- #
 # Which release tag this device tracks: "beta" (gets each build immediately) or
 # "prod" (gets only builds you approved). Default "prod". setup.sh reads the
@@ -200,7 +278,7 @@ def schedule_mode_options() -> dict:
     Imported lazily because those modules import this one. A mode with no
     sub-option is simply absent from the map.
     """
-    options: dict[str, list[dict]] = {}
+    options: dict[str, list[dict]] = {"flight": list(FLIGHT_VIEW_OPTIONS)}
     try:
         from endpoints.sports.update_settings import sport_options
 
@@ -375,6 +453,10 @@ CYCLE_MIN_MINUTES = 5
 CYCLE_MAX_MINUTES = 60
 CYCLE_MAX_NAME_LENGTH = 30
 CYCLE_ALL_OPTION = "all"  # a sports view that shows every league in turn
+# Modes whose cycle view may pick several options (shown in turn) or "all".
+# Every other mode with options picks exactly one (Flights: All planes or
+# Airlines only).
+CYCLE_MULTI_OPTION_MODES = ("sports",)
 _CYCLE_ALL_EXCLUDES = ("favorites",)
 
 
@@ -384,8 +466,15 @@ def _normalize_cycle_view(raw) -> dict | None:
     if mode not in _DISPLAY_MODES:
         return None
     view = {"mode": mode}
-    valid = {o["key"] for o in schedule_mode_options().get(mode, [])}
-    if valid:
+    mode_opts = [o["key"] for o in schedule_mode_options().get(mode, [])]
+    valid = set(mode_opts)
+    if valid and mode not in CYCLE_MULTI_OPTION_MODES:
+        picked = raw.get("options")
+        if not isinstance(picked, list):
+            picked = [raw.get("option", "")]
+        pick = next((str(o) for o in picked if str(o or "").strip() in valid), None)
+        view["options"] = [pick.strip() if pick else mode_opts[0]]
+    elif valid:
         # Several options per view (e.g. NBA + NHL), each shown in turn. Cycles
         # saved before multi-select carry a single "option" string.
         picked = raw.get("options")
