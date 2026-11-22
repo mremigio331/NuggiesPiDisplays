@@ -1,0 +1,49 @@
+import os
+
+HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
+USING_HARDWARE = False
+
+try:
+    if HEADLESS:
+        raise ImportError("headless mode")
+    from rgbmatrix import RGBMatrix, RGBMatrixOptions
+    from config import get_brightness
+
+    USING_HARDWARE = True
+
+    def build_matrix() -> RGBMatrix:
+        options = RGBMatrixOptions()
+        options.rows = 32
+        options.cols = 64
+        options.chain_length = 1
+        options.parallel = 1
+        options.hardware_mapping = "adafruit-hat"
+        options.gpio_slowdown = 4
+        options.pwm_lsb_nanoseconds = 300
+        options.brightness = get_brightness()
+        return RGBMatrix(options=options)
+
+except ImportError:
+    from PIL import Image
+
+    class _MockCanvas:
+        def __init__(self):
+            self._image = Image.new("RGB", (64, 32), (0, 0, 0))
+
+        def SetPixel(self, x, y, r, g, b):
+            if 0 <= x < 64 and 0 <= y < 32:
+                self._image.putpixel((x, y), (r, g, b))
+
+        def Clear(self):
+            self._image = Image.new("RGB", (64, 32), (0, 0, 0))
+
+    class _MockMatrix:
+        def CreateFrameCanvas(self):
+            return _MockCanvas()
+
+        def SwapOnVSync(self, canvas):
+            canvas._image.save(os.environ.get("FLIGHT_PNG", "/tmp/flight_display.png"))
+            return canvas
+
+    def build_matrix():
+        return _MockMatrix()
