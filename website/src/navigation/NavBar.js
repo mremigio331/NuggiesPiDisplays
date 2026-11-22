@@ -38,6 +38,7 @@ export default function NavBar() {
             { id: "sports", text: "Sports" },
             { id: "stocks", text: "Stocks" },
             { id: "weather", text: "Weather" },
+            { id: "flight", text: "Flights" },
             { id: "clock", text: "Clock" },
             { id: "text", text: "Text" },
           ],
@@ -47,6 +48,7 @@ export default function NavBar() {
               sports: "/sports",
               stocks: "/stocks",
               weather: "/weather",
+              flight: "/flight",
               clock: "/clock",
               text: "/text",
             };

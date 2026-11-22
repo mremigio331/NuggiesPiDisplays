@@ -9,6 +9,8 @@ import Stocks from "./pages/stocks/Stocks";
 import StocksSettings from "./pages/stocks/StocksSettings";
 import Clock from "./pages/clock/Clock";
 import ClockSettings from "./pages/clock/ClockSettings";
+import Flight from "./pages/flight/Flight";
+import FlightSettings from "./pages/flight/FlightSettings";
 import Text from "./pages/text/Text";
 import TextSettings from "./pages/text/TextSettings";
 import System from "./pages/system/System";
@@ -33,6 +35,8 @@ export default function NuggiesDisplay() {
         <Route path="/stocks/settings" element={<StocksSettings />} />
         <Route path="/clock" element={<Clock />} />
         <Route path="/clock/settings" element={<ClockSettings />} />
+        <Route path="/flight" element={<Flight />} />
+        <Route path="/flight/settings" element={<FlightSettings />} />
         <Route path="/text" element={<Text />} />
         <Route path="/text/settings" element={<TextSettings />} />
         <Route path="/sports" element={<Sports />} />

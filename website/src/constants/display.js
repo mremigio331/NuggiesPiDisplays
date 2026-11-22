@@ -1,5 +1,6 @@
 export const DISPLAY_MODES = [
   { key: "clock", label: "Clock" },
+  { key: "flight", label: "Flights" },
   { key: "mta", label: "MTA" },
   { key: "sports", label: "Sports" },
   { key: "stocks", label: "Stocks" },

@@ -54,6 +54,7 @@ The display supports five modes, switchable from the **System** page:
 | **Sports** | Live / recent scores for NFL, MLB, NBA, NHL, or soccer |
 | **Stocks** | Stock ticker for your configured watchlist |
 | **Weather** | Current conditions and forecast |
+| **Flights** | The closest plane in the sky to your spot. Set the spot by address, lat/lon or a map in Flights settings. The website map shows every plane in your radius. |
 
 ---
 

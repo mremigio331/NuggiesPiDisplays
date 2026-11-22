@@ -5,6 +5,7 @@ import "./BottomNav.css";
 
 const TABS = [
   { label: "Clock", icon: "🕐", path: "/clock" },
+  { label: "Flights", icon: "✈", path: "/flight" },
   { label: "MTA", icon: "🚇", path: "/mta" },
   { label: "Sports", icon: "🏀", path: "/sports" },
   { label: "Stocks", icon: "📈", path: "/stocks" },

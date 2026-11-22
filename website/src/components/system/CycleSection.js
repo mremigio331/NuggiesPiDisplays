@@ -44,18 +44,22 @@ export default function CycleSection() {
 
   const modeOptions = data.mode_options;
   const allOption = data.all_option;
+  // Sports picks several leagues (or All); Flights picks one option.
+  const isMulti = (mode) => (data.multi_option_modes ?? ["sports"]).includes(mode);
   const optionsFor = (mode) => {
     const opts = modeOptions[mode] || [];
-    return opts.length ? [{ key: allOption, label: "All" }, ...opts] : [];
+    if (!opts.length) return [];
+    return isMulti(mode) ? [{ key: allOption, label: "All" }, ...opts] : opts;
   };
   const optionLabels = (view) =>
     (view.options || [])
       .map((key) => (optionsFor(view.mode).find((o) => o.key === key) || {}).label || key)
       .join(", ");
-  const newView = (mode) => ({
-    mode,
-    options: optionsFor(mode).length ? [allOption] : undefined,
-  });
+  const newView = (mode) => {
+    const opts = optionsFor(mode);
+    if (!opts.length) return { mode, options: undefined };
+    return { mode, options: [isMulti(mode) ? allOption : opts[0].key] };
+  };
 
   const setView = (i, patch) =>
     setDraft({
@@ -65,6 +69,10 @@ export default function CycleSection() {
   // All and specific picks are exclusive: tapping All clears the rest, tapping
   // a league drops All, and un-picking the last league falls back to All.
   const toggleOption = (i, key) => {
+    if (!isMulti(draft.views[i].mode)) {
+      setView(i, { options: [key] });
+      return;
+    }
     const current = draft.views[i].options || [];
     let next;
     if (key === allOption) next = [allOption];

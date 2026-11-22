@@ -180,6 +180,20 @@ export const updateTextSettings = (body) => handle(api.put("/text/settings", bod
 export const getClockTimezones = (page = 1, search = "") =>
   handle(api.get("/clock/timezones", { params: { page, search } }));
 
+// Flight: planes near the saved spot. The API calls the ADS-B feeds at most
+// once a minute; this just reads its cached answer. A 503 still has a body.
+export const getFlightSettings = () => handle(api.get("/flight/settings"));
+export const updateFlightSettings = (body) => handle(api.put("/flight/settings", body));
+// Airline logo by IATA code (DL, AS), served and cached by the device.
+export const flightLogoUrl = (code, size = 64) =>
+  `${apiEndpoint}/api/flight/logo/${encodeURIComponent(code)}.png?size=${size}`;
+// From/to airports for one plane from the last /nearby answer (by ICAO hex).
+export const getFlightRoute = (hex) => handle(api.get("/flight/route", { params: { hex } }));
+export const getNearbyFlights = () =>
+  api
+    .get("/flight/nearby", { validateStatus: (s) => s === 200 || s === 503 })
+    .then((res) => res.data);
+
 // Weather
 export const getWeatherData = () => handle(api.get("/weather/data"));
 export const getWeatherSettings = () => handle(api.get("/weather/settings"));
