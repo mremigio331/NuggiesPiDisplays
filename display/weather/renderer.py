@@ -225,7 +225,7 @@ def render_forecast(canvas, data: dict) -> None:
 #            rises from and sets behind them
 #
 _ARC_X0, _ARC_X1 = 5, 58  # horizontal travel (left horizon -> right horizon)
-_ARC_Y_HORIZON = 29  # centre y at sunrise/sunset (hidden behind the ground)
+_ARC_Y_HORIZON = 22  # centre y at sunrise/sunset: over half shows above the slope
 _ARC_Y_PEAK = 11  # centre y at solar noon (just clears the summit)
 _BODY_R = 3
 _GROUND_TOP = 25  # y of the first ground row

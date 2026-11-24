@@ -9,7 +9,7 @@ const KNOWN_NEW_MOON = Date.UTC(2000, 0, 6, 18, 14);
 
 const ARC_X0 = 5;
 const ARC_X1 = 58;
-const ARC_Y_HORIZON = 29;
+const ARC_Y_HORIZON = 22; // over half the sun/moon shows at sunrise and sunset
 const ARC_Y_PEAK = 11;
 const BODY_R = 3.2;
 const GROUND_TOP = 25;
